@@ -7,17 +7,17 @@ public class SoundsLibrary : MonoBehaviour
 
     private Dictionary<SoundId, SoundEntity> soundsMap;
 
-    private void Awake()
-    {
-        Initialize();
-    }
-
     public void Initialize()
     {
         if (soundsDataContainer == null)
         {
-            Debug.LogError("Не установлен SoundsDataContainer. Проверьте найстроки");
-            return;
+            soundsDataContainer = "SoundsPool".Load<SoundsDataContainer>();
+
+            if (soundsDataContainer == null)
+            {
+                Debug.LogError("Не найден SoundsDataContainer. Проверьте найстроки");
+                return;
+            }
         }
 
         soundsMap = new Dictionary<SoundId, SoundEntity>();
@@ -49,6 +49,7 @@ public class SoundsLibrary : MonoBehaviour
                 Debug.LogWarning($"Звук с идентификатором {soundId} не имеет клипов");
                 return null;
             }
+
             sound.Clips.RemoveAll(c => c == null);
 
             if (sound.Clips.Count == 0)
@@ -59,6 +60,7 @@ public class SoundsLibrary : MonoBehaviour
 
             return sound;
         }
+
         Debug.LogWarning($"Звук с идентификатором {soundId} не найден в пуле звуков.");
         return null;
     }

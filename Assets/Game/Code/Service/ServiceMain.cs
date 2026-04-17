@@ -2,36 +2,37 @@
 
 public class ServiceMain : MonoBehaviour
 {
-    public static bool ServicesReady { get; private set; }
+    public static bool isInitialized { get; private set; }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void GameEntryPoint()
+    {
+        if (isInitialized) return;
+
+
+        GameObject servicesGo = new GameObject("===Services===");
+        DontDestroyOnLoad(servicesGo);
+        servicesGo.AddComponent<ServiceMain>();
+        isInitialized = true;
+    }
 
 
     private void Awake()
     {
         if (G.ServiceMain != null && G.ServiceMain != this)
         {
-            Destroy(this.gameObject);
+            Destroy(gameObject);
             return;
         }
 
-        DontDestroyOnLoad(gameObject);
-
         G.ServiceMain = this;
-        InitializeServices();
-    }
 
-    public async void InitializeServices()
-    {
-        try
-        {
-            // await AnalyticsSystem.Init();
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"[Services] Init failed: {e}");
-        }
-        finally
-        {
-            ServicesReady = true;
-        }
+        Debug.Log("=========================");
+        Debug.Log("Game EntryPoint");
+
+        G.audioSystem = gameObject.AddComponent<AudioSystem>();
+
+        AnalyticsSystem.Init();
+        CMS.Init();
     }
 }

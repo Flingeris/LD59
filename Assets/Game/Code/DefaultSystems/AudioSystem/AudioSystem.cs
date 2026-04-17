@@ -1,15 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-[RequireComponent(typeof(SoundsLibrary))]
 public class AudioSystem : MonoBehaviour
 {
     public const string MUSIC_VOL_KEY = "Music_volume";
     public const string SFX_VOL_KEY = "SFX_volume";
     public const string AMBIENT_VOL_KEY = "Ambient_volume";
 
-    [SerializeField] private SoundsLibrary soundsLibrary;
-    private Dictionary<AudioType, IAudioPlayer> audioPlayers = new();
+    private SoundsLibrary soundsLibrary;
+    private readonly Dictionary<AudioType, IAudioPlayer> audioPlayers = new();
 
     public int initSFXPoolSize = 10;
     public int maxSFXPoolSize = 24;
@@ -18,22 +17,8 @@ public class AudioSystem : MonoBehaviour
     [Range(0f, 1f)] public float SfxVolume = 1f;
     [Range(0f, 1f)] public float AmbientVolume = 1f;
 
-    private void OnValidate()
-    {
-        if (soundsLibrary == null) soundsLibrary = GetComponent<SoundsLibrary>();
-    }
-
     private void Awake()
     {
-        DontDestroyOnLoad(gameObject);
-
-        if (G.audioSystem != null && G.audioSystem != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
-        G.audioSystem = this;
         Init();
         MusicVolume = PlayerPrefs.GetFloat(MUSIC_VOL_KEY, MusicVolume);
         AmbientVolume = PlayerPrefs.GetFloat(AMBIENT_VOL_KEY, AmbientVolume);
@@ -42,6 +27,10 @@ public class AudioSystem : MonoBehaviour
 
     private void Init()
     {
+        soundsLibrary = gameObject.AddComponent<SoundsLibrary>();
+        soundsLibrary.Initialize();
+
+
         audioPlayers[AudioType.SFX] = new SFXPlayer(this, initSFXPoolSize, maxSFXPoolSize);
         audioPlayers[AudioType.Ambient] = new AmbientPlayer(this);
         audioPlayers[AudioType.Music] = new MusicPlayer(this);

@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 
 [CustomEditor(typeof(SoundsDataContainer))]
-public class SoundsDataContainerEditor : Editor
+public class SoundsDataContainerEditor : UnityEditor.Editor
 {
     private SerializedProperty soundsEntitiesProp;
 

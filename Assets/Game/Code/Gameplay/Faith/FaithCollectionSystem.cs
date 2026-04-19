@@ -10,7 +10,7 @@ public class FaithCollectionSystem
         }
 
         runState.Faith = Mathf.Max(0, runState.StartingNightFaith);
-        runState.FaithCollectionProgress = 0f;
+        runState.FaithCollectionTimerProgress = 0f;
     }
 
     public void EndNight(RunState runState)
@@ -21,7 +21,7 @@ public class FaithCollectionSystem
         }
 
         runState.Faith = 0;
-        runState.FaithCollectionProgress = 0f;
+        runState.FaithCollectionTimerProgress = 0f;
     }
 
     public int UpdateCollection(RunState runState, float deltaTime)
@@ -38,20 +38,27 @@ public class FaithCollectionSystem
             return 0;
         }
 
-        var collectionRate = Mathf.Max(0f, runState.FaithCollectionPerSecond);
-        if (collectionRate <= 0f)
+        var payoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
+        var collectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
+        if (payoutAmount <= 0 || collectionIntervalSeconds <= 0f)
         {
             return 0;
         }
 
-        runState.FaithCollectionProgress += deltaTime * collectionRate;
-        var collectedFaith = Mathf.FloorToInt(runState.FaithCollectionProgress);
-        if (collectedFaith <= 0)
+        runState.FaithCollectionTimerProgress += deltaTime;
+        if (runState.FaithCollectionTimerProgress < collectionIntervalSeconds)
         {
             return 0;
         }
 
-        runState.FaithCollectionProgress -= collectedFaith;
+        var completedPayoutCycles = Mathf.FloorToInt(runState.FaithCollectionTimerProgress / collectionIntervalSeconds);
+        if (completedPayoutCycles <= 0)
+        {
+            return 0;
+        }
+
+        var collectedFaith = completedPayoutCycles * payoutAmount;
+        runState.FaithCollectionTimerProgress -= completedPayoutCycles * collectionIntervalSeconds;
         runState.Faith += collectedFaith;
         return collectedFaith;
     }

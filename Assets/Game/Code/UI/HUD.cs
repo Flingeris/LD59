@@ -20,6 +20,7 @@ public class HUD : MonoBehaviour
     [SerializeField] private TMP_Text goldText;
     [SerializeField] private TMP_Text cemeteryStateText;
     [SerializeField] private TMP_Text phaseText;
+    [SerializeField] private WaveProgressView waveProgressView;
     [SerializeField] private DayScreenView dayScreenView;
     [SerializeField] private DefeatScreenView defeatScreenView;
     [SerializeField] private WinScreenView winScreenView;
@@ -37,7 +38,6 @@ public class HUD : MonoBehaviour
     private void Awake()
     {
         G.HUD = this;
-        BindBellButtons();
         BindDayScreenView();
         BindDefeatScreenView();
         BindWinScreenView();
@@ -47,7 +47,6 @@ public class HUD : MonoBehaviour
 
     private void OnDestroy()
     {
-        UnbindBellButtons();
         UnbindDayScreenView();
         UnbindDefeatScreenView();
         UnbindWinScreenView();
@@ -68,6 +67,7 @@ public class HUD : MonoBehaviour
         if (G.main == null || G.main.RunState == null)
         {
             RefreshBellButtonInteractivity(null);
+            waveProgressView?.SetInactive();
 
             if (!missingMainWarningShown)
             {
@@ -102,6 +102,8 @@ public class HUD : MonoBehaviour
         {
             phaseText.text = $"Phase: {runState.CurrentPhase}";
         }
+
+        waveProgressView?.RefreshView();
     }
 
     public void ShowDayScreen(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
@@ -192,6 +194,11 @@ public class HUD : MonoBehaviour
         }
 
         phaseTransitionView.Hide();
+    }
+
+    public void ShowBellFeedback(string message)
+    {
+        SetBellFeedback(message);
     }
 
     private void BindBellButtons()
@@ -336,12 +343,6 @@ public class HUD : MonoBehaviour
             return;
         }
 
-        var canRingBells =
-            runState != null &&
-            runState.CurrentPhase == GamePhase.Night &&
-            runState.Keeper != null &&
-            runState.Keeper.InteractionState == KeeperInteractionState.Bells;
-
         for (var i = 0; i < bellButtons.Length; i++)
         {
             var binding = bellButtons[i];
@@ -350,30 +351,13 @@ public class HUD : MonoBehaviour
                 continue;
             }
 
-            binding.button.interactable = canRingBells;
+            binding.button.interactable = false;
         }
     }
 
     private void OnBellButtonPressed(string bellId)
     {
-
-        var result = G.main.TryRingBell(bellId);
-        if (result.IsSuccess && result.SpawnResult != null && result.SpawnResult.IsSuccess)
-        {
-            SetBellFeedback($"Bell: {result.BellDef.DisplayName}");
-            return;
-        }
-
-        if (!result.IsSuccess)
-        {
-            SetBellFeedback($"Bell failed: {result.FailureReason}");
-            return;
-        }
-
-        if (result.SpawnResult != null && !result.SpawnResult.IsSuccess)
-        {
-            SetBellFeedback($"Spawn failed: {result.SpawnResult.FailureReason}");
-        }
+        SetBellFeedback("Use bells in the world");
     }
 
     private void SetBellFeedback(string message)

@@ -15,5 +15,6 @@ MonoBehaviour:
   id: bell_small
   displayName: bell_small
   faithCost: 10
+  cooldownSeconds: 2
   linkedUnitId: skel1
   icon: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}

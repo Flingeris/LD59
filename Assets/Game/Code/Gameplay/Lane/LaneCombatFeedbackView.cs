@@ -8,6 +8,7 @@ public class LaneCombatFeedbackView : MonoBehaviour
     private static readonly Color EnemyHitFlashColor = Color.white;
 
     [SerializeField] private CombatHpBarView hpBarPrefab;
+    [SerializeField] private WorldProgressBarPresenter lifetimeProgressPresenter;
     [SerializeField] private SpriteRenderer targetRenderer;
     [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
     [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
@@ -19,10 +20,16 @@ public class LaneCombatFeedbackView : MonoBehaviour
     private Color hitFlashColor = Color.white;
     private float popupOffsetY;
     private bool isBound;
+    private LaneUnit boundLaneUnit;
 
     private void Awake()
     {
         EnsureTargetRenderer();
+    }
+
+    private void LateUpdate()
+    {
+        RefreshLifetimeProgressPresentation();
     }
 
     private void OnDisable()
@@ -41,6 +48,7 @@ public class LaneCombatFeedbackView : MonoBehaviour
 
         baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
         hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
+        boundLaneUnit = isEnemy ? null : GetComponent<LaneUnit>();
 
         var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
         popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
@@ -49,7 +57,9 @@ public class LaneCombatFeedbackView : MonoBehaviour
         EnsureHpBarInstance(barOffsetY);
         hpBarInstance?.Bind(maxHp, isEnemy, targetRenderer);
         hpBarInstance?.Refresh(maxHp);
+        lifetimeProgressPresenter?.Bind(targetRenderer);
         isBound = true;
+        RefreshLifetimeProgressPresentation();
     }
 
     public void PlayDamageFeedback(int damage, int currentHp)
@@ -84,6 +94,9 @@ public class LaneCombatFeedbackView : MonoBehaviour
             Destroy(hpBarInstance.gameObject);
             hpBarInstance = null;
         }
+
+        lifetimeProgressPresenter?.SetInactive();
+        boundLaneUnit = null;
     }
 
     private void PlayHitFlash()
@@ -143,5 +156,21 @@ public class LaneCombatFeedbackView : MonoBehaviour
             1f / Mathf.Max(0.0001f, lossyScale.x),
             1f / Mathf.Max(0.0001f, lossyScale.y),
             1f / Mathf.Max(0.0001f, lossyScale.z));
+    }
+
+    private void RefreshLifetimeProgressPresentation()
+    {
+        if (lifetimeProgressPresenter == null)
+        {
+            return;
+        }
+
+        if (!isBound || boundLaneUnit == null || !boundLaneUnit.HasLimitedLifetime)
+        {
+            lifetimeProgressPresenter.SetInactive();
+            return;
+        }
+
+        lifetimeProgressPresenter.Refresh(boundLaneUnit.LifetimeProgressNormalized, true, true);
     }
 }

@@ -6,10 +6,21 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
     [SerializeField] private string id;
     [SerializeField] private NightPoiType type;
     [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private NightPoiProgressView progressView;
 
     public string Id => id;
     public NightPoiType Type => type;
     public float InteractionRadius => Mathf.Max(0f, interactionRadius);
+
+    private void Awake()
+    {
+        if (progressView == null)
+        {
+            progressView = GetComponentInChildren<NightPoiProgressView>();
+        }
+
+        progressView?.Bind(this);
+    }
 
     public Vector2 GetWorldPosition()
     {

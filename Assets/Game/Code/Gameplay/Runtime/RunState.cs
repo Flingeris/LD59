@@ -6,10 +6,14 @@ public class RunState
     public int Faith;
     public int Gold;
     public int StartingNightFaith;
-    public float FaithCollectionPerSecond;
-    public float FaithCollectionProgress;
+    public int FaithCollectionPayoutAmount;
+    public float FaithCollectionIntervalSeconds;
+    public float FaithCollectionTimerProgress;
     public int CemeteryState;
     public int CemeteryMaxState;
+    public int NightCemeteryRepairAmount;
+    public float NightCemeteryRepairIntervalSeconds;
+    public float NightCemeteryRepairTimerProgress;
     public int CurrentDay;
     public int CurrentNight;
     public GamePhase CurrentPhase;
@@ -21,21 +25,31 @@ public class RunState
         int initialCemeteryState,
         float initialKeeperMoveSpeed,
         int startingNightFaith,
-        float faithCollectionPerSecond)
+        int faithCollectionPayoutAmount,
+        float faithCollectionIntervalSeconds,
+        int nightCemeteryRepairAmount,
+        float nightCemeteryRepairIntervalSeconds)
     {
         var clampedInitialCemeteryState = Mathf.Max(0, initialCemeteryState);
         var clampedStartingNightFaith = Mathf.Max(0, startingNightFaith);
-        var clampedFaithCollectionPerSecond = Mathf.Max(0f, faithCollectionPerSecond);
+        var clampedFaithCollectionPayoutAmount = Mathf.Max(0, faithCollectionPayoutAmount);
+        var clampedFaithCollectionIntervalSeconds = Mathf.Max(0f, faithCollectionIntervalSeconds);
+        var clampedNightCemeteryRepairAmount = Mathf.Max(0, nightCemeteryRepairAmount);
+        var clampedNightCemeteryRepairIntervalSeconds = Mathf.Max(0f, nightCemeteryRepairIntervalSeconds);
 
         return new RunState
         {
             Faith = 0,
             Gold = 0,
             StartingNightFaith = clampedStartingNightFaith,
-            FaithCollectionPerSecond = clampedFaithCollectionPerSecond,
-            FaithCollectionProgress = 0f,
+            FaithCollectionPayoutAmount = clampedFaithCollectionPayoutAmount,
+            FaithCollectionIntervalSeconds = clampedFaithCollectionIntervalSeconds,
+            FaithCollectionTimerProgress = 0f,
             CemeteryState = clampedInitialCemeteryState,
             CemeteryMaxState = clampedInitialCemeteryState,
+            NightCemeteryRepairAmount = clampedNightCemeteryRepairAmount,
+            NightCemeteryRepairIntervalSeconds = clampedNightCemeteryRepairIntervalSeconds,
+            NightCemeteryRepairTimerProgress = 0f,
             CurrentDay = 1,
             CurrentNight = 0,
             CurrentPhase = GamePhase.Transition,

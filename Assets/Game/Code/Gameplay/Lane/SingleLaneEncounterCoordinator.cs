@@ -8,6 +8,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
     [SerializeField] private SingleLaneHost laneHost;
 
     public Action<LaneEnemy> OnEnemyBreakthrough;
+    public Action<LaneEnemy> OnEnemyCemeteryAttack;
     public bool HasActiveEnemyPressure => enemies.Count > 0;
 
     private readonly List<LaneUnit> playerUnits = new();
@@ -48,12 +49,23 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         }
 
         enemies.Add(laneEnemy);
+        laneEnemy.CemeteryAttackTriggered -= HandleEnemyCemeteryAttackTriggered;
+        laneEnemy.CemeteryAttackTriggered += HandleEnemyCemeteryAttackTriggered;
     }
 
     private void CleanupDestroyed()
     {
+        for (var i = enemies.Count - 1; i >= 0; i--)
+        {
+            if (enemies[i] != null)
+            {
+                continue;
+            }
+
+            enemies.RemoveAt(i);
+        }
+
         playerUnits.RemoveAll(unit => unit == null);
-        enemies.RemoveAll(enemy => enemy == null);
         CleanupAssignedSlots();
     }
 
@@ -87,7 +99,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             {
                 enemy.SetTargetUnit(targetUnit);
             }
-            else
+            else if (!enemy.IsAttackingCemetery)
             {
                 enemy.ClearTargetUnit();
             }
@@ -226,7 +238,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         for (var i = enemies.Count - 1; i >= 0; i--)
         {
             var enemy = enemies[i];
-            if (enemy == null || enemy.IsInCombat)
+            if (enemy == null || enemy.IsInCombat || enemy.IsAttackingCemetery)
             {
                 continue;
             }
@@ -236,7 +248,8 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
                 continue;
             }
 
-            RemoveEnemyAt(i, true);
+            enemy.EnterCemeteryAttackState(laneHost.EnemyBreakthroughPoint.position);
+            OnEnemyBreakthrough?.Invoke(enemy);
         }
     }
 
@@ -414,6 +427,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         enemies.RemoveAt(index);
         if (enemy != null)
         {
+            enemy.CemeteryAttackTriggered -= HandleEnemyCemeteryAttackTriggered;
             enemy.ClearTargetUnit();
             Destroy(enemy.gameObject);
         }
@@ -422,6 +436,16 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         {
             OnEnemyBreakthrough?.Invoke(enemy);
         }
+    }
+
+    private void HandleEnemyCemeteryAttackTriggered(LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null)
+        {
+            return;
+        }
+
+        OnEnemyCemeteryAttack?.Invoke(laneEnemy);
     }
 
     private int GetLeastPopulatedSlotIndex()

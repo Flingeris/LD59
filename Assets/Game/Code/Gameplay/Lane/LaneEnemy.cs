@@ -4,14 +4,18 @@ public class LaneEnemy : MonoBehaviour
 {
     private const int SortingPrecision = 100;
 
+    public event System.Action<LaneEnemy> CemeteryAttackTriggered;
+
     public EnemyDef EnemyDef { get; private set; }
     public Vector3 Position => transform.position;
     public int CurrentHp { get; private set; }
     public LaneUnit TargetUnit { get; private set; }
     public bool HasTarget => TargetUnit != null;
     public bool IsInCombat => TargetUnit != null;
+    public bool IsAttackingCemetery { get; private set; }
 
     private Vector3 forwardTargetPosition;
+    private Vector3 cemeteryAttackPosition;
     private float attackCooldown;
     private LaneCombatFeedbackView combatFeedbackView;
     private SpriteRenderer spriteRenderer;
@@ -36,8 +40,10 @@ public class LaneEnemy : MonoBehaviour
         EnemyDef = enemyDef;
         CurrentHp = enemyDef.Hp;
         forwardTargetPosition = targetPosition;
+        cemeteryAttackPosition = targetPosition;
         TargetUnit = null;
         attackCooldown = enemyDef.AttackInterval;
+        IsAttackingCemetery = false;
         combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
         if (combatFeedbackView == null)
         {
@@ -104,11 +110,28 @@ public class LaneEnemy : MonoBehaviour
         return Position.x <= breakthroughX;
     }
 
+    public void EnterCemeteryAttackState(Vector3 attackPosition)
+    {
+        IsAttackingCemetery = true;
+        cemeteryAttackPosition = attackPosition;
+        forwardTargetPosition = attackPosition;
+        TargetUnit = null;
+        attackCooldown = EnemyDef != null ? EnemyDef.AttackInterval : 0f;
+        transform.position = attackPosition;
+    }
+
     private void UpdateBehavior(float deltaTime)
     {
         if (TargetUnit == null || TargetUnit.IsDead())
         {
             TargetUnit = null;
+
+            if (IsAttackingCemetery)
+            {
+                UpdateCemeteryAttack(deltaTime);
+                return;
+            }
+
             MoveForward(deltaTime);
             return;
         }
@@ -122,6 +145,20 @@ public class LaneEnemy : MonoBehaviour
         TargetUnit.ApplyDamage(EnemyDef.Damage);
         G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
         attackCooldown = EnemyDef.AttackInterval;
+    }
+
+    private void UpdateCemeteryAttack(float deltaTime)
+    {
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+
+        CemeteryAttackTriggered?.Invoke(this);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        attackCooldown = EnemyDef.AttackInterval;
+        transform.position = cemeteryAttackPosition;
     }
 
     private void MoveForward(float deltaTime)

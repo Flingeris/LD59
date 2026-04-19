@@ -16,6 +16,11 @@ public class LaneUnit : MonoBehaviour
     public Vector3 IdleAnchorPosition { get; private set; }
     public LaneEnemy TargetEnemy { get; private set; }
     public bool HasTarget => TargetEnemy != null;
+    public bool HasLimitedLifetime => UnitDef != null && UnitDef.LifetimeSeconds > 0f;
+    public float LifetimeProgressNormalized =>
+        !HasLimitedLifetime
+            ? 0f
+            : Mathf.Clamp01(1f - (Mathf.Max(0f, remainingLifetime) / Mathf.Max(0.01f, UnitDef.LifetimeSeconds)));
 
     private float attackCooldown;
     private bool hasHomePosition;

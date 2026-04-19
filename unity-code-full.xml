@@ -70,6 +70,8 @@ Assets/Game/Code/Editor/WebGLBuilder.cs
 Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs
 Assets/Game/Code/Gameplay/Bell/BellRingResult.cs
 Assets/Game/Code/Gameplay/Bell/BellSystem.cs
+Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs
+Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs
 Assets/Game/Code/Gameplay/Defs/BellDef.cs
 Assets/Game/Code/Gameplay/Defs/EnemyDef.cs
 Assets/Game/Code/Gameplay/Defs/UnitDef.cs
@@ -90,7 +92,12 @@ Assets/Game/Code/Gameplay/Lane/SingleLaneHost.cs
 Assets/Game/Code/Gameplay/Lane/SingleLaneUnitSpawner.cs
 Assets/Game/Code/Gameplay/Lane/UnitSpawnFailureReason.cs
 Assets/Game/Code/Gameplay/Lane/UnitSpawnResult.cs
+Assets/Game/Code/Gameplay/Night/Night1.cs
+Assets/Game/Code/Gameplay/Night/NightDefinition.cs
+Assets/Game/Code/Gameplay/Night/NightWaveEntry.cs
+Assets/Game/Code/Gameplay/Night/NightWaveSpawnEntry.cs
 Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs
+Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs
 Assets/Game/Code/Gameplay/NightPoi/NightPoiSystem.cs
 Assets/Game/Code/Gameplay/NightPoi/NightPoiType.cs
 Assets/Game/Code/Gameplay/Runtime/DayRewardData.cs
@@ -116,159 +123,56 @@ Assets/Game/Code/UI/HUD.cs
 Assets/Game/Code/UI/PhaseTransitionView.cs
 Assets/Game/Code/UI/ScreenFader.cs
 Assets/Game/Code/UI/UI.cs
+Assets/Game/Code/UI/WaveProgressView.cs
 Assets/Game/Code/UI/WinScreenView.cs
+Assets/Game/Code/UI/World/WorldProgressBarPresenter.cs
+Assets/Game/Code/UI/World/WorldProgressBarView.cs
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
 
-<file path="Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs">
-using UnityEngine;
-public class FaithCollectionSystem
-{
-    public void StartNight(RunState runState)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        runState.Faith = Mathf.Max(0, runState.StartingNightFaith);
-        runState.FaithCollectionProgress = 0f;
-    }
-    public void EndNight(RunState runState)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        runState.Faith = 0;
-        runState.FaithCollectionProgress = 0f;
-    }
-    public int UpdateCollection(RunState runState, float deltaTime)
-    {
-        if (runState == null || runState.CurrentPhase != GamePhase.Night || deltaTime <= 0f)
-        {
-            return 0;
-        }
-        if (runState.Keeper == null ||
-            runState.Keeper.ActivityState == KeeperActivityState.Moving ||
-            runState.Keeper.InteractionState != KeeperInteractionState.FaithPoint)
-        {
-            return 0;
-        }
-        var collectionRate = Mathf.Max(0f, runState.FaithCollectionPerSecond);
-        if (collectionRate <= 0f)
-        {
-            return 0;
-        }
-        runState.FaithCollectionProgress += deltaTime * collectionRate;
-        var collectedFaith = Mathf.FloorToInt(runState.FaithCollectionProgress);
-        if (collectedFaith <= 0)
-        {
-            return 0;
-        }
-        runState.FaithCollectionProgress -= collectedFaith;
-        runState.Faith += collectedFaith;
-        return collectedFaith;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
-using UnityEngine;
-public class KeeperActor : MonoBehaviour
-{
-    public Vector2 GetWorldPosition()
-    {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public void SetWorldPosition(Vector2 worldPosition)
-    {
-        var currentPosition = transform.position;
-        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Keeper/KeeperMovementSystem.cs">
-using UnityEngine;
-public class KeeperMovementSystem
-{
-    public void SetMoveTarget(KeeperState keeperState, Vector2 targetPosition, string targetPointId)
-    {
-        if (keeperState == null)
-        {
-            return;
-        }
-        keeperState.TargetPosition = targetPosition;
-        keeperState.CurrentTargetPointId = string.IsNullOrWhiteSpace(targetPointId) ? string.Empty : targetPointId;
-        keeperState.ActivityState = KeeperActivityState.Moving;
-        keeperState.InteractionState = KeeperInteractionState.None;
-    }
-    public void Stop(KeeperState keeperState)
-    {
-        if (keeperState == null)
-        {
-            return;
-        }
-        keeperState.TargetPosition = keeperState.Position;
-        keeperState.CurrentTargetPointId = string.Empty;
-        keeperState.ActivityState = KeeperActivityState.Idle;
-        keeperState.InteractionState = KeeperInteractionState.None;
-    }
-    public void UpdateMovement(KeeperState keeperState, float deltaTime, float arrivalDistance)
-    {
-        if (keeperState == null || keeperState.ActivityState != KeeperActivityState.Moving)
-        {
-            return;
-        }
-        var clampedArrivalDistance = Mathf.Max(0f, arrivalDistance);
-        var nextPosition = Vector2.MoveTowards(
-            keeperState.Position,
-            keeperState.TargetPosition,
-            Mathf.Max(0f, keeperState.MoveSpeed) * Mathf.Max(0f, deltaTime));
-        keeperState.Position = nextPosition;
-        if (Vector2.Distance(nextPosition, keeperState.TargetPosition) > clampedArrivalDistance)
-        {
-            return;
-        }
-        keeperState.Position = keeperState.TargetPosition;
-        keeperState.TargetPosition = keeperState.Position;
-        keeperState.CurrentTargetPointId = string.Empty;
-        keeperState.ActivityState = KeeperActivityState.Idle;
-        keeperState.InteractionState = KeeperInteractionState.None;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
+<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
 using UnityEngine;
 using UnityEngine.EventSystems;
-public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
+public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 {
-    [SerializeField] private string id;
-    [SerializeField] private NightPoiType type;
-    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
-    public string Id => id;
-    public NightPoiType Type => type;
-    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
-    public Vector2 GetWorldPosition()
+    [SerializeField] private string bellId;
+    [SerializeField] private WorldProgressBarPresenter cooldownProgressPresenter;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    private float cooldownRemainingSeconds;
+    private float cooldownDurationSeconds;
+    public string BellId => bellId;
+    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
+    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    private void Awake()
     {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
+        EnsureReferences();
+        cooldownProgressPresenter?.Bind(targetRenderer);
+        cooldownProgressPresenter?.SetInactive();
     }
-    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
+    private void Update()
     {
-        var interactionRadiusValue = InteractionRadius;
-        if (interactionRadiusValue <= 0f)
+        if (cooldownRemainingSeconds <= 0f)
         {
-            return false;
+            cooldownProgressPresenter?.SetInactive();
+            return;
         }
-        return Vector2.Distance(GetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
+        RefreshCooldownPresentation();
     }
     public bool TryGetWorldInteractionValidationError(out string validationError)
     {
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            validationError = "missing bell id";
+            return true;
+        }
+        if (CMS.Get<BellDef>(bellId) == null)
+        {
+            validationError = "missing BellDef";
+            return true;
+        }
         if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
         {
             validationError = "missing SpriteRenderer";
@@ -284,13 +188,14 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
             validationError = "disabled Collider2D";
             return true;
         }
-        if (InteractionRadius <= 0f)
-        {
-            validationError = "invalid interaction radius";
-            return true;
-        }
         validationError = string.Empty;
         return false;
+    }
+    public void StartCooldown(float cooldownSeconds)
+    {
+        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
+        cooldownRemainingSeconds = cooldownDurationSeconds;
+        RefreshCooldownPresentation();
     }
     public void OnPointerClick(PointerEventData eventData)
     {
@@ -300,181 +205,568 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
         }
         if (G.main == null)
         {
-            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
+            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
             return;
         }
-        G.main.TryMoveKeeperToPoi(id);
+        G.main.TryInteractWithBell(bellId);
+    }
+    private void RefreshCooldownPresentation()
+    {
+        if (cooldownProgressPresenter == null)
+        {
+            return;
+        }
+        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
+        {
+            cooldownProgressPresenter.SetInactive();
+            return;
+        }
+        var elapsedNormalized = 1f - (cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds));
+        cooldownProgressPresenter.Refresh(elapsedNormalized, true, true);
+    }
+    private void EnsureReferences()
+    {
+        if (cooldownProgressPresenter == null)
+        {
+            cooldownProgressPresenter = GetComponentInChildren<WorldProgressBarPresenter>();
+        }
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponent<SpriteRenderer>();
+        }
     }
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiSystem.cs">
-using System;
-using System.Collections.Generic;
+<file path="Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs">
 using UnityEngine;
-public class NightPoiSystem
+public class CemeteryStateSystem
 {
-    private static readonly NightPoiType[] RequiredPoiTypes =
+    public bool ApplyBreakthroughDamage(RunState runState, int damageAmount)
     {
-        NightPoiType.Bells,
-        NightPoiType.FaithPoint,
-        NightPoiType.RepairPoint
-    };
-    private readonly Dictionary<string, NightPointOfInterest> poisById = new(StringComparer.Ordinal);
-    private readonly Dictionary<NightPoiType, NightPointOfInterest> poisByType = new();
-    public int RegisteredPoiCount => poisById.Count;
-    public void RebuildFromScene(IReadOnlyList<NightPointOfInterest> scenePois)
-    {
-        poisById.Clear();
-        poisByType.Clear();
-        if (scenePois == null || scenePois.Count == 0)
-        {
-            Debug.LogWarning("Night POI setup incomplete: no points of interest found in scene");
-            return;
-        }
-        for (var i = 0; i < scenePois.Count; i++)
-        {
-            var poi = scenePois[i];
-            if (poi == null)
-            {
-                continue;
-            }
-            if (string.IsNullOrWhiteSpace(poi.Id))
-            {
-                Debug.LogWarning($"Night POI setup incomplete: scene object '{poi.name}' has empty id");
-                continue;
-            }
-            if (poisById.ContainsKey(poi.Id))
-            {
-                Debug.LogWarning($"Night POI setup incomplete: duplicate poi id '{poi.Id}'");
-                continue;
-            }
-            if (poi.TryGetWorldInteractionValidationError(out var validationError))
-            {
-                Debug.LogWarning(
-                    $"Night POI setup incomplete for '{poi.Id}' on '{poi.name}': {validationError}");
-            }
-            poisById.Add(poi.Id, poi);
-            if (!poisByType.ContainsKey(poi.Type))
-            {
-                poisByType.Add(poi.Type, poi);
-            }
-        }
-        for (var i = 0; i < RequiredPoiTypes.Length; i++)
-        {
-            var requiredPoiType = RequiredPoiTypes[i];
-            if (!poisByType.ContainsKey(requiredPoiType))
-            {
-                Debug.LogWarning($"Night POI setup incomplete: missing required poi type '{requiredPoiType}'");
-            }
-        }
-    }
-    public bool TryGetPoiById(string poiId, out NightPointOfInterest poi)
-    {
-        if (string.IsNullOrWhiteSpace(poiId))
-        {
-            poi = null;
-            return false;
-        }
-        return poisById.TryGetValue(poiId, out poi);
-    }
-    public bool TryGetPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
-    {
-        return poisByType.TryGetValue(poiType, out poi);
-    }
-    public bool TryResolveKeeperInteraction(
-        Vector2 keeperPosition,
-        out NightPointOfInterest poi,
-        out KeeperInteractionState interactionState)
-    {
-        poi = null;
-        interactionState = KeeperInteractionState.None;
-        var bestDistance = float.MaxValue;
-        foreach (var registeredPoi in poisById.Values)
-        {
-            if (registeredPoi == null || !registeredPoi.IsKeeperInInteractionRange(keeperPosition))
-            {
-                continue;
-            }
-            var distance = Vector2.SqrMagnitude(registeredPoi.GetWorldPosition() - keeperPosition);
-            if (distance >= bestDistance)
-            {
-                continue;
-            }
-            bestDistance = distance;
-            poi = registeredPoi;
-        }
-        if (poi == null)
+        if (runState == null || damageAmount <= 0)
         {
             return false;
         }
-        interactionState = ToKeeperInteractionState(poi.Type);
+        var clampedMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        var nextState = Mathf.Clamp(runState.CemeteryState - damageAmount, 0, clampedMaxState);
+        if (nextState == runState.CemeteryState)
+        {
+            return false;
+        }
+        runState.CemeteryState = nextState;
         return true;
     }
-    public static KeeperInteractionState ToKeeperInteractionState(NightPoiType poiType)
+    public int ApplyNightRepair(RunState runState, float deltaTime)
     {
-        return poiType switch
+        if (runState == null || deltaTime <= 0f)
         {
-            NightPoiType.Bells => KeeperInteractionState.Bells,
-            NightPoiType.FaithPoint => KeeperInteractionState.FaithPoint,
-            NightPoiType.RepairPoint => KeeperInteractionState.RepairPoint,
-            _ => KeeperInteractionState.None
+            return 0;
+        }
+        if (runState.NightCemeteryRepairAmount <= 0 ||
+            runState.NightCemeteryRepairIntervalSeconds <= 0f ||
+            runState.CemeteryState >= runState.CemeteryMaxState)
+        {
+            return 0;
+        }
+        runState.NightCemeteryRepairTimerProgress += deltaTime;
+        var totalRepaired = 0;
+        while (runState.NightCemeteryRepairTimerProgress >= runState.NightCemeteryRepairIntervalSeconds)
+        {
+            runState.NightCemeteryRepairTimerProgress -= runState.NightCemeteryRepairIntervalSeconds;
+            var previousState = runState.CemeteryState;
+            runState.CemeteryState = Mathf.Clamp(
+                runState.CemeteryState + runState.NightCemeteryRepairAmount,
+                0,
+                Mathf.Max(0, runState.CemeteryMaxState));
+            var repairedAmount = runState.CemeteryState - previousState;
+            if (repairedAmount <= 0)
+            {
+                break;
+            }
+            totalRepaired += repairedAmount;
+            if (runState.CemeteryState >= runState.CemeteryMaxState)
+            {
+                runState.NightCemeteryRepairTimerProgress = 0f;
+                break;
+            }
+        }
+        return totalRepaired;
+    }
+    public void ResetNightRepairProgress(RunState runState)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        runState.NightCemeteryRepairTimerProgress = 0f;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
+using System.Collections.Generic;
+public class Night1 : NightDefinition
+{
+    public override string Id => "night_1";
+    public override float DurationSeconds => 30f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(2f, Spawn("en1", 1)),
+            Wave(8f, Spawn("en1", 3)),
+            Wave(14f, Spawn("en1", 4))
         };
     }
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiType.cs">
-public enum NightPoiType
-{
-    Bells,
-    FaithPoint,
-    RepairPoint
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/KeeperActivityState.cs">
-public enum KeeperActivityState
-{
-    Idle,
-    Moving,
-    Interacting
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/KeeperInteractionState.cs">
-public enum KeeperInteractionState
-{
-    None,
-    Bells,
-    FaithPoint,
-    RepairPoint
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/KeeperState.cs">
+<file path="Assets/Game/Code/Gameplay/Night/NightDefinition.cs">
+using System.Collections.Generic;
 using UnityEngine;
-public class KeeperState
+public abstract class NightDefinition
 {
-    public Vector2 Position;
-    public Vector2 TargetPosition;
-    public float MoveSpeed;
-    public string CurrentPoiId;
-    public string CurrentTargetPointId;
-    public KeeperActivityState ActivityState;
-    public KeeperInteractionState InteractionState;
-    public static KeeperState CreateInitial(float initialMoveSpeed)
+    private IReadOnlyList<NightWaveEntry> cachedWaveEntries;
+    public abstract string Id { get; }
+    public abstract float DurationSeconds { get; }
+    public IReadOnlyList<NightWaveEntry> WaveEntries
     {
-        return new KeeperState
+        get
         {
-            Position = Vector2.zero,
-            TargetPosition = Vector2.zero,
-            MoveSpeed = Mathf.Max(0f, initialMoveSpeed),
-            CurrentPoiId = string.Empty,
-            CurrentTargetPointId = string.Empty,
-            ActivityState = KeeperActivityState.Idle,
-            InteractionState = KeeperInteractionState.None
+            cachedWaveEntries ??= BuildWaveEntries();
+            return cachedWaveEntries;
+        }
+    }
+    protected abstract IReadOnlyList<NightWaveEntry> BuildWaveEntries();
+    protected static NightWaveEntry Wave(float triggerTime, params NightWaveSpawnEntry[] spawns)
+    {
+        return new NightWaveEntry(triggerTime, spawns);
+    }
+    protected static NightWaveSpawnEntry Spawn(string enemyId, int count)
+    {
+        return new NightWaveSpawnEntry(enemyId, Mathf.Max(0, count));
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/NightWaveEntry.cs">
+using System.Collections.Generic;
+public class NightWaveEntry
+{
+    public NightWaveEntry(float triggerTime, IReadOnlyList<NightWaveSpawnEntry> spawns)
+    {
+        TriggerTime = triggerTime < 0f ? 0f : triggerTime;
+        Spawns = spawns ?? new List<NightWaveSpawnEntry>();
+    }
+    public float TriggerTime { get; }
+    public IReadOnlyList<NightWaveSpawnEntry> Spawns { get; }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/NightWaveSpawnEntry.cs">
+public class NightWaveSpawnEntry
+{
+    public NightWaveSpawnEntry(string enemyId, int count)
+    {
+        EnemyId = enemyId;
+        Count = count < 0 ? 0 : count;
+    }
+    public string EnemyId { get; }
+    public int Count { get; }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class NightPoiProgressView : MonoBehaviour
+{
+    [SerializeField] private NightPointOfInterest pointOfInterest;
+    [SerializeField] private WorldProgressBarPresenter progressBarPresenter;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    private void Awake()
+    {
+        EnsureReferences();
+        progressBarPresenter?.Bind(targetRenderer);
+        progressBarPresenter?.SetInactive();
+    }
+    private void OnDisable()
+    {
+        progressBarPresenter?.SetInactive();
+    }
+    private void Update()
+    {
+        EnsureReferences();
+        if (progressBarPresenter == null || pointOfInterest == null || G.main == null)
+        {
+            progressBarPresenter?.SetInactive();
+            return;
+        }
+        if (!G.main.TryGetNightPoiProgress(pointOfInterest.Id, pointOfInterest.Type, out var normalizedProgress))
+        {
+            progressBarPresenter.SetInactive();
+            return;
+        }
+        progressBarPresenter.Refresh(normalizedProgress, false, true);
+    }
+    public void Bind(NightPointOfInterest poi)
+    {
+        pointOfInterest = poi;
+        EnsureReferences();
+        progressBarPresenter?.Bind(targetRenderer);
+    }
+    private void EnsureReferences()
+    {
+        if (pointOfInterest == null)
+        {
+            pointOfInterest = GetComponentInParent<NightPointOfInterest>();
+        }
+        if (progressBarPresenter == null)
+        {
+            progressBarPresenter = GetComponent<WorldProgressBarPresenter>();
+        }
+        if (targetRenderer == null)
+        {
+            targetRenderer = pointOfInterest != null
+                ? pointOfInterest.GetComponent<SpriteRenderer>()
+                : GetComponentInParent<SpriteRenderer>();
+        }
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/WaveProgressView.cs">
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+public class WaveProgressView : MonoBehaviour
+{
+    [SerializeField] private TMP_Text nightTimerText;
+    [SerializeField] private TMP_Text nextWaveText;
+    [SerializeField] private Image nightProgressFillImage;
+    [SerializeField] private Image nextWaveProgressFillImage;
+    public void RefreshView()
+    {
+        if (G.main == null || G.main.RunState == null || !G.main.IsNightWaveActive)
+        {
+            SetInactive();
+            return;
+        }
+        var elapsedSeconds = Mathf.Max(0f, G.main.CurrentNightElapsedSeconds);
+        var durationSeconds = Mathf.Max(0f, G.main.CurrentNightDurationSeconds);
+        var clampedElapsedSeconds = durationSeconds > 0f
+            ? Mathf.Min(elapsedSeconds, durationSeconds)
+            : elapsedSeconds;
+        if (nightTimerText != null)
+        {
+            nightTimerText.text =
+                $"Night {FormatSeconds(clampedElapsedSeconds)} / {FormatSeconds(durationSeconds)}";
+        }
+        if (nightProgressFillImage != null)
+        {
+            nightProgressFillImage.fillAmount = durationSeconds <= 0f ? 0f : clampedElapsedSeconds / durationSeconds;
+            nightProgressFillImage.gameObject.SetActive(true);
+        }
+        if (!G.main.HasUpcomingNightWave)
+        {
+            if (nextWaveText != null)
+            {
+                nextWaveText.text = "Next wave: cleared";
+            }
+            if (nextWaveProgressFillImage != null)
+            {
+                nextWaveProgressFillImage.fillAmount = 1f;
+                nextWaveProgressFillImage.gameObject.SetActive(true);
+            }
+            return;
+        }
+        var nextWaveTriggerTime = Mathf.Max(0f, G.main.NextNightWaveTriggerTime);
+        var previousWaveTriggerTime = Mathf.Max(0f, G.main.PreviousNightWaveTriggerTime);
+        var currentWaveWindowDuration = Mathf.Max(0.01f, nextWaveTriggerTime - previousWaveTriggerTime);
+        var waveWindowElapsed = Mathf.Clamp(elapsedSeconds - previousWaveTriggerTime, 0f, currentWaveWindowDuration);
+        var secondsUntilWave = Mathf.Max(0f, nextWaveTriggerTime - elapsedSeconds);
+        if (nextWaveText != null)
+        {
+            nextWaveText.text = $"Next wave in {FormatSeconds(secondsUntilWave)}";
+        }
+        if (nextWaveProgressFillImage != null)
+        {
+            nextWaveProgressFillImage.fillAmount = waveWindowElapsed / currentWaveWindowDuration;
+            nextWaveProgressFillImage.gameObject.SetActive(true);
+        }
+    }
+    public void SetInactive()
+    {
+        if (nightTimerText != null)
+        {
+            nightTimerText.text = string.Empty;
+        }
+        if (nextWaveText != null)
+        {
+            nextWaveText.text = string.Empty;
+        }
+        if (nightProgressFillImage != null)
+        {
+            nightProgressFillImage.fillAmount = 0f;
+            nightProgressFillImage.gameObject.SetActive(false);
+        }
+        if (nextWaveProgressFillImage != null)
+        {
+            nextWaveProgressFillImage.fillAmount = 0f;
+            nextWaveProgressFillImage.gameObject.SetActive(false);
+        }
+    }
+    private static string FormatSeconds(float seconds)
+    {
+        var totalSeconds = Mathf.Max(0, Mathf.CeilToInt(seconds));
+        var minutes = totalSeconds / 60;
+        var remainingSeconds = totalSeconds % 60;
+        return $"{minutes:00}:{remainingSeconds:00}";
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/World/WorldProgressBarPresenter.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class WorldProgressBarPresenter : MonoBehaviour
+{
+    [SerializeField] private WorldProgressBarView progressBarView;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
+    [Min(0f)] [SerializeField] private float anchorHeightMultiplier = 0.55f;
+    [SerializeField] private bool anchorBelowTarget;
+    [SerializeField] private Vector3 manualWorldOffset;
+    [SerializeField] private bool matchInverseLossyScale = true;
+    private bool isBound;
+    private void Awake()
+    {
+        EnsureReferences();
+        progressBarView?.SetInactive();
+    }
+    private void LateUpdate()
+    {
+        if (!isBound)
+        {
+            return;
+        }
+        UpdateAnchorTransform();
+    }
+    public void Bind(SpriteRenderer ownerRenderer = null)
+    {
+        EnsureReferences();
+        if (ownerRenderer != null)
+        {
+            targetRenderer = ownerRenderer;
+        }
+        if (progressBarView == null || targetRenderer == null)
+        {
+            isBound = false;
+            progressBarView?.SetInactive();
+            return;
+        }
+        progressBarView.Bind(targetRenderer);
+        isBound = true;
+        UpdateAnchorTransform();
+    }
+    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
+    {
+        if (!isBound)
+        {
+            Bind(targetRenderer);
+        }
+        progressBarView?.Refresh(normalizedProgress, useCountdownFill, isVisible);
+    }
+    public void SetInactive()
+    {
+        progressBarView?.SetInactive();
+    }
+    private void EnsureReferences()
+    {
+        if (progressBarView == null)
+        {
+            progressBarView = GetComponent<WorldProgressBarView>();
+        }
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponentInParent<SpriteRenderer>();
+        }
+    }
+    private void UpdateAnchorTransform()
+    {
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        var spriteHeight = targetRenderer.bounds.size.y > 0f ? targetRenderer.bounds.size.y : 0.4f;
+        var verticalOffset = spriteHeight * Mathf.Max(0f, anchorHeightMultiplier) + Mathf.Max(0f, barVerticalPadding);
+        if (anchorBelowTarget)
+        {
+            verticalOffset *= -1f;
+        }
+        transform.position = targetRenderer.transform.position + Vector3.up * verticalOffset + manualWorldOffset;
+        transform.rotation = Quaternion.identity;
+        if (!matchInverseLossyScale)
+        {
+            return;
+        }
+        var lossyScale = targetRenderer.transform.lossyScale;
+        transform.localScale = new Vector3(
+            1f / Mathf.Max(0.0001f, lossyScale.x),
+            1f / Mathf.Max(0.0001f, lossyScale.y),
+            1f / Mathf.Max(0.0001f, lossyScale.z));
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/World/WorldProgressBarView.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class WorldProgressBarView : MonoBehaviour
+{
+    private static Sprite runtimeBarSprite;
+    [SerializeField] private SpriteRenderer backgroundRenderer;
+    [SerializeField] private SpriteRenderer fillRenderer;
+    [SerializeField] private Color backgroundColor = new(0f, 0f, 0f, 0.75f);
+    [SerializeField] private Color fillColor = new(0.95f, 0.88f, 0.35f, 1f);
+    [Min(0)] [SerializeField] private int sortingOffset = 10;
+    private Vector3 initialFillLocalScale;
+    private Vector3 initialFillLocalPosition;
+    private SpriteRenderer ownerRenderer;
+    private bool isBound;
+    private bool isInitialized;
+    private void Awake()
+    {
+        EnsureInitialized();
+        SetInactive();
+    }
+    private void LateUpdate()
+    {
+        if (!isBound || ownerRenderer == null)
+        {
+            return;
+        }
+        ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+        ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
+    }
+    public void Bind(SpriteRenderer ownerRenderer)
+    {
+        EnsureInitialized();
+        this.ownerRenderer = ownerRenderer;
+        isBound = ownerRenderer != null;
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.color = backgroundColor;
+            ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+        }
+        if (fillRenderer != null)
+        {
+            fillRenderer.color = fillColor;
+            ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
+        }
+        SetInactive();
+    }
+    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
+    {
+        EnsureInitialized();
+        if (!isBound || fillRenderer == null)
+        {
+            SetInactive();
+            return;
+        }
+        if (!isVisible)
+        {
+            SetInactive();
+            return;
+        }
+        var clampedProgress = Mathf.Clamp01(normalizedProgress);
+        var fillNormalized = useCountdownFill ? 1f - clampedProgress : clampedProgress;
+        fillNormalized = Mathf.Clamp01(fillNormalized);
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.enabled = true;
+        }
+        fillRenderer.enabled = fillNormalized > 0f;
+        if (!fillRenderer.enabled)
+        {
+            return;
+        }
+        var updatedScale = initialFillLocalScale;
+        updatedScale.x = initialFillLocalScale.x * fillNormalized;
+        fillRenderer.transform.localScale = updatedScale;
+        var initialLeftEdge = initialFillLocalPosition.x - (initialFillLocalScale.x * 0.5f);
+        var updatedPosition = initialFillLocalPosition;
+        updatedPosition.x = initialLeftEdge + (updatedScale.x * 0.5f);
+        fillRenderer.transform.localPosition = updatedPosition;
+    }
+    public void SetInactive()
+    {
+        EnsureInitialized();
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.enabled = false;
+        }
+        if (fillRenderer != null)
+        {
+            fillRenderer.enabled = false;
+            fillRenderer.transform.localScale = initialFillLocalScale;
+            fillRenderer.transform.localPosition = initialFillLocalPosition;
+        }
+    }
+    private void EnsureInitialized()
+    {
+        if (isInitialized)
+        {
+            return;
+        }
+        EnsureBarSprite(backgroundRenderer);
+        EnsureBarSprite(fillRenderer);
+        if (fillRenderer != null)
+        {
+            initialFillLocalScale = fillRenderer.transform.localScale;
+            initialFillLocalPosition = fillRenderer.transform.localPosition;
+        }
+        isInitialized = true;
+    }
+    private void EnsureBarSprite(SpriteRenderer renderer)
+    {
+        if (renderer == null || renderer.sprite != null)
+        {
+            return;
+        }
+        renderer.sprite = GetRuntimeBarSprite();
+        renderer.flipX = false;
+        renderer.flipY = false;
+    }
+    private static void ApplySorting(SpriteRenderer renderer, SpriteRenderer ownerRenderer, int offset)
+    {
+        if (renderer == null || ownerRenderer == null)
+        {
+            return;
+        }
+        renderer.sortingLayerID = ownerRenderer.sortingLayerID;
+        renderer.sortingOrder = ownerRenderer.sortingOrder + offset;
+    }
+    private static Sprite GetRuntimeBarSprite()
+    {
+        if (runtimeBarSprite != null)
+        {
+            return runtimeBarSprite;
+        }
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
         };
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply();
+        runtimeBarSprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, 1f, 1f),
+            new Vector2(0.5f, 0.5f),
+            1f);
+        return runtimeBarSprite;
     }
 }
 </file>
@@ -841,21 +1133,6 @@ public enum AudioType
     SFX,
     Ambient,
     Music
-}
-</file>
-
-<file path="Assets/Game/Code/DefaultSystems/AudioSystem/SoundId.cs">
-public enum SoundId
-{
-    none = 0,
-    SFX_Win = 1,
-    SFX_Lose = 2,
-    SFX_LevelTransition = 3,
-    SFX_BellRing = 4,
-    SFX_CombatHit = 5,
-    Music_Main = 101,
-    Music_Menu = 102,
-    Ambient_Forest = 201
 }
 </file>
 
@@ -1519,23 +1796,12 @@ public static class WebGLBuilder
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs">
-public enum BellRingFailureReason
-{
-    None,
-    WrongPhase,
-    NotAtBellPoint,
-    BellNotFound,
-    UnitNotFound,
-    NotEnoughFaith
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Bell/BellRingResult.cs">
 public class BellRingResult
 {
     public bool IsSuccess;
     public BellRingFailureReason FailureReason;
+    public float CooldownRemainingSeconds;
     public BellDef BellDef;
     public UnitDef UnitDef;
     public UnitSpawnResult SpawnResult;
@@ -1558,43 +1824,15 @@ public class BellRingResult
             SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
         };
     }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Bell/BellSystem.cs">
-public class BellSystem
-{
-    public BellRingResult TryRingBell(string bellId, RunState runState)
+    public static BellRingResult Failure(BellRingFailureReason failureReason, float cooldownRemainingSeconds)
     {
-        if (runState == null)
+        return new BellRingResult
         {
-            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
-        }
-        if (runState.CurrentPhase != GamePhase.Night)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
-        }
-        if (runState.Keeper == null || runState.Keeper.InteractionState != KeeperInteractionState.Bells)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.NotAtBellPoint);
-        }
-        var bellDef = CMS.Get<BellDef>(bellId);
-        if (bellDef == null)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.BellNotFound);
-        }
-        var unitDef = CMS.Get<UnitDef>(bellDef.LinkedUnitId);
-        if (unitDef == null)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.UnitNotFound);
-        }
-        if (runState.Faith < bellDef.FaithCost)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.NotEnoughFaith);
-        }
-        runState.Faith -= bellDef.FaithCost;
-        G.audioSystem.Play(SoundId.SFX_BellRing);
-        return BellRingResult.Success(bellDef, unitDef);
+            IsSuccess = false,
+            FailureReason = failureReason,
+            CooldownRemainingSeconds = cooldownRemainingSeconds,
+            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
+        };
     }
 }
 </file>
@@ -1606,10 +1844,12 @@ public class BellDef : ContentDef
 {
     [SerializeField] private string displayName;
     [SerializeField] private int faithCost;
+    [Min(0f)] [SerializeField] private float cooldownSeconds;
     [SerializeField] private string linkedUnitId;
     [SerializeField] private Sprite icon;
     public string DisplayName => displayName;
     public int FaithCost => faithCost;
+    public float CooldownSeconds => Mathf.Max(0f, cooldownSeconds);
     public string LinkedUnitId => linkedUnitId;
     public Sprite Icon => icon;
 }
@@ -1629,26 +1869,6 @@ public class EnemyDef : ContentDef
     public int Damage => damage;
     public float AttackInterval => attackInterval;
     public float MoveSpeed => moveSpeed;
-    public GameObject ViewPrefab => viewPrefab;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
-public class UnitDef : ContentDef
-{
-    [SerializeField] private int hp;
-    [SerializeField] private int damage;
-    [SerializeField] private float attackInterval;
-    [SerializeField] private float moveSpeed;
-    [Min(0f)] [SerializeField] private float lifetimeSeconds;
-    [SerializeField] private GameObject viewPrefab;
-    public int Hp => hp;
-    public int Damage => damage;
-    public float AttackInterval => attackInterval;
-    public float MoveSpeed => moveSpeed;
-    public float LifetimeSeconds => lifetimeSeconds;
     public GameObject ViewPrefab => viewPrefab;
 }
 </file>
@@ -1681,114 +1901,128 @@ public enum UpgradeEffectType
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Lane/CombatHpBarView.cs">
+<file path="Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs">
 using UnityEngine;
-[DisallowMultipleComponent]
-public class CombatHpBarView : MonoBehaviour
+public class FaithCollectionSystem
 {
-    private static readonly Color AllyFillColor = new(0.38f, 1f, 0.55f, 1f);
-    private static readonly Color EnemyFillColor = new(1f, 0.4f, 0.4f, 1f);
-    private static readonly Color BackgroundColor = new(0f, 0f, 0f, 0.75f);
-    private static Sprite runtimeBarSprite;
-    [SerializeField] private SpriteRenderer backgroundRenderer;
-    [SerializeField] private SpriteRenderer fillRenderer;
-    [Min(0)] [SerializeField] private int sortingOffset = 10;
-    private Vector3 initialFillLocalScale;
-    private Vector3 initialFillLocalPosition;
-    private int maxHp = 1;
-    private bool isBound;
-    private bool isInitialized;
-    private SpriteRenderer ownerRenderer;
-    private void Awake()
+    public void StartNight(RunState runState)
     {
-        EnsureInitialized();
-    }
-    public void Bind(int maxHp, bool isEnemy, SpriteRenderer ownerRenderer)
-    {
-        EnsureInitialized();
-        this.maxHp = Mathf.Max(1, maxHp);
-        this.ownerRenderer = ownerRenderer;
-        if (backgroundRenderer != null)
+        if (runState == null)
         {
-            backgroundRenderer.color = BackgroundColor;
-            ApplySorting(backgroundRenderer, this.ownerRenderer, sortingOffset);
+            return;
         }
-        if (fillRenderer != null)
+        runState.Faith = Mathf.Max(0, runState.StartingNightFaith);
+        runState.FaithCollectionTimerProgress = 0f;
+    }
+    public void EndNight(RunState runState)
+    {
+        if (runState == null)
         {
-            fillRenderer.color = isEnemy ? EnemyFillColor : AllyFillColor;
-            ApplySorting(fillRenderer, this.ownerRenderer, sortingOffset + 1);
+            return;
         }
-        isBound = true;
-        Refresh(this.maxHp);
+        runState.Faith = 0;
+        runState.FaithCollectionTimerProgress = 0f;
     }
-    private void LateUpdate()
+    public int UpdateCollection(RunState runState, float deltaTime)
     {
-        if (!isBound || ownerRenderer == null)
-            return;
-        ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
-        ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
-    }
-    public void Refresh(int currentHp)
-    {
-        if (!isBound || fillRenderer == null)
-            return;
-        float normalized = Mathf.Clamp01((float)Mathf.Max(0, currentHp) / maxHp);
-        fillRenderer.enabled = normalized > 0f;
-        if (!fillRenderer.enabled)
-            return;
-        Vector3 updatedScale = initialFillLocalScale;
-        updatedScale.x = initialFillLocalScale.x * normalized;
-        fillRenderer.transform.localScale = updatedScale;
-        float initialLeftEdge = initialFillLocalPosition.x - (initialFillLocalScale.x * 0.5f);
-        Vector3 updatedPosition = initialFillLocalPosition;
-        updatedPosition.x = initialLeftEdge + (updatedScale.x * 0.5f);
-        fillRenderer.transform.localPosition = updatedPosition;
-    }
-    private void EnsureInitialized()
-    {
-        if (isInitialized)
-            return;
-        EnsureBarSprite(backgroundRenderer);
-        EnsureBarSprite(fillRenderer);
-        if (fillRenderer != null)
+        if (runState == null || runState.CurrentPhase != GamePhase.Night || deltaTime <= 0f)
         {
-            initialFillLocalScale = fillRenderer.transform.localScale;
-            initialFillLocalPosition = fillRenderer.transform.localPosition;
+            return 0;
         }
-        isInitialized = true;
-    }
-    private void EnsureBarSprite(SpriteRenderer renderer)
-    {
-        if (renderer == null || renderer.sprite != null)
-            return;
-        renderer.sprite = GetRuntimeBarSprite();
-        renderer.flipX = false;
-        renderer.flipY = false;
-    }
-    private void ApplySorting(SpriteRenderer renderer, SpriteRenderer ownerRenderer, int offset)
-    {
-        if (renderer == null || ownerRenderer == null)
-            return;
-        renderer.sortingLayerID = ownerRenderer.sortingLayerID;
-        renderer.sortingOrder = ownerRenderer.sortingOrder + offset;
-    }
-    private static Sprite GetRuntimeBarSprite()
-    {
-        if (runtimeBarSprite != null)
-            return runtimeBarSprite;
-        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        if (runState.Keeper == null ||
+            runState.Keeper.ActivityState == KeeperActivityState.Moving ||
+            runState.Keeper.InteractionState != KeeperInteractionState.FaithPoint)
         {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
-        };
-        texture.SetPixel(0, 0, Color.white);
-        texture.Apply();
-        runtimeBarSprite = Sprite.Create(
-            texture,
-            new Rect(0f, 0f, 1f, 1f),
-            new Vector2(0.5f, 0.5f),
-            1f);
-        return runtimeBarSprite;
+            return 0;
+        }
+        var payoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
+        var collectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
+        if (payoutAmount <= 0 || collectionIntervalSeconds <= 0f)
+        {
+            return 0;
+        }
+        runState.FaithCollectionTimerProgress += deltaTime;
+        if (runState.FaithCollectionTimerProgress < collectionIntervalSeconds)
+        {
+            return 0;
+        }
+        var completedPayoutCycles = Mathf.FloorToInt(runState.FaithCollectionTimerProgress / collectionIntervalSeconds);
+        if (completedPayoutCycles <= 0)
+        {
+            return 0;
+        }
+        var collectedFaith = completedPayoutCycles * payoutAmount;
+        runState.FaithCollectionTimerProgress -= completedPayoutCycles * collectionIntervalSeconds;
+        runState.Faith += collectedFaith;
+        return collectedFaith;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
+using UnityEngine;
+public class KeeperActor : MonoBehaviour
+{
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public void SetWorldPosition(Vector2 worldPosition)
+    {
+        var currentPosition = transform.position;
+        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Keeper/KeeperMovementSystem.cs">
+using UnityEngine;
+public class KeeperMovementSystem
+{
+    public void SetMoveTarget(KeeperState keeperState, Vector2 targetPosition, string targetPointId)
+    {
+        if (keeperState == null)
+        {
+            return;
+        }
+        keeperState.TargetPosition = targetPosition;
+        keeperState.CurrentTargetPointId = string.IsNullOrWhiteSpace(targetPointId) ? string.Empty : targetPointId;
+        keeperState.ActivityState = KeeperActivityState.Moving;
+        keeperState.InteractionState = KeeperInteractionState.None;
+    }
+    public void Stop(KeeperState keeperState)
+    {
+        if (keeperState == null)
+        {
+            return;
+        }
+        keeperState.TargetPosition = keeperState.Position;
+        keeperState.CurrentTargetPointId = string.Empty;
+        keeperState.ActivityState = KeeperActivityState.Idle;
+        keeperState.InteractionState = KeeperInteractionState.None;
+    }
+    public void UpdateMovement(KeeperState keeperState, float deltaTime, float arrivalDistance)
+    {
+        if (keeperState == null || keeperState.ActivityState != KeeperActivityState.Moving)
+        {
+            return;
+        }
+        var clampedArrivalDistance = Mathf.Max(0f, arrivalDistance);
+        var nextPosition = Vector2.MoveTowards(
+            keeperState.Position,
+            keeperState.TargetPosition,
+            Mathf.Max(0f, keeperState.MoveSpeed) * Mathf.Max(0f, deltaTime));
+        keeperState.Position = nextPosition;
+        if (Vector2.Distance(nextPosition, keeperState.TargetPosition) > clampedArrivalDistance)
+        {
+            return;
+        }
+        keeperState.Position = keeperState.TargetPosition;
+        keeperState.TargetPosition = keeperState.Position;
+        keeperState.CurrentTargetPointId = string.Empty;
+        keeperState.ActivityState = KeeperActivityState.Idle;
+        keeperState.InteractionState = KeeperInteractionState.None;
     }
 }
 </file>
@@ -1828,6 +2062,7 @@ public class LaneCombatFeedbackView : MonoBehaviour
     private static readonly Color AllyHitFlashColor = new(1f, 0.45f, 0.45f, 1f);
     private static readonly Color EnemyHitFlashColor = Color.white;
     [SerializeField] private CombatHpBarView hpBarPrefab;
+    [SerializeField] private WorldProgressBarPresenter lifetimeProgressPresenter;
     [SerializeField] private SpriteRenderer targetRenderer;
     [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
     [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
@@ -1838,9 +2073,14 @@ public class LaneCombatFeedbackView : MonoBehaviour
     private Color hitFlashColor = Color.white;
     private float popupOffsetY;
     private bool isBound;
+    private LaneUnit boundLaneUnit;
     private void Awake()
     {
         EnsureTargetRenderer();
+    }
+    private void LateUpdate()
+    {
+        RefreshLifetimeProgressPresentation();
     }
     private void OnDisable()
     {
@@ -1855,13 +2095,16 @@ public class LaneCombatFeedbackView : MonoBehaviour
         EnsureTargetRenderer();
         baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
         hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
+        boundLaneUnit = isEnemy ? null : GetComponent<LaneUnit>();
         var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
         popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
         var barOffsetY = spriteHeight * 0.55f + barVerticalPadding;
         EnsureHpBarInstance(barOffsetY);
         hpBarInstance?.Bind(maxHp, isEnemy, targetRenderer);
         hpBarInstance?.Refresh(maxHp);
+        lifetimeProgressPresenter?.Bind(targetRenderer);
         isBound = true;
+        RefreshLifetimeProgressPresentation();
     }
     public void PlayDamageFeedback(int damage, int currentHp)
     {
@@ -1890,6 +2133,8 @@ public class LaneCombatFeedbackView : MonoBehaviour
             Destroy(hpBarInstance.gameObject);
             hpBarInstance = null;
         }
+        lifetimeProgressPresenter?.SetInactive();
+        boundLaneUnit = null;
     }
     private void PlayHitFlash()
     {
@@ -1941,6 +2186,19 @@ public class LaneCombatFeedbackView : MonoBehaviour
             1f / Mathf.Max(0.0001f, lossyScale.y),
             1f / Mathf.Max(0.0001f, lossyScale.z));
     }
+    private void RefreshLifetimeProgressPresentation()
+    {
+        if (lifetimeProgressPresenter == null)
+        {
+            return;
+        }
+        if (!isBound || boundLaneUnit == null || !boundLaneUnit.HasLimitedLifetime)
+        {
+            lifetimeProgressPresenter.SetInactive();
+            return;
+        }
+        lifetimeProgressPresenter.Refresh(boundLaneUnit.LifetimeProgressNormalized, true, true);
+    }
 }
 </file>
 
@@ -1951,65 +2209,6 @@ public enum LaneUnitState
     Chasing,
     Attacking,
     Returning
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
-using UnityEngine;
-public class SingleLaneEnemySpawner
-{
-    public EnemySpawnResult TrySpawnEnemy(EnemyDef enemyDef, SingleLaneHost laneHost)
-    {
-        if (laneHost == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
-        }
-        if (laneHost.EnemySpawnPoint == null || laneHost.EnemyForwardTarget == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
-        }
-        if (enemyDef == null || enemyDef.ViewPrefab == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
-        }
-        var spawnPosition = laneHost.EnemySpawnPoint.position;
-        if (laneHost.EnemySpawnSpreadRadius > 0f)
-        {
-            var angle = Random.value * Mathf.PI * 2f;
-            var radius = Mathf.Sqrt(Random.value) * laneHost.EnemySpawnSpreadRadius;
-            var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
-            spawnPosition += offset;
-        }
-        var spawnedGameObject = Object.Instantiate(
-            enemyDef.ViewPrefab,
-            spawnPosition,
-            laneHost.EnemySpawnPoint.rotation);
-        var laneEnemy = spawnedGameObject.GetComponent<LaneEnemy>();
-        if (laneEnemy == null)
-        {
-            laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
-        }
-        var forwardTargetPosition = laneHost.EnemyForwardTarget.position;
-        var breakthroughPoint = laneHost.EnemyBreakthroughPoint;
-        if (breakthroughPoint != null)
-        {
-            var spawnX = laneHost.EnemySpawnPoint.position.x;
-            var targetX = forwardTargetPosition.x;
-            var breakthroughX = breakthroughPoint.position.x;
-            var movesLeft = breakthroughX < spawnX;
-            var targetStopsBeforeBreakthrough = movesLeft
-                ? targetX > breakthroughX
-                : targetX < breakthroughX;
-            if (targetStopsBeforeBreakthrough)
-            {
-                Debug.LogWarning(
-                    "EnemyForwardTarget stops before EnemyBreakthroughPoint. Falling back to breakthrough point.");
-                forwardTargetPosition = breakthroughPoint.position;
-            }
-        }
-        laneEnemy.Initialize(enemyDef, forwardTargetPosition);
-        return EnemySpawnResult.Success(laneEnemy);
-    }
 }
 </file>
 
@@ -2114,6 +2313,206 @@ public class UnitSpawnResult
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string id;
+    [SerializeField] private NightPoiType type;
+    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private NightPoiProgressView progressView;
+    public string Id => id;
+    public NightPoiType Type => type;
+    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
+    private void Awake()
+    {
+        if (progressView == null)
+        {
+            progressView = GetComponentInChildren<NightPoiProgressView>();
+        }
+        progressView?.Bind(this);
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
+    {
+        var interactionRadiusValue = InteractionRadius;
+        if (interactionRadiusValue <= 0f)
+        {
+            return false;
+        }
+        return Vector2.Distance(GetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        if (InteractionRadius <= 0f)
+        {
+            validationError = "invalid interaction radius";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+        {
+            return;
+        }
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
+            return;
+        }
+        G.main.TryMoveKeeperToPoi(id);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiSystem.cs">
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+public class NightPoiSystem
+{
+    private static readonly NightPoiType[] RequiredPoiTypes =
+    {
+        NightPoiType.Bells,
+        NightPoiType.FaithPoint,
+        NightPoiType.RepairPoint
+    };
+    private readonly Dictionary<string, NightPointOfInterest> poisById = new(StringComparer.Ordinal);
+    private readonly Dictionary<NightPoiType, NightPointOfInterest> poisByType = new();
+    public int RegisteredPoiCount => poisById.Count;
+    public void RebuildFromScene(IReadOnlyList<NightPointOfInterest> scenePois)
+    {
+        poisById.Clear();
+        poisByType.Clear();
+        if (scenePois == null || scenePois.Count == 0)
+        {
+            Debug.LogWarning("Night POI setup incomplete: no points of interest found in scene");
+            return;
+        }
+        for (var i = 0; i < scenePois.Count; i++)
+        {
+            var poi = scenePois[i];
+            if (poi == null)
+            {
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(poi.Id))
+            {
+                Debug.LogWarning($"Night POI setup incomplete: scene object '{poi.name}' has empty id");
+                continue;
+            }
+            if (poisById.ContainsKey(poi.Id))
+            {
+                Debug.LogWarning($"Night POI setup incomplete: duplicate poi id '{poi.Id}'");
+                continue;
+            }
+            if (poi.TryGetWorldInteractionValidationError(out var validationError))
+            {
+                Debug.LogWarning(
+                    $"Night POI setup incomplete for '{poi.Id}' on '{poi.name}': {validationError}");
+            }
+            poisById.Add(poi.Id, poi);
+            if (!poisByType.ContainsKey(poi.Type))
+            {
+                poisByType.Add(poi.Type, poi);
+            }
+        }
+        for (var i = 0; i < RequiredPoiTypes.Length; i++)
+        {
+            var requiredPoiType = RequiredPoiTypes[i];
+            if (!poisByType.ContainsKey(requiredPoiType))
+            {
+                Debug.LogWarning($"Night POI setup incomplete: missing required poi type '{requiredPoiType}'");
+            }
+        }
+    }
+    public bool TryGetPoiById(string poiId, out NightPointOfInterest poi)
+    {
+        if (string.IsNullOrWhiteSpace(poiId))
+        {
+            poi = null;
+            return false;
+        }
+        return poisById.TryGetValue(poiId, out poi);
+    }
+    public bool TryGetPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
+    {
+        return poisByType.TryGetValue(poiType, out poi);
+    }
+    public bool TryResolveKeeperInteraction(
+        Vector2 keeperPosition,
+        out NightPointOfInterest poi,
+        out KeeperInteractionState interactionState)
+    {
+        poi = null;
+        interactionState = KeeperInteractionState.None;
+        var bestDistance = float.MaxValue;
+        foreach (var registeredPoi in poisById.Values)
+        {
+            if (registeredPoi == null || !registeredPoi.IsKeeperInInteractionRange(keeperPosition))
+            {
+                continue;
+            }
+            var distance = Vector2.SqrMagnitude(registeredPoi.GetWorldPosition() - keeperPosition);
+            if (distance >= bestDistance)
+            {
+                continue;
+            }
+            bestDistance = distance;
+            poi = registeredPoi;
+        }
+        if (poi == null)
+        {
+            return false;
+        }
+        interactionState = ToKeeperInteractionState(poi.Type);
+        return true;
+    }
+    public static KeeperInteractionState ToKeeperInteractionState(NightPoiType poiType)
+    {
+        return poiType switch
+        {
+            NightPoiType.Bells => KeeperInteractionState.Bells,
+            NightPoiType.FaithPoint => KeeperInteractionState.FaithPoint,
+            NightPoiType.RepairPoint => KeeperInteractionState.RepairPoint,
+            _ => KeeperInteractionState.None
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiType.cs">
+public enum NightPoiType
+{
+    Bells,
+    FaithPoint,
+    RepairPoint
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Runtime/DayRewardData.cs">
 public class DayRewardData
 {
@@ -2124,37 +2523,47 @@ public class DayRewardData
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardSystem.cs">
-public class DayRewardSystem
+<file path="Assets/Game/Code/Gameplay/Runtime/KeeperActivityState.cs">
+public enum KeeperActivityState
 {
-    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int goldReward)
+    Idle,
+    Moving,
+    Interacting
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/KeeperInteractionState.cs">
+public enum KeeperInteractionState
+{
+    None,
+    Bells,
+    FaithPoint,
+    RepairPoint
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/KeeperState.cs">
+using UnityEngine;
+public class KeeperState
+{
+    public Vector2 Position;
+    public Vector2 TargetPosition;
+    public float MoveSpeed;
+    public string CurrentPoiId;
+    public string CurrentTargetPointId;
+    public KeeperActivityState ActivityState;
+    public KeeperInteractionState InteractionState;
+    public static KeeperState CreateInitial(float initialMoveSpeed)
     {
-        return CreateReward(completedNightIndex, 0, goldReward);
-    }
-    public void ApplyReward(RunState runState, DayRewardData reward)
-    {
-        if (runState == null || reward == null)
+        return new KeeperState
         {
-            return;
-        }
-        var faithReward = reward.FaithReward < 0 ? 0 : reward.FaithReward;
-        var goldReward = reward.GoldReward < 0 ? 0 : reward.GoldReward;
-        runState.Faith += faithReward;
-        runState.Gold += goldReward;
-        runState.LastDayReward = new DayRewardData
-        {
-            SourceNightIndex = reward.SourceNightIndex,
-            FaithReward = faithReward,
-            GoldReward = goldReward
-        };
-    }
-    private DayRewardData CreateReward(int sourceNightIndex, int faithReward, int goldReward)
-    {
-        return new DayRewardData
-        {
-            SourceNightIndex = sourceNightIndex,
-            FaithReward = faithReward,
-            GoldReward = goldReward
+            Position = Vector2.zero,
+            TargetPosition = Vector2.zero,
+            MoveSpeed = Mathf.Max(0f, initialMoveSpeed),
+            CurrentPoiId = string.Empty,
+            CurrentTargetPointId = string.Empty,
+            ActivityState = KeeperActivityState.Idle,
+            InteractionState = KeeperInteractionState.None
         };
     }
 }
@@ -2193,83 +2602,6 @@ public class UpgradePurchaseResult
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
-using System.Collections.Generic;
-using UnityEngine;
-public class UpgradeSystem
-{
-    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
-    {
-        if (runState == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
-        }
-        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
-        if (upgradeDef == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
-        }
-        runState.PurchasedUpgradeIds ??= new HashSet<string>();
-        if (runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
-        }
-        if (!SupportsEffectType(upgradeDef.EffectType))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
-        }
-        var price = Mathf.Max(0, upgradeDef.Price);
-        if (runState.Gold < price)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
-        }
-        runState.Gold -= price;
-        runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
-        ApplyEffect(upgradeDef, runState);
-        ClampRunState(runState);
-        return UpgradePurchaseResult.Success(upgradeDef);
-    }
-    public static bool SupportsEffectType(UpgradeEffectType effectType)
-    {
-        return effectType == UpgradeEffectType.FaithIncomeBonus
-            || effectType == UpgradeEffectType.CemeteryRepair
-            || effectType == UpgradeEffectType.CemeteryMaxStateBonus;
-    }
-    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
-    {
-        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
-        switch (upgradeDef.EffectType)
-        {
-            case UpgradeEffectType.FaithIncomeBonus:
-                runState.FaithCollectionPerSecond = Mathf.Max(0f, runState.FaithCollectionPerSecond + effectValue);
-                break;
-            case UpgradeEffectType.CemeteryRepair:
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-            case UpgradeEffectType.CemeteryMaxStateBonus:
-                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectValue);
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-        }
-    }
-    private static void ClampRunState(RunState runState)
-    {
-        runState.Gold = Mathf.Max(0, runState.Gold);
-        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
-        runState.FaithCollectionPerSecond = Mathf.Max(0f, runState.FaithCollectionPerSecond);
-        runState.FaithCollectionProgress = Mathf.Max(0f, runState.FaithCollectionProgress);
-        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
-        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Wave/WaveSpawnEntry.cs">
 using System;
 [Serializable]
@@ -2284,18 +2616,31 @@ public class WaveSpawnEntry
 using System.Collections.Generic;
 public class WaveSystem
 {
-    private readonly List<WaveSpawnEntry> activeEntries = new();
+    private readonly List<NightWaveEntry> activeEntries = new();
     private float elapsedTime;
-    private int nextSpawnIndex;
+    private float durationSeconds;
+    private int nextWaveIndex;
     private bool isRunning;
     public bool IsRunning => isRunning;
-    public bool AreAllSpawnsIssued => !isRunning || nextSpawnIndex >= activeEntries.Count;
-    public void StartWave(IReadOnlyList<WaveSpawnEntry> entries)
+    public bool AreAllSpawnsIssued => !isRunning || nextWaveIndex >= activeEntries.Count;
+    public float ElapsedTime => elapsedTime;
+    public float DurationSeconds => durationSeconds;
+    public bool HasUpcomingWave => isRunning && nextWaveIndex < activeEntries.Count;
+    public float NextWaveTriggerTime => HasUpcomingWave ? activeEntries[nextWaveIndex].TriggerTime : durationSeconds;
+    public float PreviousWaveTriggerTime => nextWaveIndex <= 0 ? 0f : activeEntries[nextWaveIndex - 1].TriggerTime;
+    public void StartWave(NightDefinition nightDefinition)
     {
         activeEntries.Clear();
         elapsedTime = 0f;
-        nextSpawnIndex = 0;
-        isRunning = true;
+        durationSeconds = 0f;
+        nextWaveIndex = 0;
+        isRunning = nightDefinition != null;
+        if (nightDefinition == null)
+        {
+            return;
+        }
+        durationSeconds = nightDefinition.DurationSeconds;
+        var entries = nightDefinition.WaveEntries;
         if (entries == null)
         {
             return;
@@ -2307,19 +2652,20 @@ public class WaveSystem
             {
                 continue;
             }
-            activeEntries.Add(new WaveSpawnEntry
+            if (durationSeconds > 0f && entry.TriggerTime > durationSeconds)
             {
-                enemyId = entry.enemyId,
-                spawnTime = entry.spawnTime
-            });
+                continue;
+            }
+            activeEntries.Add(entry);
         }
-        activeEntries.Sort((a, b) => a.spawnTime.CompareTo(b.spawnTime));
+        activeEntries.Sort((a, b) => a.TriggerTime.CompareTo(b.TriggerTime));
     }
     public void StopWave()
     {
         isRunning = false;
         elapsedTime = 0f;
-        nextSpawnIndex = 0;
+        durationSeconds = 0f;
+        nextWaveIndex = 0;
         activeEntries.Clear();
     }
     public void CollectReadySpawns(float deltaTime, List<string> readyEnemyIds)
@@ -2329,15 +2675,34 @@ public class WaveSystem
             return;
         }
         elapsedTime += deltaTime;
-        while (nextSpawnIndex < activeEntries.Count)
+        while (nextWaveIndex < activeEntries.Count)
         {
-            var nextEntry = activeEntries[nextSpawnIndex];
-            if (nextEntry.spawnTime > elapsedTime)
+            var nextEntry = activeEntries[nextWaveIndex];
+            if (nextEntry.TriggerTime > elapsedTime)
             {
                 break;
             }
-            readyEnemyIds.Add(nextEntry.enemyId);
-            nextSpawnIndex++;
+            AppendReadySpawns(nextEntry, readyEnemyIds);
+            nextWaveIndex++;
+        }
+    }
+    private static void AppendReadySpawns(NightWaveEntry waveEntry, List<string> readyEnemyIds)
+    {
+        if (waveEntry?.Spawns == null || readyEnemyIds == null)
+        {
+            return;
+        }
+        for (var i = 0; i < waveEntry.Spawns.Count; i++)
+        {
+            var spawnEntry = waveEntry.Spawns[i];
+            if (spawnEntry == null || string.IsNullOrWhiteSpace(spawnEntry.EnemyId) || spawnEntry.Count <= 0)
+            {
+                continue;
+            }
+            for (var spawnIndex = 0; spawnIndex < spawnEntry.Count; spawnIndex++)
+            {
+                readyEnemyIds.Add(spawnEntry.EnemyId);
+            }
         }
     }
 }
@@ -2438,172 +2803,6 @@ public static class TextStuff
             return valueText;
         var c = m.Groups["c"].Value;
         return $"<color={c}>{valueText}</color>";
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/DayScreenView.cs">
-using System;
-using System.Collections.Generic;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-[DisallowMultipleComponent]
-public class DayScreenView : MonoBehaviour
-{
-    private const float UpgradeItemSpacing = 12f;
-    [SerializeField] private TMP_Text summaryText;
-    [SerializeField] private RectTransform upgradeItemsContainer;
-    [SerializeField] private DayUpgradeItemView upgradeItemTemplate;
-    [SerializeField] private Button startNightButton;
-    public event Action StartNightRequested;
-    public event Action<string> UpgradePurchaseRequested;
-    private bool isInitialized;
-    private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
-    private void Awake()
-    {
-        EnsureInitialized();
-    }
-    private void OnDestroy()
-    {
-        if (!isInitialized || startNightButton == null)
-        {
-            ClearUpgradeItems();
-            return;
-        }
-        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
-        isInitialized = false;
-        ClearUpgradeItems();
-    }
-    public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
-    {
-        EnsureInitialized();
-        gameObject.SetActive(true);
-        Refresh(runState, upgradeItems);
-    }
-    public void Hide()
-    {
-        gameObject.SetActive(false);
-    }
-    public void Refresh(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        if (summaryText != null)
-        {
-            summaryText.text = BuildSummary(runState);
-        }
-        if (startNightButton != null)
-        {
-            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
-        }
-        RebuildUpgradeItems(upgradeItems);
-    }
-    private void EnsureInitialized()
-    {
-        if (upgradeItemTemplate != null)
-        {
-            upgradeItemTemplate.gameObject.SetActive(false);
-        }
-        if (isInitialized || startNightButton == null)
-        {
-            return;
-        }
-        startNightButton.onClick.AddListener(HandleStartNightPressed);
-        isInitialized = true;
-    }
-    private void HandleStartNightPressed()
-    {
-        StartNightRequested?.Invoke();
-    }
-    private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
-    {
-        ClearUpgradeItems();
-        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
-        {
-            return;
-        }
-        var templateRect = upgradeItemTemplate.transform as RectTransform;
-        if (templateRect == null)
-        {
-            return;
-        }
-        var itemStep = templateRect.sizeDelta.y + UpgradeItemSpacing;
-        for (var i = 0; i < upgradeItems.Count; i++)
-        {
-            var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
-            var itemRect = itemView.transform as RectTransform;
-            if (itemRect != null)
-            {
-                itemRect.anchorMin = templateRect.anchorMin;
-                itemRect.anchorMax = templateRect.anchorMax;
-                itemRect.pivot = templateRect.pivot;
-                itemRect.sizeDelta = templateRect.sizeDelta;
-                itemRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, itemStep * i);
-            }
-            itemView.gameObject.name = $"UpgradeItem_{i}";
-            itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.BuyRequested += HandleUpgradeBuyRequested;
-            itemView.Bind(upgradeItems[i]);
-            itemView.gameObject.SetActive(true);
-            spawnedUpgradeItems.Add(itemView);
-        }
-    }
-    private void ClearUpgradeItems()
-    {
-        for (var i = 0; i < spawnedUpgradeItems.Count; i++)
-        {
-            var itemView = spawnedUpgradeItems[i];
-            if (itemView == null)
-            {
-                continue;
-            }
-            itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.gameObject.SetActive(false);
-            Destroy(itemView.gameObject);
-        }
-        spawnedUpgradeItems.Clear();
-    }
-    private void HandleUpgradeBuyRequested(string upgradeId)
-    {
-        UpgradePurchaseRequested?.Invoke(upgradeId);
-    }
-    private string BuildSummary(RunState runState)
-    {
-        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
-        {
-            return
-                $"Day {runState.CurrentDay}\n" +
-                "The cemetery is quiet.\n" +
-                $"Faith: {runState.Faith}\n" +
-                $"Gold: {runState.Gold}\n" +
-                $"Cemetery: {runState.CemeteryState}";
-        }
-        return
-            $"Day {runState.CurrentDay}\n" +
-            $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
-            $"Reward: {BuildRewardSummary(runState.LastDayReward)}\n" +
-            $"Faith: {runState.Faith}\n" +
-            $"Gold: {runState.Gold}\n" +
-            $"Cemetery: {runState.CemeteryState}";
-    }
-    private static string BuildRewardSummary(DayRewardData reward)
-    {
-        if (reward == null || !reward.HasAnyReward)
-        {
-            return "none";
-        }
-        if (reward.FaithReward > 0 && reward.GoldReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
-        }
-        if (reward.FaithReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith";
-        }
-        return $"+{reward.GoldReward} Gold";
     }
 }
 </file>
@@ -2852,135 +3051,6 @@ public class PhaseTransitionView : MonoBehaviour
             GamePhase.Night => nightLabel,
             _ => string.Empty
         };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/ScreenFader.cs">
-using System;
-using System.Collections;
-using DG.Tweening;
-using UnityEngine;
-using UnityEngine.UI;
-public class ScreenFader : MonoBehaviour
-{
-    [SerializeField] private Image fadeImage;
-    [SerializeField] private float fadeTime = 0.5f;
-    public float FadeTime => fadeTime;
-    private Sequence currentSequence;
-    private void OnValidate()
-    {
-        if (fadeImage == null) fadeImage = GetComponent<Image>();
-        else if (fadeImage != null)
-        {
-            Color panelColor = Color.black;
-            panelColor.a = 0f;
-            fadeImage.color = panelColor;
-        }
-    }
-    private void Awake()
-    {
-        if (G.ScreenFader != null && G.ScreenFader != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        DontDestroyOnLoad(gameObject);
-        G.ScreenFader = this;
-        fadeImage.gameObject.SetActive(false);
-    }
-    public void FadeIn(float time = 0f, Action onComplete = null)
-    {
-        if (time == 0) time = fadeTime;
-        KillCurrentSequence();
-        fadeImage.gameObject.SetActive(true);
-        currentSequence = DOTween.Sequence();
-        currentSequence.SetUpdate(true);
-        Color startColor = fadeImage.color;
-        startColor.a = 0f;
-        fadeImage.color = startColor;
-        currentSequence.Append(fadeImage.DOFade(1f, time).SetEase(Ease.InOutSine));
-        if (onComplete != null)
-        {
-            currentSequence.OnComplete(() => onComplete.Invoke());
-        }
-    }
-    public void FadeOut(float time = 0f, Action onComplete = null)
-    {
-        if (time == 0) time = fadeTime;
-        KillCurrentSequence();
-        fadeImage.gameObject.SetActive(true);
-        currentSequence = DOTween.Sequence();
-        currentSequence.SetUpdate(true);
-        Color startColor = fadeImage.color;
-        startColor.a = 1f;
-        fadeImage.color = startColor;
-        currentSequence.Append(fadeImage.DOFade(0f, time).SetEase(Ease.InOutSine));
-        if (onComplete != null)
-        {
-            currentSequence.OnComplete(() =>
-            {
-                fadeImage.gameObject.SetActive(false);
-                onComplete.Invoke();
-            });
-        }
-        else
-        {
-            currentSequence.OnComplete(() => { fadeImage.gameObject.SetActive(false); });
-        }
-    }
-    public void FadeOutCustom(Image screen, float time = 0f, Action onComplete = null)
-    {
-        if (time == 0) time = fadeTime;
-        KillCurrentSequence();
-        screen.gameObject.SetActive(true);
-        currentSequence = DOTween.Sequence();
-        currentSequence.SetUpdate(true);
-        Color startColor = screen.color;
-        startColor.a = 1f;
-        screen.color = startColor;
-        currentSequence.Append(screen.DOFade(0f, time).SetEase(Ease.InOutSine));
-        if (onComplete != null)
-        {
-            currentSequence.OnComplete(() =>
-            {
-                screen.gameObject.SetActive(false);
-                onComplete.Invoke();
-            });
-        }
-        else
-        {
-            currentSequence.OnComplete(() => { screen.gameObject.SetActive(false); });
-        }
-    }
-    public void TransitionFade(float time = 0f, Action action = null)
-    {
-        FadeIn(time, () =>
-        {
-            action?.Invoke();
-            FadeOut();
-        });
-    }
-    private void KillCurrentSequence()
-    {
-        if (currentSequence != null && currentSequence.IsActive())
-        {
-            currentSequence.Kill();
-            currentSequence = null;
-        }
-    }
-    public void StartLevelTransition()
-    {
-        if (currentSequence != null) return;
-        StartCoroutine(LevelTransition());
-    }
-    public IEnumerator LevelTransition()
-    {
-        G.ScreenFader.FadeIn(1f);
-        yield return new WaitForSeconds(0.5f);
-        G.audioSystem.Play(SoundId.SFX_LevelTransition);
-        yield return new WaitForSeconds(1f);
-        G.ScreenFader.FadeOut(1f);
     }
 }
 </file>
@@ -3850,6 +3920,21 @@ public static class AudioPreview
 }
 </file>
 
+<file path="Assets/Game/Code/DefaultSystems/AudioSystem/SoundId.cs">
+public enum SoundId
+{
+    none = 0,
+    SFX_Win = 1,
+    SFX_Lose = 2,
+    SFX_LevelTransition = 3,
+    SFX_BellRing = 4,
+    SFX_CombatHit = 5,
+    Music_Main = 101,
+    Music_Menu = 102,
+    Ambient_Forest = 201
+}
+</file>
+
 <file path="Assets/Game/Code/DefaultSystems/AudioSystem/SoundsLibrary.cs">
 using System.Collections.Generic;
 using UnityEngine;
@@ -4049,138 +4134,185 @@ public class TextPopupInstance : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
-using UnityEngine;
-public class LaneEnemy : MonoBehaviour
+<file path="Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs">
+public enum BellRingFailureReason
 {
-    private const int SortingPrecision = 100;
-    public EnemyDef EnemyDef { get; private set; }
-    public Vector3 Position => transform.position;
-    public int CurrentHp { get; private set; }
-    public LaneUnit TargetUnit { get; private set; }
-    public bool HasTarget => TargetUnit != null;
-    public bool IsInCombat => TargetUnit != null;
-    private Vector3 forwardTargetPosition;
-    private float attackCooldown;
-    private LaneCombatFeedbackView combatFeedbackView;
-    private SpriteRenderer spriteRenderer;
-    private void Update()
+    None,
+    WrongPhase,
+    NotAtBellPoint,
+    OnCooldown,
+    BellNotFound,
+    UnitNotFound,
+    NotEnoughFaith
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Bell/BellSystem.cs">
+public class BellSystem
+{
+    public BellRingResult TryRingBell(string bellId, RunState runState)
     {
-        if (EnemyDef == null)
+        if (runState == null)
         {
-            return;
+            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
         }
-        UpdateBehavior(Time.deltaTime);
+        if (runState.CurrentPhase != GamePhase.Night)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
+        }
+        if (runState.Keeper == null || runState.Keeper.InteractionState != KeeperInteractionState.Bells)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.NotAtBellPoint);
+        }
+        var bellDef = CMS.Get<BellDef>(bellId);
+        if (bellDef == null)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.BellNotFound);
+        }
+        var unitDef = CMS.Get<UnitDef>(bellDef.LinkedUnitId);
+        if (unitDef == null)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.UnitNotFound);
+        }
+        if (runState.Faith < bellDef.FaithCost)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.NotEnoughFaith);
+        }
+        runState.Faith -= bellDef.FaithCost;
+        G.audioSystem.Play(SoundId.SFX_BellRing);
+        return BellRingResult.Success(bellDef, unitDef);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
+public class UnitDef : ContentDef
+{
+    [SerializeField] private int hp;
+    [SerializeField] private int damage;
+    [SerializeField] private float attackInterval;
+    [SerializeField] private float moveSpeed;
+    [Min(0f)] [SerializeField] private float lifetimeSeconds;
+    [SerializeField] private GameObject viewPrefab;
+    public int Hp => hp;
+    public int Damage => damage;
+    public float AttackInterval => attackInterval;
+    public float MoveSpeed => moveSpeed;
+    public float LifetimeSeconds => lifetimeSeconds;
+    public GameObject ViewPrefab => viewPrefab;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/CombatHpBarView.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class CombatHpBarView : MonoBehaviour
+{
+    private static readonly Color AllyFillColor = new(0.38f, 1f, 0.55f, 1f);
+    private static readonly Color EnemyFillColor = new(1f, 0.4f, 0.4f, 1f);
+    private static readonly Color BackgroundColor = new(0f, 0f, 0f, 0.75f);
+    private static Sprite runtimeBarSprite;
+    [SerializeField] private SpriteRenderer backgroundRenderer;
+    [SerializeField] private SpriteRenderer fillRenderer;
+    [Min(0)] [SerializeField] private int sortingOffset = 10;
+    private Vector3 initialFillLocalScale;
+    private Vector3 initialFillLocalPosition;
+    private int maxHp = 1;
+    private bool isBound;
+    private bool isInitialized;
+    private SpriteRenderer ownerRenderer;
+    private void Awake()
+    {
+        EnsureInitialized();
+    }
+    public void Bind(int maxHp, bool isEnemy, SpriteRenderer ownerRenderer)
+    {
+        EnsureInitialized();
+        this.maxHp = Mathf.Max(1, maxHp);
+        this.ownerRenderer = ownerRenderer;
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.color = BackgroundColor;
+            ApplySorting(backgroundRenderer, this.ownerRenderer, sortingOffset);
+        }
+        if (fillRenderer != null)
+        {
+            fillRenderer.color = isEnemy ? EnemyFillColor : AllyFillColor;
+            ApplySorting(fillRenderer, this.ownerRenderer, sortingOffset + 1);
+        }
+        isBound = true;
+        Refresh(this.maxHp);
     }
     private void LateUpdate()
     {
-        UpdateSortingOrder();
-    }
-    public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
-    {
-        EnemyDef = enemyDef;
-        CurrentHp = enemyDef.Hp;
-        forwardTargetPosition = targetPosition;
-        TargetUnit = null;
-        attackCooldown = enemyDef.AttackInterval;
-        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
-        if (combatFeedbackView == null)
-        {
-            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
-        }
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-        combatFeedbackView.Bind(enemyDef.Hp, true);
-        UpdateSortingOrder();
-    }
-    public void SetTargetUnit(LaneUnit laneUnit)
-    {
-        if (laneUnit == null)
-        {
+        if (!isBound || ownerRenderer == null)
             return;
-        }
-        TargetUnit = laneUnit;
+        ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+        ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
     }
-    public void ClearTargetUnit()
+    public void Refresh(int currentHp)
     {
-        TargetUnit = null;
-    }
-    public void ApplyDamage(int damage)
-    {
-        if (damage <= 0)
-        {
+        if (!isBound || fillRenderer == null)
             return;
-        }
-        CurrentHp -= damage;
-        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
-    }
-    private void OnDestroy()
-    {
-        combatFeedbackView?.Cleanup();
-    }
-    public bool IsDead()
-    {
-        return CurrentHp <= 0;
-    }
-    public bool IsWithinAttackRange(LaneUnit laneUnit, float attackDistance)
-    {
-        if (laneUnit == null)
-        {
-            return false;
-        }
-        return Vector3.Distance(Position, laneUnit.Position) <= attackDistance;
-    }
-    public bool HasReachedBreakthrough(float breakthroughX)
-    {
-        return Position.x <= breakthroughX;
-    }
-    private void UpdateBehavior(float deltaTime)
-    {
-        if (TargetUnit == null || TargetUnit.IsDead())
-        {
-            TargetUnit = null;
-            MoveForward(deltaTime);
+        float normalized = Mathf.Clamp01((float)Mathf.Max(0, currentHp) / maxHp);
+        fillRenderer.enabled = normalized > 0f;
+        if (!fillRenderer.enabled)
             return;
-        }
-        attackCooldown -= deltaTime;
-        if (attackCooldown > 0f)
-        {
-            return;
-        }
-        TargetUnit.ApplyDamage(EnemyDef.Damage);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
-        attackCooldown = EnemyDef.AttackInterval;
+        Vector3 updatedScale = initialFillLocalScale;
+        updatedScale.x = initialFillLocalScale.x * normalized;
+        fillRenderer.transform.localScale = updatedScale;
+        float initialLeftEdge = initialFillLocalPosition.x - (initialFillLocalScale.x * 0.5f);
+        Vector3 updatedPosition = initialFillLocalPosition;
+        updatedPosition.x = initialLeftEdge + (updatedScale.x * 0.5f);
+        fillRenderer.transform.localPosition = updatedPosition;
     }
-    private void MoveForward(float deltaTime)
+    private void EnsureInitialized()
     {
-        var offset = forwardTargetPosition - transform.position;
-        if (offset.sqrMagnitude <= 0.0001f)
-        {
-            transform.position = forwardTargetPosition;
+        if (isInitialized)
             return;
-        }
-        var direction = offset.normalized;
-        var moveStep = EnemyDef.MoveSpeed * deltaTime;
-        if (offset.magnitude <= moveStep)
+        EnsureBarSprite(backgroundRenderer);
+        EnsureBarSprite(fillRenderer);
+        if (fillRenderer != null)
         {
-            transform.position = forwardTargetPosition;
-            return;
+            initialFillLocalScale = fillRenderer.transform.localScale;
+            initialFillLocalPosition = fillRenderer.transform.localPosition;
         }
-        transform.position += direction * moveStep;
+        isInitialized = true;
     }
-    private void UpdateSortingOrder()
+    private void EnsureBarSprite(SpriteRenderer renderer)
     {
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-        if (spriteRenderer == null)
-        {
+        if (renderer == null || renderer.sprite != null)
             return;
-        }
-        spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+        renderer.sprite = GetRuntimeBarSprite();
+        renderer.flipX = false;
+        renderer.flipY = false;
+    }
+    private void ApplySorting(SpriteRenderer renderer, SpriteRenderer ownerRenderer, int offset)
+    {
+        if (renderer == null || ownerRenderer == null)
+            return;
+        renderer.sortingLayerID = ownerRenderer.sortingLayerID;
+        renderer.sortingOrder = ownerRenderer.sortingOrder + offset;
+    }
+    private static Sprite GetRuntimeBarSprite()
+    {
+        if (runtimeBarSprite != null)
+            return runtimeBarSprite;
+        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply();
+        runtimeBarSprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, 1f, 1f),
+            new Vector2(0.5f, 0.5f),
+            1f);
+        return runtimeBarSprite;
     }
 }
 </file>
@@ -4194,6 +4326,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
     [SerializeField] private float attackDistance = 0.75f;
     [SerializeField] private SingleLaneHost laneHost;
     public Action<LaneEnemy> OnEnemyBreakthrough;
+    public Action<LaneEnemy> OnEnemyCemeteryAttack;
     public bool HasActiveEnemyPressure => enemies.Count > 0;
     private readonly List<LaneUnit> playerUnits = new();
     private readonly List<LaneEnemy> enemies = new();
@@ -4228,11 +4361,20 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             return;
         }
         enemies.Add(laneEnemy);
+        laneEnemy.CemeteryAttackTriggered -= HandleEnemyCemeteryAttackTriggered;
+        laneEnemy.CemeteryAttackTriggered += HandleEnemyCemeteryAttackTriggered;
     }
     private void CleanupDestroyed()
     {
+        for (var i = enemies.Count - 1; i >= 0; i--)
+        {
+            if (enemies[i] != null)
+            {
+                continue;
+            }
+            enemies.RemoveAt(i);
+        }
         playerUnits.RemoveAll(unit => unit == null);
-        enemies.RemoveAll(enemy => enemy == null);
         CleanupAssignedSlots();
     }
     private void UpdateEnemyTargets()
@@ -4261,7 +4403,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             {
                 enemy.SetTargetUnit(targetUnit);
             }
-            else
+            else if (!enemy.IsAttackingCemetery)
             {
                 enemy.ClearTargetUnit();
             }
@@ -4380,7 +4522,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         for (var i = enemies.Count - 1; i >= 0; i--)
         {
             var enemy = enemies[i];
-            if (enemy == null || enemy.IsInCombat)
+            if (enemy == null || enemy.IsInCombat || enemy.IsAttackingCemetery)
             {
                 continue;
             }
@@ -4388,7 +4530,8 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             {
                 continue;
             }
-            RemoveEnemyAt(i, true);
+            enemy.EnterCemeteryAttackState(laneHost.EnemyBreakthroughPoint.position);
+            OnEnemyBreakthrough?.Invoke(enemy);
         }
     }
     private void ReturnIdleUnitsHome()
@@ -4537,6 +4680,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         enemies.RemoveAt(index);
         if (enemy != null)
         {
+            enemy.CemeteryAttackTriggered -= HandleEnemyCemeteryAttackTriggered;
             enemy.ClearTargetUnit();
             Destroy(enemy.gameObject);
         }
@@ -4544,6 +4688,14 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         {
             OnEnemyBreakthrough?.Invoke(enemy);
         }
+    }
+    private void HandleEnemyCemeteryAttackTriggered(LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null)
+        {
+            return;
+        }
+        OnEnemyCemeteryAttack?.Invoke(laneEnemy);
     }
     private int GetLeastPopulatedSlotIndex()
     {
@@ -4658,6 +4810,101 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
+using UnityEngine;
+public class SingleLaneEnemySpawner
+{
+    public EnemySpawnResult TrySpawnEnemy(EnemyDef enemyDef, SingleLaneHost laneHost)
+    {
+        if (laneHost == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
+        }
+        if (laneHost.EnemySpawnPoint == null || laneHost.EnemyForwardTarget == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
+        }
+        if (enemyDef == null || enemyDef.ViewPrefab == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
+        }
+        var spawnPosition = laneHost.EnemySpawnPoint.position;
+        if (laneHost.EnemySpawnSpreadRadius > 0f)
+        {
+            var angle = Random.value * Mathf.PI * 2f;
+            var radius = Mathf.Sqrt(Random.value) * laneHost.EnemySpawnSpreadRadius;
+            var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
+            spawnPosition += offset;
+        }
+        var spawnedGameObject = Object.Instantiate(
+            enemyDef.ViewPrefab,
+            spawnPosition,
+            laneHost.EnemySpawnPoint.rotation);
+        var laneEnemy = spawnedGameObject.GetComponent<LaneEnemy>();
+        if (laneEnemy == null)
+        {
+            laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
+        }
+        var forwardTargetPosition = laneHost.EnemyForwardTarget.position;
+        var breakthroughPoint = laneHost.EnemyBreakthroughPoint;
+        if (breakthroughPoint != null)
+        {
+            var spawnX = laneHost.EnemySpawnPoint.position.x;
+            var targetX = forwardTargetPosition.x;
+            var breakthroughX = breakthroughPoint.position.x;
+            var movesLeft = breakthroughX < spawnX;
+            var targetStopsBeforeBreakthrough = movesLeft
+                ? targetX > breakthroughX
+                : targetX < breakthroughX;
+            if (targetStopsBeforeBreakthrough)
+            {
+                Debug.LogWarning(
+                    "EnemyForwardTarget stops before EnemyBreakthroughPoint. Falling back to breakthrough point.");
+                forwardTargetPosition = breakthroughPoint.position;
+            }
+        }
+        laneEnemy.Initialize(enemyDef, forwardTargetPosition);
+        return EnemySpawnResult.Success(laneEnemy);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardSystem.cs">
+public class DayRewardSystem
+{
+    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int goldReward)
+    {
+        return CreateReward(completedNightIndex, 0, goldReward);
+    }
+    public void ApplyReward(RunState runState, DayRewardData reward)
+    {
+        if (runState == null || reward == null)
+        {
+            return;
+        }
+        var faithReward = reward.FaithReward < 0 ? 0 : reward.FaithReward;
+        var goldReward = reward.GoldReward < 0 ? 0 : reward.GoldReward;
+        runState.Faith += faithReward;
+        runState.Gold += goldReward;
+        runState.LastDayReward = new DayRewardData
+        {
+            SourceNightIndex = reward.SourceNightIndex,
+            FaithReward = faithReward,
+            GoldReward = goldReward
+        };
+    }
+    private DayRewardData CreateReward(int sourceNightIndex, int faithReward, int goldReward)
+    {
+        return new DayRewardData
+        {
+            SourceNightIndex = sourceNightIndex,
+            FaithReward = faithReward,
+            GoldReward = goldReward
+        };
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Runtime/GamePhase.cs">
 public enum GamePhase
 {
@@ -4666,6 +4913,84 @@ public enum GamePhase
     Transition,
     Defeat,
     Win
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
+using System.Collections.Generic;
+using UnityEngine;
+public class UpgradeSystem
+{
+    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
+    {
+        if (runState == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
+        }
+        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
+        if (upgradeDef == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
+        }
+        runState.PurchasedUpgradeIds ??= new HashSet<string>();
+        if (runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
+        }
+        if (!SupportsEffectType(upgradeDef.EffectType))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
+        }
+        var price = Mathf.Max(0, upgradeDef.Price);
+        if (runState.Gold < price)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
+        }
+        runState.Gold -= price;
+        runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
+        ApplyEffect(upgradeDef, runState);
+        ClampRunState(runState);
+        return UpgradePurchaseResult.Success(upgradeDef);
+    }
+    public static bool SupportsEffectType(UpgradeEffectType effectType)
+    {
+        return effectType == UpgradeEffectType.FaithIncomeBonus
+            || effectType == UpgradeEffectType.CemeteryRepair
+            || effectType == UpgradeEffectType.CemeteryMaxStateBonus;
+    }
+    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
+    {
+        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
+        switch (upgradeDef.EffectType)
+        {
+            case UpgradeEffectType.FaithIncomeBonus:
+                runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectValue);
+                break;
+            case UpgradeEffectType.CemeteryRepair:
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+            case UpgradeEffectType.CemeteryMaxStateBonus:
+                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectValue);
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+        }
+    }
+    private static void ClampRunState(RunState runState)
+    {
+        runState.Gold = Mathf.Max(0, runState.Gold);
+        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
+        runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
+        runState.FaithCollectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
+        runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
+        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
+    }
 }
 </file>
 
@@ -4700,10 +5025,472 @@ public class ServiceMain : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/UI/DayScreenView.cs">
+using System;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+[DisallowMultipleComponent]
+public class DayScreenView : MonoBehaviour
+{
+    private const float UpgradeItemSpacing = 12f;
+    [SerializeField] private TMP_Text summaryText;
+    [SerializeField] private RectTransform upgradeItemsContainer;
+    [SerializeField] private DayUpgradeItemView upgradeItemTemplate;
+    [SerializeField] private Button startNightButton;
+    public event Action StartNightRequested;
+    public event Action<string> UpgradePurchaseRequested;
+    private bool isInitialized;
+    private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
+    private void Awake()
+    {
+        EnsureInitialized();
+    }
+    private void OnDestroy()
+    {
+        if (!isInitialized || startNightButton == null)
+        {
+            ClearUpgradeItems();
+            return;
+        }
+        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
+        isInitialized = false;
+        ClearUpgradeItems();
+    }
+    public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        EnsureInitialized();
+        gameObject.SetActive(true);
+        Refresh(runState, upgradeItems);
+    }
+    public void Hide()
+    {
+        gameObject.SetActive(false);
+    }
+    public void Refresh(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        if (summaryText != null)
+        {
+            summaryText.text = BuildSummary(runState);
+        }
+        if (startNightButton != null)
+        {
+            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
+        }
+        RebuildUpgradeItems(upgradeItems);
+    }
+    private void EnsureInitialized()
+    {
+        if (upgradeItemTemplate != null)
+        {
+            upgradeItemTemplate.gameObject.SetActive(false);
+        }
+        if (isInitialized || startNightButton == null)
+        {
+            return;
+        }
+        startNightButton.onClick.AddListener(HandleStartNightPressed);
+        isInitialized = true;
+    }
+    private void HandleStartNightPressed()
+    {
+        StartNightRequested?.Invoke();
+    }
+    private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        ClearUpgradeItems();
+        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
+        {
+            return;
+        }
+        var templateRect = upgradeItemTemplate.transform as RectTransform;
+        if (templateRect == null)
+        {
+            return;
+        }
+        var itemStep = templateRect.sizeDelta.y + UpgradeItemSpacing;
+        for (var i = 0; i < upgradeItems.Count; i++)
+        {
+            var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
+            var itemRect = itemView.transform as RectTransform;
+            if (itemRect != null)
+            {
+                itemRect.anchorMin = templateRect.anchorMin;
+                itemRect.anchorMax = templateRect.anchorMax;
+                itemRect.pivot = templateRect.pivot;
+                itemRect.sizeDelta = templateRect.sizeDelta;
+                itemRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, itemStep * i);
+            }
+            itemView.gameObject.name = $"UpgradeItem_{i}";
+            itemView.BuyRequested -= HandleUpgradeBuyRequested;
+            itemView.BuyRequested += HandleUpgradeBuyRequested;
+            itemView.Bind(upgradeItems[i]);
+            itemView.gameObject.SetActive(true);
+            spawnedUpgradeItems.Add(itemView);
+        }
+    }
+    private void ClearUpgradeItems()
+    {
+        for (var i = 0; i < spawnedUpgradeItems.Count; i++)
+        {
+            var itemView = spawnedUpgradeItems[i];
+            if (itemView == null)
+            {
+                continue;
+            }
+            itemView.BuyRequested -= HandleUpgradeBuyRequested;
+            itemView.gameObject.SetActive(false);
+            Destroy(itemView.gameObject);
+        }
+        spawnedUpgradeItems.Clear();
+    }
+    private void HandleUpgradeBuyRequested(string upgradeId)
+    {
+        UpgradePurchaseRequested?.Invoke(upgradeId);
+    }
+    private string BuildSummary(RunState runState)
+    {
+        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
+        {
+            return
+                $"Day {runState.CurrentDay}\n" +
+                "The cemetery is quiet.\n" +
+                $"Faith: {runState.Faith}\n" +
+                $"Gold: {runState.Gold}\n" +
+                $"Cemetery: {runState.CemeteryState}";
+        }
+        return
+            $"Day {runState.CurrentDay}\n" +
+            $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
+            $"Reward: {BuildRewardSummary(runState.LastDayReward)}\n" +
+            $"Faith: {runState.Faith}\n" +
+            $"Gold: {runState.Gold}\n" +
+            $"Cemetery: {runState.CemeteryState}";
+    }
+    private static string BuildRewardSummary(DayRewardData reward)
+    {
+        if (reward == null || !reward.HasAnyReward)
+        {
+            return "none";
+        }
+        if (reward.FaithReward > 0 && reward.GoldReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
+        }
+        if (reward.FaithReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith";
+        }
+        return $"+{reward.GoldReward} Gold";
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/ScreenFader.cs">
+using System;
+using System.Collections;
+using DG.Tweening;
+using UnityEngine;
+using UnityEngine.UI;
+public class ScreenFader : MonoBehaviour
+{
+    [SerializeField] private Image fadeImage;
+    [SerializeField] private float fadeTime = 0.5f;
+    public float FadeTime => fadeTime;
+    private Sequence currentSequence;
+    private void OnValidate()
+    {
+        if (fadeImage == null) fadeImage = GetComponent<Image>();
+        else if (fadeImage != null)
+        {
+            Color panelColor = Color.black;
+            panelColor.a = 0f;
+            fadeImage.color = panelColor;
+        }
+    }
+    private void Awake()
+    {
+        if (G.ScreenFader != null && G.ScreenFader != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        DontDestroyOnLoad(gameObject);
+        G.ScreenFader = this;
+        fadeImage.gameObject.SetActive(false);
+    }
+    public void FadeIn(float time = 0f, Action onComplete = null)
+    {
+        if (time == 0) time = fadeTime;
+        KillCurrentSequence();
+        fadeImage.gameObject.SetActive(true);
+        currentSequence = DOTween.Sequence();
+        currentSequence.SetUpdate(true);
+        Color startColor = fadeImage.color;
+        startColor.a = 0f;
+        fadeImage.color = startColor;
+        currentSequence.Append(fadeImage.DOFade(1f, time).SetEase(Ease.InOutSine));
+        if (onComplete != null)
+        {
+            currentSequence.OnComplete(() => onComplete.Invoke());
+        }
+    }
+    public void FadeOut(float time = 0f, Action onComplete = null)
+    {
+        if (time == 0) time = fadeTime;
+        KillCurrentSequence();
+        fadeImage.gameObject.SetActive(true);
+        currentSequence = DOTween.Sequence();
+        currentSequence.SetUpdate(true);
+        Color startColor = fadeImage.color;
+        startColor.a = 1f;
+        fadeImage.color = startColor;
+        currentSequence.Append(fadeImage.DOFade(0f, time).SetEase(Ease.InOutSine));
+        if (onComplete != null)
+        {
+            currentSequence.OnComplete(() =>
+            {
+                fadeImage.gameObject.SetActive(false);
+                onComplete.Invoke();
+            });
+        }
+        else
+        {
+            currentSequence.OnComplete(() => { fadeImage.gameObject.SetActive(false); });
+        }
+    }
+    public void FadeOutCustom(Image screen, float time = 0f, Action onComplete = null)
+    {
+        if (time == 0) time = fadeTime;
+        KillCurrentSequence();
+        screen.gameObject.SetActive(true);
+        currentSequence = DOTween.Sequence();
+        currentSequence.SetUpdate(true);
+        Color startColor = screen.color;
+        startColor.a = 1f;
+        screen.color = startColor;
+        currentSequence.Append(screen.DOFade(0f, time).SetEase(Ease.InOutSine));
+        if (onComplete != null)
+        {
+            currentSequence.OnComplete(() =>
+            {
+                screen.gameObject.SetActive(false);
+                onComplete.Invoke();
+            });
+        }
+        else
+        {
+            currentSequence.OnComplete(() => { screen.gameObject.SetActive(false); });
+        }
+    }
+    public void TransitionFade(float time = 0f, Action action = null)
+    {
+        FadeIn(time, () =>
+        {
+            action?.Invoke();
+            FadeOut();
+        });
+    }
+    private void KillCurrentSequence()
+    {
+        if (currentSequence != null && currentSequence.IsActive())
+        {
+            currentSequence.Kill();
+            currentSequence = null;
+        }
+    }
+    public void StartLevelTransition()
+    {
+        if (currentSequence != null) return;
+        StartCoroutine(LevelTransition());
+    }
+    public IEnumerator LevelTransition()
+    {
+        G.ScreenFader.FadeIn(1f);
+        yield return new WaitForSeconds(0.5f);
+        G.audioSystem.Play(SoundId.SFX_LevelTransition);
+        yield return new WaitForSeconds(1f);
+        G.ScreenFader.FadeOut(1f);
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/UI/UI.cs">
 using UnityEngine;
 public class UI : MonoBehaviour
 {
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
+using UnityEngine;
+public class LaneEnemy : MonoBehaviour
+{
+    private const int SortingPrecision = 100;
+    public event System.Action<LaneEnemy> CemeteryAttackTriggered;
+    public EnemyDef EnemyDef { get; private set; }
+    public Vector3 Position => transform.position;
+    public int CurrentHp { get; private set; }
+    public LaneUnit TargetUnit { get; private set; }
+    public bool HasTarget => TargetUnit != null;
+    public bool IsInCombat => TargetUnit != null;
+    public bool IsAttackingCemetery { get; private set; }
+    private Vector3 forwardTargetPosition;
+    private Vector3 cemeteryAttackPosition;
+    private float attackCooldown;
+    private LaneCombatFeedbackView combatFeedbackView;
+    private SpriteRenderer spriteRenderer;
+    private void Update()
+    {
+        if (EnemyDef == null)
+        {
+            return;
+        }
+        UpdateBehavior(Time.deltaTime);
+    }
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
+    }
+    public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
+    {
+        EnemyDef = enemyDef;
+        CurrentHp = enemyDef.Hp;
+        forwardTargetPosition = targetPosition;
+        cemeteryAttackPosition = targetPosition;
+        TargetUnit = null;
+        attackCooldown = enemyDef.AttackInterval;
+        IsAttackingCemetery = false;
+        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
+        if (combatFeedbackView == null)
+        {
+            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
+        }
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        combatFeedbackView.Bind(enemyDef.Hp, true);
+        UpdateSortingOrder();
+    }
+    public void SetTargetUnit(LaneUnit laneUnit)
+    {
+        if (laneUnit == null)
+        {
+            return;
+        }
+        TargetUnit = laneUnit;
+    }
+    public void ClearTargetUnit()
+    {
+        TargetUnit = null;
+    }
+    public void ApplyDamage(int damage)
+    {
+        if (damage <= 0)
+        {
+            return;
+        }
+        CurrentHp -= damage;
+        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
+    }
+    private void OnDestroy()
+    {
+        combatFeedbackView?.Cleanup();
+    }
+    public bool IsDead()
+    {
+        return CurrentHp <= 0;
+    }
+    public bool IsWithinAttackRange(LaneUnit laneUnit, float attackDistance)
+    {
+        if (laneUnit == null)
+        {
+            return false;
+        }
+        return Vector3.Distance(Position, laneUnit.Position) <= attackDistance;
+    }
+    public bool HasReachedBreakthrough(float breakthroughX)
+    {
+        return Position.x <= breakthroughX;
+    }
+    public void EnterCemeteryAttackState(Vector3 attackPosition)
+    {
+        IsAttackingCemetery = true;
+        cemeteryAttackPosition = attackPosition;
+        forwardTargetPosition = attackPosition;
+        TargetUnit = null;
+        attackCooldown = EnemyDef != null ? EnemyDef.AttackInterval : 0f;
+        transform.position = attackPosition;
+    }
+    private void UpdateBehavior(float deltaTime)
+    {
+        if (TargetUnit == null || TargetUnit.IsDead())
+        {
+            TargetUnit = null;
+            if (IsAttackingCemetery)
+            {
+                UpdateCemeteryAttack(deltaTime);
+                return;
+            }
+            MoveForward(deltaTime);
+            return;
+        }
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+        TargetUnit.ApplyDamage(EnemyDef.Damage);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        attackCooldown = EnemyDef.AttackInterval;
+    }
+    private void UpdateCemeteryAttack(float deltaTime)
+    {
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+        CemeteryAttackTriggered?.Invoke(this);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        attackCooldown = EnemyDef.AttackInterval;
+        transform.position = cemeteryAttackPosition;
+    }
+    private void MoveForward(float deltaTime)
+    {
+        var offset = forwardTargetPosition - transform.position;
+        if (offset.sqrMagnitude <= 0.0001f)
+        {
+            transform.position = forwardTargetPosition;
+            return;
+        }
+        var direction = offset.normalized;
+        var moveStep = EnemyDef.MoveSpeed * deltaTime;
+        if (offset.magnitude <= moveStep)
+        {
+            transform.position = forwardTargetPosition;
+            return;
+        }
+        transform.position += direction * moveStep;
+    }
+    private void UpdateSortingOrder()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+        spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+    }
 }
 </file>
 
@@ -4724,6 +5511,11 @@ public class LaneUnit : MonoBehaviour
     public Vector3 IdleAnchorPosition { get; private set; }
     public LaneEnemy TargetEnemy { get; private set; }
     public bool HasTarget => TargetEnemy != null;
+    public bool HasLimitedLifetime => UnitDef != null && UnitDef.LifetimeSeconds > 0f;
+    public float LifetimeProgressNormalized =>
+        !HasLimitedLifetime
+            ? 0f
+            : Mathf.Clamp01(1f - (Mathf.Max(0f, remainingLifetime) / Mathf.Max(0.01f, UnitDef.LifetimeSeconds)));
     private float attackCooldown;
     private bool hasHomePosition;
     private Vector3 idleMicroTargetPosition;
@@ -5054,10 +5846,14 @@ public class RunState
     public int Faith;
     public int Gold;
     public int StartingNightFaith;
-    public float FaithCollectionPerSecond;
-    public float FaithCollectionProgress;
+    public int FaithCollectionPayoutAmount;
+    public float FaithCollectionIntervalSeconds;
+    public float FaithCollectionTimerProgress;
     public int CemeteryState;
     public int CemeteryMaxState;
+    public int NightCemeteryRepairAmount;
+    public float NightCemeteryRepairIntervalSeconds;
+    public float NightCemeteryRepairTimerProgress;
     public int CurrentDay;
     public int CurrentNight;
     public GamePhase CurrentPhase;
@@ -5068,20 +5864,30 @@ public class RunState
         int initialCemeteryState,
         float initialKeeperMoveSpeed,
         int startingNightFaith,
-        float faithCollectionPerSecond)
+        int faithCollectionPayoutAmount,
+        float faithCollectionIntervalSeconds,
+        int nightCemeteryRepairAmount,
+        float nightCemeteryRepairIntervalSeconds)
     {
         var clampedInitialCemeteryState = Mathf.Max(0, initialCemeteryState);
         var clampedStartingNightFaith = Mathf.Max(0, startingNightFaith);
-        var clampedFaithCollectionPerSecond = Mathf.Max(0f, faithCollectionPerSecond);
+        var clampedFaithCollectionPayoutAmount = Mathf.Max(0, faithCollectionPayoutAmount);
+        var clampedFaithCollectionIntervalSeconds = Mathf.Max(0f, faithCollectionIntervalSeconds);
+        var clampedNightCemeteryRepairAmount = Mathf.Max(0, nightCemeteryRepairAmount);
+        var clampedNightCemeteryRepairIntervalSeconds = Mathf.Max(0f, nightCemeteryRepairIntervalSeconds);
         return new RunState
         {
             Faith = 0,
             Gold = 0,
             StartingNightFaith = clampedStartingNightFaith,
-            FaithCollectionPerSecond = clampedFaithCollectionPerSecond,
-            FaithCollectionProgress = 0f,
+            FaithCollectionPayoutAmount = clampedFaithCollectionPayoutAmount,
+            FaithCollectionIntervalSeconds = clampedFaithCollectionIntervalSeconds,
+            FaithCollectionTimerProgress = 0f,
             CemeteryState = clampedInitialCemeteryState,
             CemeteryMaxState = clampedInitialCemeteryState,
+            NightCemeteryRepairAmount = clampedNightCemeteryRepairAmount,
+            NightCemeteryRepairIntervalSeconds = clampedNightCemeteryRepairIntervalSeconds,
+            NightCemeteryRepairTimerProgress = 0f,
             CurrentDay = 1,
             CurrentNight = 0,
             CurrentPhase = GamePhase.Transition,
@@ -5114,6 +5920,7 @@ public class HUD : MonoBehaviour
     [SerializeField] private TMP_Text goldText;
     [SerializeField] private TMP_Text cemeteryStateText;
     [SerializeField] private TMP_Text phaseText;
+    [SerializeField] private WaveProgressView waveProgressView;
     [SerializeField] private DayScreenView dayScreenView;
     [SerializeField] private DefeatScreenView defeatScreenView;
     [SerializeField] private WinScreenView winScreenView;
@@ -5128,7 +5935,6 @@ public class HUD : MonoBehaviour
     private void Awake()
     {
         G.HUD = this;
-        BindBellButtons();
         BindDayScreenView();
         BindDefeatScreenView();
         BindWinScreenView();
@@ -5137,7 +5943,6 @@ public class HUD : MonoBehaviour
     }
     private void OnDestroy()
     {
-        UnbindBellButtons();
         UnbindDayScreenView();
         UnbindDefeatScreenView();
         UnbindWinScreenView();
@@ -5155,6 +5960,7 @@ public class HUD : MonoBehaviour
         if (G.main == null || G.main.RunState == null)
         {
             RefreshBellButtonInteractivity(null);
+            waveProgressView?.SetInactive();
             if (!missingMainWarningShown)
             {
                 Debug.LogWarning("HUD: Main or RunState not found");
@@ -5181,6 +5987,7 @@ public class HUD : MonoBehaviour
         {
             phaseText.text = $"Phase: {runState.CurrentPhase}";
         }
+        waveProgressView?.RefreshView();
     }
     public void ShowDayScreen(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
     {
@@ -5253,6 +6060,10 @@ public class HUD : MonoBehaviour
             return;
         }
         phaseTransitionView.Hide();
+    }
+    public void ShowBellFeedback(string message)
+    {
+        SetBellFeedback(message);
     }
     private void BindBellButtons()
     {
@@ -5373,11 +6184,6 @@ public class HUD : MonoBehaviour
         {
             return;
         }
-        var canRingBells =
-            runState != null &&
-            runState.CurrentPhase == GamePhase.Night &&
-            runState.Keeper != null &&
-            runState.Keeper.InteractionState == KeeperInteractionState.Bells;
         for (var i = 0; i < bellButtons.Length; i++)
         {
             var binding = bellButtons[i];
@@ -5385,26 +6191,12 @@ public class HUD : MonoBehaviour
             {
                 continue;
             }
-            binding.button.interactable = canRingBells;
+            binding.button.interactable = false;
         }
     }
     private void OnBellButtonPressed(string bellId)
     {
-        var result = G.main.TryRingBell(bellId);
-        if (result.IsSuccess && result.SpawnResult != null && result.SpawnResult.IsSuccess)
-        {
-            SetBellFeedback($"Bell: {result.BellDef.DisplayName}");
-            return;
-        }
-        if (!result.IsSuccess)
-        {
-            SetBellFeedback($"Bell failed: {result.FailureReason}");
-            return;
-        }
-        if (result.SpawnResult != null && !result.SpawnResult.IsSuccess)
-        {
-            SetBellFeedback($"Spawn failed: {result.SpawnResult.FailureReason}");
-        }
+        SetBellFeedback("Use bells in the world");
     }
     private void SetBellFeedback(string message)
     {
@@ -5451,17 +6243,21 @@ public class Main : MonoBehaviour
     [SerializeField] private string debugBellId;
     [SerializeField] private string debugUpgradeId;
     [SerializeField] private EnemyDef debugEnemyDef;
-    [SerializeField] private WaveSpawnEntry[] fixedNightWave;
     [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
     [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
     [FormerlySerializedAs("dayFaithReward")]
     [Min(0)] [SerializeField] private int startingNightFaith = 10;
-    [Min(0f)] [SerializeField] private float initialFaithCollectionPerSecond = 3f;
+    [FormerlySerializedAs("initialFaithCollectionPerSecond")]
+    [Min(0f)] [SerializeField] private float initialFaithCollectionPayoutAmount = 3f;
+    [Min(0.01f)] [SerializeField] private float initialFaithCollectionIntervalSeconds = 3f;
+    [Min(0)] [SerializeField] private int initialNightCemeteryRepairAmount = 1;
+    [Min(0.01f)] [SerializeField] private float initialNightCemeteryRepairIntervalSeconds = 1f;
     [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
     [FormerlySerializedAs("targetSurvivedNights")]
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
     private BellSystem bellSystem;
+    private CemeteryStateSystem cemeteryStateSystem;
     private DayRewardSystem dayRewardSystem;
     private FaithCollectionSystem faithCollectionSystem;
     private UpgradeSystem upgradeSystem;
@@ -5470,11 +6266,21 @@ public class Main : MonoBehaviour
     private WaveSystem waveSystem;
     private KeeperMovementSystem keeperMovementSystem;
     private NightPoiSystem nightPoiSystem;
+    private List<NightDefinition> nightDefinitions;
+    private NightDefinition activeNightDefinition;
+    private readonly Dictionary<string, BellWorldObject> bellWorldObjectsById = new(StringComparer.Ordinal);
     private bool laneSetupWarningShown;
     private bool keeperBindingWarningShown;
     private bool keeperSceneBindingInitialized;
+    private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
     public RunState RunState { get; private set; }
+    public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night && waveSystem != null && waveSystem.IsRunning;
+    public float CurrentNightElapsedSeconds => waveSystem != null ? waveSystem.ElapsedTime : 0f;
+    public float CurrentNightDurationSeconds => waveSystem != null ? waveSystem.DurationSeconds : 0f;
+    public bool HasUpcomingNightWave => waveSystem != null && waveSystem.HasUpcomingWave;
+    public float NextNightWaveTriggerTime => waveSystem != null ? waveSystem.NextWaveTriggerTime : 0f;
+    public float PreviousNightWaveTriggerTime => waveSystem != null ? waveSystem.PreviousWaveTriggerTime : 0f;
     private void Awake()
     {
         Time.timeScale = 1f;
@@ -5483,8 +6289,12 @@ public class Main : MonoBehaviour
             initialCemeteryState,
             initialKeeperMoveSpeed,
             startingNightFaith,
-            initialFaithCollectionPerSecond);
+            Mathf.Max(0, Mathf.RoundToInt(initialFaithCollectionPayoutAmount)),
+            initialFaithCollectionIntervalSeconds,
+            initialNightCemeteryRepairAmount,
+            initialNightCemeteryRepairIntervalSeconds);
         bellSystem = new BellSystem();
+        cemeteryStateSystem = new CemeteryStateSystem();
         dayRewardSystem = new DayRewardSystem();
         faithCollectionSystem = new FaithCollectionSystem();
         upgradeSystem = new UpgradeSystem();
@@ -5493,9 +6303,11 @@ public class Main : MonoBehaviour
         waveSystem = new WaveSystem();
         keeperMovementSystem = new KeeperMovementSystem();
         nightPoiSystem = new NightPoiSystem();
+        nightDefinitions = BuildNightDefinitions();
         if (laneEncounterCoordinator != null)
         {
             laneEncounterCoordinator.OnEnemyBreakthrough = HandleEnemyBreakthrough;
+            laneEncounterCoordinator.OnEnemyCemeteryAttack = HandleEnemyCemeteryAttack;
         }
     }
     private void Start()
@@ -5520,7 +6332,9 @@ public class Main : MonoBehaviour
             return;
         }
         UpdateKeeper();
+        ProcessPendingBellInteraction();
         UpdateNightFaithCollection();
+        UpdateNightCemeteryRepair();
         UpdateWaveSpawning();
         UpdateNightCompletion();
         HandleDebugInput();
@@ -5538,7 +6352,10 @@ public class Main : MonoBehaviour
             RunState.CurrentDay++;
         }
         RunState.CurrentPhase = GamePhase.Day;
+        activeNightDefinition = null;
+        ClearPendingBellInteraction();
         faithCollectionSystem.EndNight(RunState);
+        cemeteryStateSystem.ResetNightRepairProgress(RunState);
         waveSystem.StopWave();
         StopKeeperMovement();
         RefreshPresentation();
@@ -5555,7 +6372,9 @@ public class Main : MonoBehaviour
         }
         RunState.CurrentNight++;
         RunState.CurrentPhase = GamePhase.Night;
+        ClearPendingBellInteraction();
         faithCollectionSystem.StartNight(RunState);
+        cemeteryStateSystem.ResetNightRepairProgress(RunState);
         PrepareKeeperForNight();
         StartNightWave();
         RefreshPresentation();
@@ -5602,12 +6421,30 @@ public class Main : MonoBehaviour
     }
     public void DamageCemetery(int amount)
     {
-        RunState.CemeteryState -= amount;
-        if (RunState.CemeteryState < 0)
+        if (RunState == null || cemeteryStateSystem == null)
         {
-            RunState.CemeteryState = 0;
+            return;
+        }
+        var didChangeState = cemeteryStateSystem.ApplyBreakthroughDamage(RunState, amount);
+        if (didChangeState)
+        {
+            RefreshPresentation();
         }
         TryEnterDefeat();
+    }
+    public bool TryGetNightPoiProgress(string poiId, NightPoiType poiType, out float normalizedProgress)
+    {
+        normalizedProgress = 0f;
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night || string.IsNullOrWhiteSpace(poiId))
+        {
+            return false;
+        }
+        return poiType switch
+        {
+            NightPoiType.FaithPoint => TryGetFaithPoiProgress(poiId, out normalizedProgress),
+            NightPoiType.RepairPoint => TryGetRepairPoiProgress(poiId, out normalizedProgress),
+            _ => false
+        };
     }
     public bool TryMoveKeeperTo(Vector2 targetPosition, string targetPointId = null)
     {
@@ -5619,6 +6456,7 @@ public class Main : MonoBehaviour
         {
             return false;
         }
+        ClearPendingBellInteraction();
         keeperMovementSystem.SetMoveTarget(RunState.Keeper, targetPosition, targetPointId);
         return true;
     }
@@ -5644,6 +6482,53 @@ public class Main : MonoBehaviour
         }
         return TryMoveKeeperToPoi(poi.Id);
     }
+    public bool TryInteractWithBell(string bellId)
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            Debug.LogWarning("Bell interaction failed: empty bell id");
+            return false;
+        }
+        var bellWorldObject = ResolveBellWorldObject(bellId);
+        if (bellWorldObject == null)
+        {
+            var missingBellResult = BellRingResult.Failure(BellRingFailureReason.BellNotFound);
+            PublishBellFeedback(missingBellResult);
+            return false;
+        }
+        if (!IsKeeperReadyToUseBells())
+        {
+            var moveStarted = TryMoveKeeperToPoiType(NightPoiType.Bells);
+            if (moveStarted)
+            {
+                pendingBellInteractionId = bellId;
+            }
+            return moveStarted;
+        }
+        if (bellWorldObject.IsOnCooldown)
+        {
+            var cooldownResult = BellRingResult.Failure(
+                BellRingFailureReason.OnCooldown,
+                bellWorldObject.CooldownRemainingSeconds);
+            PublishBellFeedback(cooldownResult);
+            return false;
+        }
+        ClearPendingBellInteraction();
+        var bellResult = TryRingBell(bellId);
+        if (bellResult.IsSuccess &&
+            bellResult.SpawnResult != null &&
+            bellResult.SpawnResult.IsSuccess &&
+            bellResult.BellDef != null)
+        {
+            bellWorldObject.StartCooldown(bellResult.BellDef.CooldownSeconds);
+        }
+        PublishBellFeedback(bellResult);
+        return bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess;
+    }
     private void HandleEnemyBreakthrough(LaneEnemy laneEnemy)
     {
         if (laneEnemy == null)
@@ -5656,10 +6541,24 @@ public class Main : MonoBehaviour
             Debug.LogWarning("Enemy breakthrough failed: EnemyDef is missing");
             return;
         }
-        var breakthroughDamage = laneEnemy.EnemyDef.Damage;
-        DamageCemetery(breakthroughDamage);
+        Debug.Log($"Enemy breakthrough: '{laneEnemy.EnemyDef.Id}' started attacking cemetery");
+    }
+    private void HandleEnemyCemeteryAttack(LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null)
+        {
+            Debug.LogWarning("Enemy cemetery attack failed: laneEnemy is missing");
+            return;
+        }
+        if (laneEnemy.EnemyDef == null)
+        {
+            Debug.LogWarning("Enemy cemetery attack failed: EnemyDef is missing");
+            return;
+        }
+        var cemeteryDamage = laneEnemy.EnemyDef.Damage;
+        DamageCemetery(cemeteryDamage);
         Debug.Log(
-            $"Enemy breakthrough: '{laneEnemy.EnemyDef.Id}' dealt {breakthroughDamage} cemetery damage");
+            $"Enemy cemetery attack: '{laneEnemy.EnemyDef.Id}' dealt {cemeteryDamage} cemetery damage");
     }
     public BellRingResult TryRingBell(string bellId)
     {
@@ -5682,6 +6581,57 @@ public class Main : MonoBehaviour
             RegisterPlayerUnitOnLane(bellResult.SpawnResult.SpawnedUnit);
         }
         return bellResult;
+    }
+    private bool IsKeeperReadyToUseBells()
+    {
+        return RunState?.Keeper != null &&
+               RunState.Keeper.ActivityState != KeeperActivityState.Moving &&
+               RunState.Keeper.InteractionState == KeeperInteractionState.Bells;
+    }
+    private void PublishBellFeedback(BellRingResult bellResult)
+    {
+        if (G.HUD == null || bellResult == null)
+        {
+            return;
+        }
+        if (bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess)
+        {
+            G.HUD.ShowBellFeedback($"Bell: {bellResult.BellDef.DisplayName}");
+            return;
+        }
+        if (!bellResult.IsSuccess)
+        {
+            if (bellResult.FailureReason == BellRingFailureReason.OnCooldown)
+            {
+                G.HUD.ShowBellFeedback(
+                    $"Bell cooldown: {bellResult.CooldownRemainingSeconds:0.0}s");
+                return;
+            }
+            G.HUD.ShowBellFeedback($"Bell failed: {bellResult.FailureReason}");
+            return;
+        }
+        if (bellResult.SpawnResult != null && !bellResult.SpawnResult.IsSuccess)
+        {
+            G.HUD.ShowBellFeedback($"Spawn failed: {bellResult.SpawnResult.FailureReason}");
+        }
+    }
+    private void ProcessPendingBellInteraction()
+    {
+        if (string.IsNullOrWhiteSpace(pendingBellInteractionId) || RunState?.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+        if (!IsKeeperReadyToUseBells())
+        {
+            return;
+        }
+        var bellId = pendingBellInteractionId;
+        pendingBellInteractionId = string.Empty;
+        TryInteractWithBell(bellId);
+    }
+    private void ClearPendingBellInteraction()
+    {
+        pendingBellInteractionId = string.Empty;
     }
     public EnemySpawnResult TrySpawnDebugEnemy()
     {
@@ -5756,8 +6706,15 @@ public class Main : MonoBehaviour
     }
     private void StartNightWave()
     {
-        waveSystem.StartWave(fixedNightWave);
-        Debug.Log("Night wave started");
+        activeNightDefinition = ResolveNightDefinitionForCurrentNight();
+        waveSystem.StartWave(activeNightDefinition);
+        if (activeNightDefinition == null)
+        {
+            Debug.LogWarning($"Night setup failed: definition for night {RunState?.CurrentNight} not found");
+            return;
+        }
+        Debug.Log(
+            $"Night wave started: '{activeNightDefinition.Id}' duration={activeNightDefinition.DurationSeconds:0.0}s");
     }
     private void UpdateWaveSpawning()
     {
@@ -5792,6 +6749,7 @@ public class Main : MonoBehaviour
     {
         ApplyCompletedNightReward();
         Debug.Log("Night completed");
+        activeNightDefinition = null;
         if (TryEnterWin())
         {
             return;
@@ -5852,6 +6810,57 @@ public class Main : MonoBehaviour
         }
         faithCollectionSystem.UpdateCollection(RunState, Time.deltaTime);
     }
+    private void UpdateNightCemeteryRepair()
+    {
+        if (RunState == null ||
+            cemeteryStateSystem == null ||
+            RunState.CurrentPhase != GamePhase.Night ||
+            RunState.Keeper == null ||
+            RunState.Keeper.ActivityState == KeeperActivityState.Moving ||
+            RunState.Keeper.InteractionState != KeeperInteractionState.RepairPoint)
+        {
+            return;
+        }
+        var repairedAmount = cemeteryStateSystem.ApplyNightRepair(RunState, Time.deltaTime);
+        if (repairedAmount <= 0)
+        {
+            return;
+        }
+        RefreshPresentation();
+    }
+    private bool TryGetFaithPoiProgress(string poiId, out float normalizedProgress)
+    {
+        normalizedProgress = 0f;
+        var collectionIntervalSeconds = Mathf.Max(0f, RunState.FaithCollectionIntervalSeconds);
+        if (RunState.FaithCollectionPayoutAmount <= 0 || collectionIntervalSeconds <= 0f)
+        {
+            return false;
+        }
+        normalizedProgress = Mathf.Clamp01(RunState.FaithCollectionTimerProgress / collectionIntervalSeconds);
+        return IsKeeperReadyAtPoi(poiId, NightPoiType.FaithPoint) || normalizedProgress > 0f;
+    }
+    private bool TryGetRepairPoiProgress(string poiId, out float normalizedProgress)
+    {
+        normalizedProgress = 0f;
+        var repairIntervalSeconds = Mathf.Max(0f, RunState.NightCemeteryRepairIntervalSeconds);
+        if (RunState.NightCemeteryRepairAmount <= 0 ||
+            repairIntervalSeconds <= 0f ||
+            RunState.CemeteryState >= RunState.CemeteryMaxState)
+        {
+            return false;
+        }
+        normalizedProgress = Mathf.Clamp01(RunState.NightCemeteryRepairTimerProgress / repairIntervalSeconds);
+        return IsKeeperReadyAtPoi(poiId, NightPoiType.RepairPoint) || normalizedProgress > 0f;
+    }
+    private bool IsKeeperReadyAtPoi(string poiId, NightPoiType poiType)
+    {
+        if (RunState?.Keeper == null || RunState.Keeper.ActivityState == KeeperActivityState.Moving)
+        {
+            return false;
+        }
+        return RunState.Keeper.CurrentPoiId == poiId &&
+               RunState.Keeper.InteractionState == NightPoiSystem.ToKeeperInteractionState(poiType);
+    }
     private bool TryResolveKeeperActor()
     {
         if (keeperActor == null)
@@ -5882,6 +6891,7 @@ public class Main : MonoBehaviour
         var scenePois = FindObjectsByType<NightPointOfInterest>();
         nightPoiSystem.RebuildFromScene(scenePois);
         ValidateNightPoiClickSetup(scenePois);
+        RebuildBellWorldObjectRegistry();
     }
     private bool TryResolveNightPoiById(string poiId, out NightPointOfInterest poi)
     {
@@ -5925,6 +6935,49 @@ public class Main : MonoBehaviour
         {
             Debug.LogWarning("Night POI click setup incomplete: main camera is missing Physics2DRaycaster");
         }
+    }
+    private void RebuildBellWorldObjectRegistry()
+    {
+        var bellWorldObjects = FindObjectsByType<BellWorldObject>();
+        bellWorldObjectsById.Clear();
+        if (bellWorldObjects == null || bellWorldObjects.Length == 0)
+        {
+            Debug.LogWarning("Bell world setup incomplete: no BellWorldObject found in scene");
+            return;
+        }
+        for (var i = 0; i < bellWorldObjects.Length; i++)
+        {
+            var bellWorldObject = bellWorldObjects[i];
+            if (bellWorldObject == null)
+            {
+                continue;
+            }
+            if (bellWorldObject.TryGetWorldInteractionValidationError(out var validationError))
+            {
+                Debug.LogWarning(
+                    $"Bell world setup incomplete for '{bellWorldObject.name}': {validationError}");
+                continue;
+            }
+            if (bellWorldObjectsById.ContainsKey(bellWorldObject.BellId))
+            {
+                Debug.LogWarning($"Bell world setup incomplete: duplicate bell id '{bellWorldObject.BellId}'");
+                continue;
+            }
+            bellWorldObjectsById.Add(bellWorldObject.BellId, bellWorldObject);
+        }
+    }
+    private BellWorldObject ResolveBellWorldObject(string bellId)
+    {
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            return null;
+        }
+        if (bellWorldObjectsById.Count <= 0)
+        {
+            RebuildBellWorldObjectRegistry();
+        }
+        bellWorldObjectsById.TryGetValue(bellId, out var bellWorldObject);
+        return bellWorldObject;
     }
     private void BindHud()
     {
@@ -6037,8 +7090,26 @@ public class Main : MonoBehaviour
         {
             return;
         }
+        ClearPendingBellInteraction();
         keeperMovementSystem.Stop(RunState.Keeper);
         ClearKeeperInteractionAvailability();
+    }
+    private List<NightDefinition> BuildNightDefinitions()
+    {
+        return new List<NightDefinition>
+        {
+            new Night1()
+        };
+    }
+    private NightDefinition ResolveNightDefinitionForCurrentNight()
+    {
+        if (nightDefinitions == null || nightDefinitions.Count == 0)
+        {
+            return null;
+        }
+        var requestedNightIndex = Mathf.Max(0, RunState.CurrentNight - 1);
+        var resolvedNightIndex = Mathf.Min(requestedNightIndex, nightDefinitions.Count - 1);
+        return nightDefinitions[resolvedNightIndex];
     }
     private void PrepareKeeperForNight()
     {
@@ -6122,7 +7193,7 @@ public class Main : MonoBehaviour
         var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
         return upgradeDef.EffectType switch
         {
-            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith/sec at Faith Point",
+            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith per payout at Faith Point",
             UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
             _ => string.Empty

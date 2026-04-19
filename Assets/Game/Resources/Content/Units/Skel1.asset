@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnitDef
   id: skel1
   hp: 10
-  damage: 1
+  damage: 3
   attackInterval: 1
   moveSpeed: 1
   lifetimeSeconds: 30

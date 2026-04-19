@@ -2,22 +2,37 @@ using System.Collections.Generic;
 
 public class WaveSystem
 {
-    private readonly List<WaveSpawnEntry> activeEntries = new();
+    private readonly List<NightWaveEntry> activeEntries = new();
 
     private float elapsedTime;
-    private int nextSpawnIndex;
+    private float durationSeconds;
+    private int nextWaveIndex;
     private bool isRunning;
 
     public bool IsRunning => isRunning;
-    public bool AreAllSpawnsIssued => !isRunning || nextSpawnIndex >= activeEntries.Count;
+    public bool AreAllSpawnsIssued => !isRunning || nextWaveIndex >= activeEntries.Count;
+    public float ElapsedTime => elapsedTime;
+    public float DurationSeconds => durationSeconds;
+    public bool HasUpcomingWave => isRunning && nextWaveIndex < activeEntries.Count;
+    public float NextWaveTriggerTime => HasUpcomingWave ? activeEntries[nextWaveIndex].TriggerTime : durationSeconds;
+    public float PreviousWaveTriggerTime => nextWaveIndex <= 0 ? 0f : activeEntries[nextWaveIndex - 1].TriggerTime;
 
-    public void StartWave(IReadOnlyList<WaveSpawnEntry> entries)
+    public void StartWave(NightDefinition nightDefinition)
     {
         activeEntries.Clear();
         elapsedTime = 0f;
-        nextSpawnIndex = 0;
-        isRunning = true;
+        durationSeconds = 0f;
+        nextWaveIndex = 0;
+        isRunning = nightDefinition != null;
 
+        if (nightDefinition == null)
+        {
+            return;
+        }
+
+        durationSeconds = nightDefinition.DurationSeconds;
+
+        var entries = nightDefinition.WaveEntries;
         if (entries == null)
         {
             return;
@@ -31,21 +46,23 @@ public class WaveSystem
                 continue;
             }
 
-            activeEntries.Add(new WaveSpawnEntry
+            if (durationSeconds > 0f && entry.TriggerTime > durationSeconds)
             {
-                enemyId = entry.enemyId,
-                spawnTime = entry.spawnTime
-            });
+                continue;
+            }
+
+            activeEntries.Add(entry);
         }
 
-        activeEntries.Sort((a, b) => a.spawnTime.CompareTo(b.spawnTime));
+        activeEntries.Sort((a, b) => a.TriggerTime.CompareTo(b.TriggerTime));
     }
 
     public void StopWave()
     {
         isRunning = false;
         elapsedTime = 0f;
-        nextSpawnIndex = 0;
+        durationSeconds = 0f;
+        nextWaveIndex = 0;
         activeEntries.Clear();
     }
 
@@ -58,16 +75,38 @@ public class WaveSystem
 
         elapsedTime += deltaTime;
 
-        while (nextSpawnIndex < activeEntries.Count)
+        while (nextWaveIndex < activeEntries.Count)
         {
-            var nextEntry = activeEntries[nextSpawnIndex];
-            if (nextEntry.spawnTime > elapsedTime)
+            var nextEntry = activeEntries[nextWaveIndex];
+            if (nextEntry.TriggerTime > elapsedTime)
             {
                 break;
             }
 
-            readyEnemyIds.Add(nextEntry.enemyId);
-            nextSpawnIndex++;
+            AppendReadySpawns(nextEntry, readyEnemyIds);
+            nextWaveIndex++;
+        }
+    }
+
+    private static void AppendReadySpawns(NightWaveEntry waveEntry, List<string> readyEnemyIds)
+    {
+        if (waveEntry?.Spawns == null || readyEnemyIds == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < waveEntry.Spawns.Count; i++)
+        {
+            var spawnEntry = waveEntry.Spawns[i];
+            if (spawnEntry == null || string.IsNullOrWhiteSpace(spawnEntry.EnemyId) || spawnEntry.Count <= 0)
+            {
+                continue;
+            }
+
+            for (var spawnIndex = 0; spawnIndex < spawnEntry.Count; spawnIndex++)
+            {
+                readyEnemyIds.Add(spawnEntry.EnemyId);
+            }
         }
     }
 }

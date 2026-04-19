@@ -18,19 +18,23 @@ public class Main : MonoBehaviour
     [SerializeField] private string debugBellId;
     [SerializeField] private string debugUpgradeId;
     [SerializeField] private EnemyDef debugEnemyDef;
-    [SerializeField] private WaveSpawnEntry[] fixedNightWave;
     [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
     [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
     [FormerlySerializedAs("dayFaithReward")]
     [Min(0)] [SerializeField] private int startingNightFaith = 10;
-    [Min(0f)] [SerializeField] private float initialFaithCollectionPerSecond = 3f;
+    [FormerlySerializedAs("initialFaithCollectionPerSecond")]
+    [Min(0f)] [SerializeField] private float initialFaithCollectionPayoutAmount = 3f;
+    [Min(0.01f)] [SerializeField] private float initialFaithCollectionIntervalSeconds = 3f;
+    [Min(0)] [SerializeField] private int initialNightCemeteryRepairAmount = 1;
+    [Min(0.01f)] [SerializeField] private float initialNightCemeteryRepairIntervalSeconds = 1f;
     [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
 
     [FormerlySerializedAs("targetSurvivedNights")]
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
 
     private BellSystem bellSystem;
+    private CemeteryStateSystem cemeteryStateSystem;
     private DayRewardSystem dayRewardSystem;
     private FaithCollectionSystem faithCollectionSystem;
     private UpgradeSystem upgradeSystem;
@@ -39,12 +43,22 @@ public class Main : MonoBehaviour
     private WaveSystem waveSystem;
     private KeeperMovementSystem keeperMovementSystem;
     private NightPoiSystem nightPoiSystem;
+    private List<NightDefinition> nightDefinitions;
+    private NightDefinition activeNightDefinition;
+    private readonly Dictionary<string, BellWorldObject> bellWorldObjectsById = new(StringComparer.Ordinal);
     private bool laneSetupWarningShown;
     private bool keeperBindingWarningShown;
     private bool keeperSceneBindingInitialized;
+    private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
 
     public RunState RunState { get; private set; }
+    public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night && waveSystem != null && waveSystem.IsRunning;
+    public float CurrentNightElapsedSeconds => waveSystem != null ? waveSystem.ElapsedTime : 0f;
+    public float CurrentNightDurationSeconds => waveSystem != null ? waveSystem.DurationSeconds : 0f;
+    public bool HasUpcomingNightWave => waveSystem != null && waveSystem.HasUpcomingWave;
+    public float NextNightWaveTriggerTime => waveSystem != null ? waveSystem.NextWaveTriggerTime : 0f;
+    public float PreviousNightWaveTriggerTime => waveSystem != null ? waveSystem.PreviousWaveTriggerTime : 0f;
 
     private void Awake()
     {
@@ -54,8 +68,12 @@ public class Main : MonoBehaviour
             initialCemeteryState,
             initialKeeperMoveSpeed,
             startingNightFaith,
-            initialFaithCollectionPerSecond);
+            Mathf.Max(0, Mathf.RoundToInt(initialFaithCollectionPayoutAmount)),
+            initialFaithCollectionIntervalSeconds,
+            initialNightCemeteryRepairAmount,
+            initialNightCemeteryRepairIntervalSeconds);
         bellSystem = new BellSystem();
+        cemeteryStateSystem = new CemeteryStateSystem();
         dayRewardSystem = new DayRewardSystem();
         faithCollectionSystem = new FaithCollectionSystem();
         upgradeSystem = new UpgradeSystem();
@@ -64,10 +82,12 @@ public class Main : MonoBehaviour
         waveSystem = new WaveSystem();
         keeperMovementSystem = new KeeperMovementSystem();
         nightPoiSystem = new NightPoiSystem();
+        nightDefinitions = BuildNightDefinitions();
 
         if (laneEncounterCoordinator != null)
         {
             laneEncounterCoordinator.OnEnemyBreakthrough = HandleEnemyBreakthrough;
+            laneEncounterCoordinator.OnEnemyCemeteryAttack = HandleEnemyCemeteryAttack;
         }
     }
 
@@ -96,7 +116,9 @@ public class Main : MonoBehaviour
         }
 
         UpdateKeeper();
+        ProcessPendingBellInteraction();
         UpdateNightFaithCollection();
+        UpdateNightCemeteryRepair();
         UpdateWaveSpawning();
         UpdateNightCompletion();
         HandleDebugInput();
@@ -117,7 +139,10 @@ public class Main : MonoBehaviour
         }
 
         RunState.CurrentPhase = GamePhase.Day;
+        activeNightDefinition = null;
+        ClearPendingBellInteraction();
         faithCollectionSystem.EndNight(RunState);
+        cemeteryStateSystem.ResetNightRepairProgress(RunState);
         waveSystem.StopWave();
         StopKeeperMovement();
         RefreshPresentation();
@@ -136,7 +161,9 @@ public class Main : MonoBehaviour
 
         RunState.CurrentNight++;
         RunState.CurrentPhase = GamePhase.Night;
+        ClearPendingBellInteraction();
         faithCollectionSystem.StartNight(RunState);
+        cemeteryStateSystem.ResetNightRepairProgress(RunState);
         PrepareKeeperForNight();
         StartNightWave();
         RefreshPresentation();
@@ -192,14 +219,35 @@ public class Main : MonoBehaviour
 
     public void DamageCemetery(int amount)
     {
-        RunState.CemeteryState -= amount;
-
-        if (RunState.CemeteryState < 0)
+        if (RunState == null || cemeteryStateSystem == null)
         {
-            RunState.CemeteryState = 0;
+            return;
+        }
+
+        var didChangeState = cemeteryStateSystem.ApplyBreakthroughDamage(RunState, amount);
+        if (didChangeState)
+        {
+            RefreshPresentation();
         }
 
         TryEnterDefeat();
+    }
+
+    public bool TryGetNightPoiProgress(string poiId, NightPoiType poiType, out float normalizedProgress)
+    {
+        normalizedProgress = 0f;
+
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night || string.IsNullOrWhiteSpace(poiId))
+        {
+            return false;
+        }
+
+        return poiType switch
+        {
+            NightPoiType.FaithPoint => TryGetFaithPoiProgress(poiId, out normalizedProgress),
+            NightPoiType.RepairPoint => TryGetRepairPoiProgress(poiId, out normalizedProgress),
+            _ => false
+        };
     }
 
     public bool TryMoveKeeperTo(Vector2 targetPosition, string targetPointId = null)
@@ -214,6 +262,7 @@ public class Main : MonoBehaviour
             return false;
         }
 
+        ClearPendingBellInteraction();
         keeperMovementSystem.SetMoveTarget(RunState.Keeper, targetPosition, targetPointId);
         return true;
     }
@@ -245,6 +294,61 @@ public class Main : MonoBehaviour
         return TryMoveKeeperToPoi(poi.Id);
     }
 
+    public bool TryInteractWithBell(string bellId)
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            Debug.LogWarning("Bell interaction failed: empty bell id");
+            return false;
+        }
+
+        var bellWorldObject = ResolveBellWorldObject(bellId);
+        if (bellWorldObject == null)
+        {
+            var missingBellResult = BellRingResult.Failure(BellRingFailureReason.BellNotFound);
+            PublishBellFeedback(missingBellResult);
+            return false;
+        }
+
+        if (!IsKeeperReadyToUseBells())
+        {
+            var moveStarted = TryMoveKeeperToPoiType(NightPoiType.Bells);
+            if (moveStarted)
+            {
+                pendingBellInteractionId = bellId;
+            }
+
+            return moveStarted;
+        }
+
+        if (bellWorldObject.IsOnCooldown)
+        {
+            var cooldownResult = BellRingResult.Failure(
+                BellRingFailureReason.OnCooldown,
+                bellWorldObject.CooldownRemainingSeconds);
+            PublishBellFeedback(cooldownResult);
+            return false;
+        }
+
+        ClearPendingBellInteraction();
+        var bellResult = TryRingBell(bellId);
+        if (bellResult.IsSuccess &&
+            bellResult.SpawnResult != null &&
+            bellResult.SpawnResult.IsSuccess &&
+            bellResult.BellDef != null)
+        {
+            bellWorldObject.StartCooldown(bellResult.BellDef.CooldownSeconds);
+        }
+
+        PublishBellFeedback(bellResult);
+        return bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess;
+    }
+
     private void HandleEnemyBreakthrough(LaneEnemy laneEnemy)
     {
         if (laneEnemy == null)
@@ -259,10 +363,27 @@ public class Main : MonoBehaviour
             return;
         }
 
-        var breakthroughDamage = laneEnemy.EnemyDef.Damage;
-        DamageCemetery(breakthroughDamage);
+        Debug.Log($"Enemy breakthrough: '{laneEnemy.EnemyDef.Id}' started attacking cemetery");
+    }
+
+    private void HandleEnemyCemeteryAttack(LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null)
+        {
+            Debug.LogWarning("Enemy cemetery attack failed: laneEnemy is missing");
+            return;
+        }
+
+        if (laneEnemy.EnemyDef == null)
+        {
+            Debug.LogWarning("Enemy cemetery attack failed: EnemyDef is missing");
+            return;
+        }
+
+        var cemeteryDamage = laneEnemy.EnemyDef.Damage;
+        DamageCemetery(cemeteryDamage);
         Debug.Log(
-            $"Enemy breakthrough: '{laneEnemy.EnemyDef.Id}' dealt {breakthroughDamage} cemetery damage");
+            $"Enemy cemetery attack: '{laneEnemy.EnemyDef.Id}' dealt {cemeteryDamage} cemetery damage");
     }
 
     public BellRingResult TryRingBell(string bellId)
@@ -289,6 +410,68 @@ public class Main : MonoBehaviour
         }
 
         return bellResult;
+    }
+
+    private bool IsKeeperReadyToUseBells()
+    {
+        return RunState?.Keeper != null &&
+               RunState.Keeper.ActivityState != KeeperActivityState.Moving &&
+               RunState.Keeper.InteractionState == KeeperInteractionState.Bells;
+    }
+
+    private void PublishBellFeedback(BellRingResult bellResult)
+    {
+        if (G.HUD == null || bellResult == null)
+        {
+            return;
+        }
+
+        if (bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess)
+        {
+            G.HUD.ShowBellFeedback($"Bell: {bellResult.BellDef.DisplayName}");
+            return;
+        }
+
+        if (!bellResult.IsSuccess)
+        {
+            if (bellResult.FailureReason == BellRingFailureReason.OnCooldown)
+            {
+                G.HUD.ShowBellFeedback(
+                    $"Bell cooldown: {bellResult.CooldownRemainingSeconds:0.0}s");
+                return;
+            }
+
+            G.HUD.ShowBellFeedback($"Bell failed: {bellResult.FailureReason}");
+            return;
+        }
+
+        if (bellResult.SpawnResult != null && !bellResult.SpawnResult.IsSuccess)
+        {
+            G.HUD.ShowBellFeedback($"Spawn failed: {bellResult.SpawnResult.FailureReason}");
+        }
+    }
+
+    private void ProcessPendingBellInteraction()
+    {
+        if (string.IsNullOrWhiteSpace(pendingBellInteractionId) || RunState?.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+
+        if (!IsKeeperReadyToUseBells())
+        {
+            return;
+        }
+
+        var bellId = pendingBellInteractionId;
+        pendingBellInteractionId = string.Empty;
+
+        TryInteractWithBell(bellId);
+    }
+
+    private void ClearPendingBellInteraction()
+    {
+        pendingBellInteractionId = string.Empty;
     }
 
     public EnemySpawnResult TrySpawnDebugEnemy()
@@ -378,8 +561,17 @@ public class Main : MonoBehaviour
 
     private void StartNightWave()
     {
-        waveSystem.StartWave(fixedNightWave);
-        Debug.Log("Night wave started");
+        activeNightDefinition = ResolveNightDefinitionForCurrentNight();
+        waveSystem.StartWave(activeNightDefinition);
+
+        if (activeNightDefinition == null)
+        {
+            Debug.LogWarning($"Night setup failed: definition for night {RunState?.CurrentNight} not found");
+            return;
+        }
+
+        Debug.Log(
+            $"Night wave started: '{activeNightDefinition.Id}' duration={activeNightDefinition.DurationSeconds:0.0}s");
     }
 
     private void UpdateWaveSpawning()
@@ -422,6 +614,7 @@ public class Main : MonoBehaviour
     {
         ApplyCompletedNightReward();
         Debug.Log("Night completed");
+        activeNightDefinition = null;
         if (TryEnterWin())
         {
             return;
@@ -497,6 +690,68 @@ public class Main : MonoBehaviour
         faithCollectionSystem.UpdateCollection(RunState, Time.deltaTime);
     }
 
+    private void UpdateNightCemeteryRepair()
+    {
+        if (RunState == null ||
+            cemeteryStateSystem == null ||
+            RunState.CurrentPhase != GamePhase.Night ||
+            RunState.Keeper == null ||
+            RunState.Keeper.ActivityState == KeeperActivityState.Moving ||
+            RunState.Keeper.InteractionState != KeeperInteractionState.RepairPoint)
+        {
+            return;
+        }
+
+        var repairedAmount = cemeteryStateSystem.ApplyNightRepair(RunState, Time.deltaTime);
+        if (repairedAmount <= 0)
+        {
+            return;
+        }
+
+        RefreshPresentation();
+    }
+
+    private bool TryGetFaithPoiProgress(string poiId, out float normalizedProgress)
+    {
+        normalizedProgress = 0f;
+
+        var collectionIntervalSeconds = Mathf.Max(0f, RunState.FaithCollectionIntervalSeconds);
+        if (RunState.FaithCollectionPayoutAmount <= 0 || collectionIntervalSeconds <= 0f)
+        {
+            return false;
+        }
+
+        normalizedProgress = Mathf.Clamp01(RunState.FaithCollectionTimerProgress / collectionIntervalSeconds);
+        return IsKeeperReadyAtPoi(poiId, NightPoiType.FaithPoint) || normalizedProgress > 0f;
+    }
+
+    private bool TryGetRepairPoiProgress(string poiId, out float normalizedProgress)
+    {
+        normalizedProgress = 0f;
+
+        var repairIntervalSeconds = Mathf.Max(0f, RunState.NightCemeteryRepairIntervalSeconds);
+        if (RunState.NightCemeteryRepairAmount <= 0 ||
+            repairIntervalSeconds <= 0f ||
+            RunState.CemeteryState >= RunState.CemeteryMaxState)
+        {
+            return false;
+        }
+
+        normalizedProgress = Mathf.Clamp01(RunState.NightCemeteryRepairTimerProgress / repairIntervalSeconds);
+        return IsKeeperReadyAtPoi(poiId, NightPoiType.RepairPoint) || normalizedProgress > 0f;
+    }
+
+    private bool IsKeeperReadyAtPoi(string poiId, NightPoiType poiType)
+    {
+        if (RunState?.Keeper == null || RunState.Keeper.ActivityState == KeeperActivityState.Moving)
+        {
+            return false;
+        }
+
+        return RunState.Keeper.CurrentPoiId == poiId &&
+               RunState.Keeper.InteractionState == NightPoiSystem.ToKeeperInteractionState(poiType);
+    }
+
     private bool TryResolveKeeperActor()
     {
         if (keeperActor == null)
@@ -533,6 +788,7 @@ public class Main : MonoBehaviour
         var scenePois = FindObjectsByType<NightPointOfInterest>();
         nightPoiSystem.RebuildFromScene(scenePois);
         ValidateNightPoiClickSetup(scenePois);
+        RebuildBellWorldObjectRegistry();
     }
 
     private bool TryResolveNightPoiById(string poiId, out NightPointOfInterest poi)
@@ -587,6 +843,58 @@ public class Main : MonoBehaviour
         {
             Debug.LogWarning("Night POI click setup incomplete: main camera is missing Physics2DRaycaster");
         }
+    }
+
+    private void RebuildBellWorldObjectRegistry()
+    {
+        var bellWorldObjects = FindObjectsByType<BellWorldObject>();
+        bellWorldObjectsById.Clear();
+
+        if (bellWorldObjects == null || bellWorldObjects.Length == 0)
+        {
+            Debug.LogWarning("Bell world setup incomplete: no BellWorldObject found in scene");
+            return;
+        }
+
+        for (var i = 0; i < bellWorldObjects.Length; i++)
+        {
+            var bellWorldObject = bellWorldObjects[i];
+            if (bellWorldObject == null)
+            {
+                continue;
+            }
+
+            if (bellWorldObject.TryGetWorldInteractionValidationError(out var validationError))
+            {
+                Debug.LogWarning(
+                    $"Bell world setup incomplete for '{bellWorldObject.name}': {validationError}");
+                continue;
+            }
+
+            if (bellWorldObjectsById.ContainsKey(bellWorldObject.BellId))
+            {
+                Debug.LogWarning($"Bell world setup incomplete: duplicate bell id '{bellWorldObject.BellId}'");
+                continue;
+            }
+
+            bellWorldObjectsById.Add(bellWorldObject.BellId, bellWorldObject);
+        }
+    }
+
+    private BellWorldObject ResolveBellWorldObject(string bellId)
+    {
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            return null;
+        }
+
+        if (bellWorldObjectsById.Count <= 0)
+        {
+            RebuildBellWorldObjectRegistry();
+        }
+
+        bellWorldObjectsById.TryGetValue(bellId, out var bellWorldObject);
+        return bellWorldObject;
     }
 
     private void BindHud()
@@ -721,8 +1029,29 @@ public class Main : MonoBehaviour
             return;
         }
 
+        ClearPendingBellInteraction();
         keeperMovementSystem.Stop(RunState.Keeper);
         ClearKeeperInteractionAvailability();
+    }
+
+    private List<NightDefinition> BuildNightDefinitions()
+    {
+        return new List<NightDefinition>
+        {
+            new Night1()
+        };
+    }
+
+    private NightDefinition ResolveNightDefinitionForCurrentNight()
+    {
+        if (nightDefinitions == null || nightDefinitions.Count == 0)
+        {
+            return null;
+        }
+
+        var requestedNightIndex = Mathf.Max(0, RunState.CurrentNight - 1);
+        var resolvedNightIndex = Mathf.Min(requestedNightIndex, nightDefinitions.Count - 1);
+        return nightDefinitions[resolvedNightIndex];
     }
 
     private void PrepareKeeperForNight()
@@ -823,7 +1152,7 @@ public class Main : MonoBehaviour
 
         return upgradeDef.EffectType switch
         {
-            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith/sec at Faith Point",
+            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith per payout at Faith Point",
             UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
             _ => string.Empty

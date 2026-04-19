@@ -1,15 +1,16 @@
 # Prompt Template
 
 ## Purpose
-Этот шаблон нужен для постановки задач Codex маленькими, управляемыми итерациями.
+Этот шаблон нужен для постановки задач Codex маленькими, управляемыми итерациями для Bellgrave.
 
-Его не обязательно каждый раз использовать целиком.
-Можно использовать:
-- полную версию для важных задач;
-- сокращённую версию для обычных задач;
-- мини-версию для мелких правок.
+Главное правило:
+- сначала план;
+- потом реализация;
+- одна маленькая задача за раз;
+- не ломать текущий каркас проекта;
+- не откатываться к старой модели, где gameplay идёт напрямую из HUD.
 
-Главное — сохранять структуру:
+Структура:
 context -> current state -> task -> constraints -> request format
 
 ---
@@ -27,42 +28,52 @@ Architecture style:
 - gameplay rules live in systems
 - content lives in defs / CMS
 
+Important current design direction:
+- night gameplay is now management-defense
+- keeper moves between points of interest
+- actions are restricted by keeper position
+- bells are world interactions, not pure HUD actions
+- day phase stays short and meta-oriented
+
 ## Current State
-Describe what is already implemented.
+Describe only what already exists right now.
 
 Example:
-- RunState exists
-- phase switching exists
-- HUD shows Faith / Gold / CemeteryState
-- BellDef / UnitDef are not implemented yet
+- lane combat exists
+- enemy waves exist
+- cemetery hp exists
+- bell ringing currently still works from old flow
+- keeper movement does not exist yet
+- faith is still mostly fixed for the whole night
 
 ## Task
 Describe one concrete task only.
 
 Example:
-Implement a basic BellSystem for ringing bells during the night phase.
+Implement keeper movement between 3 night points of interest.
 
 ## Constraints
-List the most important rules for this task.
+List the key rules for this task.
 
 Example:
-- do not put bell balance into Main
-- UI must not spawn units directly
-- use BellDef
-- keep the solution simple
-- no overengineering
-- code should stay readable for manual expansion later
+- do not redesign unrelated combat systems
+- keep Main as orchestrator
+- do not move gameplay authority into UI
+- do not overengineer pathfinding; simple point-to-point movement is enough
+- keep the solution readable for manual iteration
+- if this task is large, split it into smaller implementation steps first
 
 ## Request
 First give an implementation plan in 3–7 steps without code.  
-Do not write the code yet.  
+Do not write code yet.  
 After I approve the plan, implement only the agreed scope.
 
 ---
 
 # Short Template
 
-Project: Bellgrave  
+Project: Bellgrave
+
 Current state:
 [briefly describe current implementation]
 
@@ -70,9 +81,11 @@ Task:
 [one concrete task]
 
 Constraints:
-- [rule 1]
-- [rule 2]
-- [rule 3]
+- Main remains orchestrator
+- UI only sends intent
+- no rollback to old HUD-driven bell architecture
+- keep scope minimal
+- no overengineering
 
 Request:
 First give a short implementation plan without code.
@@ -88,9 +101,12 @@ Task:
 [...]
 
 Constraints:
-[...]
+- keep current architecture
+- do not expand scope
+- plan first, no code
 
-First give plan only, no code yet.
+Request:
+First give a short plan only.
 
 ---
 
@@ -99,19 +115,23 @@ First give plan only, no code yet.
 Context:
 Project Bellgrave in Unity.
 Architecture: Main orchestrates, UI only sends intent, content through defs/CMS.
+Night gameplay is now based on keeper movement between points of interest.
 
 Current state:
-RunState and phase switching already exist.
-HUD shows Faith, Gold, and CemeteryState.
+Basic lane combat and enemy spawning already exist.
+Cemetery damage exists.
+Bell ringing still follows the old direct flow.
+There is no keeper movement yet.
 
 Task:
-Implement a basic BellSystem that allows the player to ring a bell during the night phase and spend Faith to spawn a unit.
+Implement a basic keeper movement flow between Bells Point, Faith Point, and Repair Point.
 
 Constraints:
-- do not hardcode bell balance in Main
-- UI must not spawn units directly
-- use BellDef
-- keep it simple and easy to extend later
+- do not redesign lane combat
+- do not move logic into UI
+- keep movement simple and explicit
+- Main should coordinate, but movement logic can live outside Main
+- keep this task focused only on movement and arrival state
 
 Request:
 First give an implementation plan in 5 steps without code.
@@ -125,19 +145,20 @@ Context:
 Project Bellgrave in Unity.
 
 Current state:
-Bell ringing works, but Main has become too large and now contains validation, resource spending, and direct spawn calls.
+Bell ringing works, but it is still tied too directly to the old interaction flow and is not restricted by keeper position.
 
 Task:
-Refactor the current bell flow so that Main stays an orchestrator and the bell logic moves into a dedicated BellSystem.
+Refactor bell usage so that ringing is only possible when the keeper is inside the bells area.
 
 Constraints:
-- do not rewrite unrelated systems
-- keep current behavior unchanged
+- keep current bell content intact
+- do not redesign the whole resource system
 - preserve readability
-- avoid large structural changes outside bell flow
+- avoid unrelated changes
+- keep Main as orchestrator
 
 Request:
-First analyze the current problem and propose a refactor plan in steps.
+First analyze the current flow and propose a minimal refactor plan.
 Do not write code yet.
 
 ---
@@ -145,15 +166,15 @@ Do not write code yet.
 # Bugfix Prompt Example
 
 Current state:
-Bell button sometimes spends Faith, but unit does not spawn if the phase changes on the same frame.
+The keeper is supposed to unlock interaction after reaching a point of interest, but sometimes the game still thinks he is moving and the action stays blocked.
 
 Task:
-Find the likely cause and propose a minimal fix.
+Find the likely cause and propose a minimal safe fix.
 
 Constraints:
-- do not redesign the whole phase system
+- do not redesign the entire movement system
 - prefer a local fix
-- keep architecture intact
+- preserve the current architecture
 
 Request:
 First explain the likely cause and propose the smallest safe fix.
@@ -167,10 +188,10 @@ No code yet.
 Do not ask Codex to implement several large systems at once.
 
 ## 2. Always include current state
-Codex should know what already exists.
+Codex should know what already exists and what still belongs to the old version.
 
 ## 3. Always include constraints
-Especially architectural ones.
+Especially architectural ones and scope limits.
 
 ## 4. Prefer plan first
 This is the default mode.
@@ -180,29 +201,35 @@ After plan approval, ask to implement only the exact agreed step.
 
 ## 6. Keep prompts concrete
 Avoid vague requests like:
-- make combat better
-- improve architecture
+- make night gameplay deeper
+- improve management
 - add progression
 
 Prefer:
-- add end-of-night condition
-- implement UpgradeDef and purchase flow
-- move faith spending from UI into ResourceSystem
+- add keeper movement
+- gate bell usage by keeper position
+- add faith collection point
+- rework breakthrough enemies to persist at cemetery
+- move gold rewards to enemy kills
 
 ---
 
 # Recommended Working Pattern
 
-1. Write a task using the short or full template.
+1. Write one concrete task.
 2. Ask for plan only.
 3. Review the plan.
 4. Correct the plan if needed.
-5. Ask Codex to implement the approved scope.
+5. Ask Codex to implement only the approved scope.
 6. Test in Unity.
-7. If needed, ask for a small follow-up fix.
+7. Request a small follow-up fix if needed.
 8. Move to the next task.
 
 ---
 
 # Personal Rule For This Project
 If a task feels too big to clearly fit in one prompt, split it before sending it to Codex.
+
+For Bellgrave specifically:
+prefer implementation order that strengthens the new night loop first:
+keeper -> POI -> gated actions -> faith collection -> breakthrough pressure -> progression

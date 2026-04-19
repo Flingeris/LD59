@@ -12,6 +12,11 @@ public class BellSystem
             return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
         }
 
+        if (runState.Keeper == null || runState.Keeper.InteractionState != KeeperInteractionState.Bells)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.NotAtBellPoint);
+        }
+
         var bellDef = CMS.Get<BellDef>(bellId);
         if (bellDef == null)
         {
@@ -30,6 +35,7 @@ public class BellSystem
         }
 
         runState.Faith -= bellDef.FaithCost;
+        G.audioSystem.Play(SoundId.SFX_BellRing);
         return BellRingResult.Success(bellDef, unitDef);
     }
 }

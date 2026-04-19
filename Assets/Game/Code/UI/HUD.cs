@@ -336,7 +336,12 @@ public class HUD : MonoBehaviour
             return;
         }
 
-        var canRingBells = runState != null && runState.CurrentPhase == GamePhase.Night;
+        var canRingBells =
+            runState != null &&
+            runState.CurrentPhase == GamePhase.Night &&
+            runState.Keeper != null &&
+            runState.Keeper.InteractionState == KeeperInteractionState.Bells;
+
         for (var i = 0; i < bellButtons.Length; i++)
         {
             var binding = bellButtons[i];

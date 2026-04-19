@@ -1,441 +1,254 @@
 # Tasklist
 
 ## Goal
-Собрать играбельный MVP Bellgrave за ограниченное джемовое время.
+Перевести Bellgrave из простого bell-defense prototype в playable management-defense MVP, где основная глубина рождается ночью через управление хранителем, перемещение между точками интереса и конфликт между призывом, экономикой и ремонтом.
 
 Главный приоритет:
-- сначала рабочий core loop;
-- потом базовая читаемая подача;
-- потом только полировка и nice-to-have.
+- сначала новый night core loop;
+- потом подключение прогрессии;
+- потом полировка и nice-to-have.
 
 ---
 
-# Phase 0 — Project Setup
+# Phase A — Reframe The Night Loop
 
-## Task 0.1 — Prepare base project structure
-Сделать минимальный каркас проекта:
-- gameplay scene
-- ServiceMain bootstrap
-- Main
-- G bindings
-- базовый HUD / UI root
-- базовые папки проекта
-
-Done when:
-- сцена запускается;
-- ServiceMain поднимается;
-- Main доступен;
-- HUD и UI могут быть привязаны;
-- проект готов к следующему шагу.
-
-## Task 0.2 — Create runtime state model
-Сделать `RunState` и связанные runtime-модели.
+## Task A1 — Add Keeper runtime model
+Сделать runtime-модель хранителя.
 
 Минимум:
-- Faith
-- Gold
-- CemeteryState
-- CurrentDay
-- CurrentNight
-- CurrentPhase
-
-Done when:
-- все ключевые значения текущего забега лежат в одном понятном state-объекте;
-- Main может читать и менять этот state.
-
----
-
-# Phase 1 — Skeleton Of The Core Loop
-
-## Task 1.1 — Add phase system
-Сделать базовое переключение фаз:
-- Day
-- Night
-- Result / Transition step if needed
-
-Done when:
-- Main умеет явно запускать день;
-- Main умеет явно запускать ночь;
-- текущая фаза хранится явно;
-- в debug-режиме можно руками пройти цикл день -> ночь -> день.
-
-## Task 1.2 — Add temporary debug controls
-Сделать временные debug-кнопки / клавиши:
-- start night
-- end night
-- add faith
-- add gold
-- damage cemetery
-
-Done when:
-- основные состояния можно быстро тестировать без полной игры.
-
-Важно:
-эти штуки потом можно удалить или спрятать под debug flag.
-
-## Task 1.3 — Add HUD resource display
-Сделать отображение:
-- Faith
-- Gold
-- CemeteryState
-- Current phase
-
-Done when:
-- HUD всегда отражает актуальный runtime-state.
-
----
-
-# Phase 2 — Night Gameplay Base
-
-## Task 2.1 — Add bell definitions
-Сделать `BellDef`.
-
-Минимум в def:
-- id
-- display name
-- faith cost
-- linked unit id
-- icon / optional presentation refs
-
-MVP bells:
-- cheap bell
-- medium bell
-- heavy bell
-
-Done when:
-- колокола существуют как контент, а не хардкод в Main.
-
-## Task 2.2 — Add unit and enemy definitions
-Сделать:
-- `UnitDef`
-- `EnemyDef`
-
-Минимум:
-- hp
-- damage
-- attack interval
+- current position
 - move speed
-- prefab/view ref if needed
+- current target point
+- current interaction state
+- availability flags if needed
 
 Done when:
-- основные боевые сущности описаны через defs.
+- в runtime есть явное состояние хранителя;
+- Main может понимать, где хранитель находится и чем занят.
 
-## Task 2.3 — Implement BellSystem
-Сделать базовый `BellSystem`.
-
-Он должен:
-- принимать bell id;
-- проверять phase;
-- проверять faith;
-- списывать faith;
-- создавать юнита.
-
-Done when:
-- можно нажать bell button и вызвать нужного юнита;
-- при нехватке faith вызова не происходит.
-
-## Task 2.4 — Create lane prototype
-Сделать одну боевую линию.
+## Task A2 — Add keeper scene actor and movement
+Сделать хранителя как игрового агента на карте.
 
 Минимум:
-- точка спавна юнитов игрока;
-- точка спавна врагов;
-- движение навстречу;
-- встреча;
-- бой по таймингу;
-- смерть;
-- продолжение движения победителя.
+- scene object / prefab
+- движение между точками
+- простое прибытие в цель
+- понятный API для команды move to point
 
 Done when:
-- один юнит и один враг могут полностью разыграть бой от спавна до смерти.
+- хранитель реально перемещается по игровому полю;
+- действия больше не происходят мгновенно из любой точки.
 
-## Task 2.5 — Implement enemy spawning
-Сделать базовый `WaveSystem`.
+## Task A3 — Add points of interest
+Сделать 3 базовые точки интереса ночи:
+- Bells
+- Faith Point
+- Cemetery Repair Point
+
+Done when:
+- каждая точка существует в сцене явно;
+- хранителя можно направить к ней;
+- они готовы к подключению логики.
+
+## Task A4 — Restrict night actions by keeper position
+Подключить главное правило:
+- bell actions доступны только у bell point;
+- faith interaction доступен только у faith point;
+- repair доступен только у repair point.
+
+Done when:
+- позиция хранителя реально ограничивает доступные действия;
+- spatial-management loop начал существовать.
+
+---
+
+# Phase B — Make Night Resource And Pressure Real
+
+## Task B1 — Rework faith flow for night collection
+Переделать faith так, чтобы она была не почти фиксированной на ночь, а добывалась / собиралась во время ночи через faith point.
 
 MVP:
-- фиксированная волна;
-- враги спавнятся по времени;
-- по одному типу/нескольким простым типам.
+- можно оставить маленький стартовый запас faith;
+- основной приток должен быть привязан к точке веры.
 
 Done when:
-- ночью враги автоматически появляются без ручного вмешательства.
+- ночью игроку нужно идти за верой;
+- экономика стала частью ночного решения.
 
-## Task 2.6 — Connect bells to night defense loop
-Соединить:
-- bell buttons
-- BellSystem
-- lane
-- enemy spawn
-- cemetery damage on breakthrough
-
-Done when:
-- ночью игрок реально тратит faith на вызов защитников;
-- если не защищаться, враги доходят и бьют кладбище.
-
-## Task 2.7 — Add end-of-night condition
-Сделать условие завершения ночи.
-
-Например:
-- все враги волны заспавнены;
-- все враги убиты или ушли;
-- линия больше не активна.
-
-Done when:
-- ночь может завершиться автоматически;
-- после этого начинается переход к дневной фазе.
-
----
-
-# Phase 3 — Day Gameplay Base
-
-## Task 3.1 — Implement basic day reward flow
-После ночи начислять:
-- gold reward
-- faith reward
-
-На первом этапе можно упростить:
-- фиксированная faith за день
-- gold based on survived night / kills
-
-Done when:
-- после ночи игрок получает ресурсы.
-
-## Task 3.2 — Create simple day screen
-Сделать простой day/meta screen.
-
-Показать:
-- итоги ночи
-- текущее количество faith
-- текущее количество gold
-- кнопка перехода к следующей ночи
-
-Done when:
-- между ночами есть понятная управляемая пауза.
-
-## Task 3.3 — Add upgrade definitions
-Сделать `UpgradeDef`.
+## Task B2 — Add bell world interaction
+Перенести bell interaction в world-space flow.
 
 Минимум:
-- id
-- name
-- price
-- effect type
-- effect value
+- колокол как scene object
+- interaction через collider / click routing
+- больше не использовать bell как чисто HUD-driven gameplay action
 
 Done when:
-- апгрейды существуют как данные.
+- сигнал подаётся через объект в мире;
+- bell flow соответствует новой fantasy.
 
-## Task 3.4 — Implement UpgradeSystem
-Сделать базовую покупку апгрейдов.
-
-MVP effects:
-- +faith income
-- +cemetery max state or repair
-- unlock bell
-- cheaper bell / stronger unit
+## Task B3 — Add bell cooldowns
+Добавить cooldown на bell usage.
 
 Done when:
-- игрок может купить апгрейд за gold;
-- эффект реально применяется к run.
+- bell нельзя спамить без паузы;
+- между bell actions появляется окно для других решений.
 
-## Task 3.5 — Connect day phase to progression
-Соединить:
-- day screen
-- current resources
-- available upgrades
-- next night button
+## Task B4 — Add night timer and wave forecast
+Сделать отображение:
+- общей длительности ночи;
+- примерного времени до следующей волны / подволны.
 
 Done when:
-- дневная фаза уже ощущается как часть петли, а не просто пауза.
+- игрок может планировать, когда идти за верой, когда чинить, когда возвращаться к bell zone.
 
 ---
 
-# Phase 4 — Full Core Loop Validation
+# Phase C — Make Breakthrough A Persistent Problem
 
-## Task 4.1 — Complete full playable loop
-Проверить полный цикл:
+## Task C1 — Rework breakthrough behavior
+Переделать поведение врага при достижении кладбища.
 
-day ->
-buy or skip ->
-start night ->
-defend with bells ->
-night end ->
-gain rewards ->
-next day
+Вместо мгновенного исчезновения:
+- враг остаётся у кладбища;
+- входит в состояние attack cemetery;
+- продолжает наносить урон со временем.
 
 Done when:
-- игру можно сыграть минимум 3–5 ночей подряд без ручных костылей.
+- прорыв врага создаёт постоянную проблему;
+- ремонт и возврат к bell начинают конкурировать по приоритету.
 
-## Task 4.2 — Add lose condition
-Сделать поражение при падении CemeteryState до нуля.
-
-Done when:
-- игра завершается корректно;
-- показывается defeat screen;
-- есть restart.
-
-## Task 4.3 — Add simple win / survival target
-Для джема лучше иметь понятную цель.
-
-Варианты:
-- survive 5 nights
-- survive 7 nights
-- endless with score
-
-Предпочтительно для MVP:
-- survive fixed number of nights
+## Task C2 — Connect cemetery damage pressure loop
+Связать:
+- прорыв врага;
+- persistent damage;
+- repair point;
+- defeat condition.
 
 Done when:
-- у игры есть чёткая рамка прохождения.
+- у игрока есть реальный кризисный сценарий;
+- игнорировать кладбище становится опасно.
 
 ---
 
-# Phase 5 — Juice And Readability
+# Phase D — Tie Economy To Combat Outcome
 
-## Task 5.1 — Add bell feedback
-Добавить:
-- звук колокола
-- простую анимацию кнопки / объекта
-- popup if not enough faith
-
-Done when:
-- звон ощущается как событие.
-
-## Task 5.2 — Add combat feedback
-Добавить:
-- hit flashes
-- damage popups or simple feedback
-- death feedback
-- simple VFX if cheap
+## Task D1 — Move gold gain to enemy kills
+Переделать основную выдачу золота:
+- золото за убийство врагов;
+- не опираться только на завершение ночи.
 
 Done when:
-- бой читается визуально.
+- хорошая оборона и эффективный призыв напрямую кормят прогрессию.
 
-## Task 5.3 — Add phase transition feedback
-Добавить:
-- переход день/ночь
-- тёмный оверлей / fade
-- текстовые баннеры
-- атмосфера смены времени суток
+## Task D2 — Validate full night loop
+Проверить полный ночной цикл:
 
-Done when:
-- цикл ощущается целостным.
-
-## Task 5.4 — Improve HUD readability
-Проверить:
-- понятно ли где faith
-- понятно ли где gold
-- видно ли состояние кладбища
-- видно ли какой bell дорогой / дешёвый
+move between points ->
+collect faith ->
+ring bells near bells ->
+hold waves ->
+repair cemetery if needed ->
+earn gold from kills ->
+finish night
 
 Done when:
-- новичок понимает интерфейс без объяснения.
+- ночь уже ощущается как management-defense gameplay;
+- минимум одна ночь играется без ручных костылей.
 
 ---
 
-# Phase 6 — Balance And Cleanup
+# Phase E — Adapt Day Progression To New Loop
 
-## Task 6.1 — Balance first 10 minutes
-Настроить:
-- faith income
-- bell costs
-- enemy pressure
-- upgrade prices
-- cemetery durability
+## Task E1 — Reframe upgrade effects for new design
+Пересобрать upgrade pool под новый цикл.
 
-Done when:
-- первые несколько ночей не слишком лёгкие и не слишком душные.
-
-## Task 6.2 — Remove obvious code duplication
-Сделать точечный рефакторинг:
-- повторы
-- лишние прямые зависимости
-- слишком жирные методы
-- неясные имена
+Приоритетные эффекты:
+- increase faith collection
+- increase starting faith
+- improve skeleton bell output
+- increase cemetery max hp
+- instant repair
+- increase skeleton lifetime
+- extend skeleton lifetime on kill
+- increase keeper move speed
 
 Done when:
-- код проще читать;
-- ничего не сломано.
+- апгрейды усиливают именно новый night loop, а не старую модель.
 
-## Task 6.3 — Clean Main if needed
-Если `Main` распух:
-- вынести локальную логику в отдельные системы;
-- оставить в Main orchestration only.
-
-Done when:
-- Main читабелен сверху вниз как сценарий игры.
-
-## Task 6.4 — Final bug pass
-Проверить:
-- restart
-- phase transitions
-- resource spending
-- wave end
-- upgrade application
-- lose/win
+## Task E2 — Connect day screen to new progression
+Обновить day phase так, чтобы она усиливала:
+- keeper
+- faith economy
+- cemetery sustain
+- bell efficiency
 
 Done when:
-- игра не ломается на базовом прохождении.
+- день работает как короткая meta-фаза подготовки к следующей ночи.
 
 ---
 
-# Nice To Have After MVP
+# Phase F — Secondary Technical / Juice Tasks
 
-## Optional 1 — Faith depends on cemetery condition
-Чем хуже защищено кладбище, тем меньше faith днём.
+## Task F1 — Add visual coin pickup effect
+Сделать визуальный эффект:
+- монеты выпадают в мир;
+- затем летят в HUD;
+- число на ресурсе может прибавляться не строго по количеству визуальных монет.
 
-## Optional 2 — Second lane
-Только если первая линия уже отлично работает.
+Done when:
+- золото визуально ощущается как награда за бой.
 
-## Optional 3 — More enemy variety
-Только после базового баланса.
+## Task F2 — Improve world interaction robustness
+Закрепить world input flow:
+- collider-based interaction
+- Physics2DRaycaster on camera if required by final input stack
+- no gameplay dependence on canvas resolution behavior
 
-## Optional 4 — Special bell cooldowns
-Только если нужна дополнительная глубина.
-
-## Optional 5 — Better day atmosphere
-Текстовые события, посетители, flavour.
+Done when:
+- world actions стабильно работают на разных разрешениях.
 
 ---
 
-# Priority Order
+# Must-Have Priority Order
 
 ## Absolute Priority
-1. RunState
-2. Day/Night phases
-3. HUD resources
-4. BellSystem
-5. One lane combat
-6. Enemy wave
-7. Cemetery damage
-8. Night end
-9. Day rewards
-10. Upgrades
-11. Lose/win
+1. Keeper runtime state
+2. Keeper movement between night points
+3. Three points of interest
+4. Action restriction by keeper position
+5. Night faith collection loop
+6. Bell cooldown
+7. Night timer and next-wave readability
+8. Persistent breakthrough enemies
+9. Repair loop connection
+10. Gold from kills
+11. Upgrade pool adaptation
 
 ## Secondary Priority
-12. feedback
-13. balancing
-14. cleanup
+12. visual coin pickup
+13. world interaction robustness cleanup
+14. balance and cleanup
 
-## Low Priority
-15. extra content
-16. extra lanes
-17. richer day simulation
+## Lower Priority
+15. assistant collector
+16. random upgrade choices
+17. new bells
+18. new unit types
+19. grave-based population cap
 
 ---
 
 # Suggested First Implementation Sequence For Codex
-1. RunState + phase enum
-2. Main day/night switching
-3. HUD resource text
-4. BellDef / UnitDef / EnemyDef
-5. BellSystem with faith spending
-6. one lane prototype
-7. enemy spawning
-8. cemetery damage
-9. end-of-night flow
-10. day reward screen
-11. UpgradeSystem
-12. lose/win
-13. polish
+1. Add Keeper runtime model
+2. Add keeper movement actor in scene
+3. Add three POI anchors
+4. Restrict night actions by keeper position
+5. Rework faith into night collection
+6. Add bell cooldown
+7. Add night timer + next wave forecast
+8. Rework enemy breakthrough into persistent cemetery attack
+9. Move gold gain to enemy kills
+10. Update upgrades for new loop
+11. Validate full playable night loop
+12. Add secondary polish tasks

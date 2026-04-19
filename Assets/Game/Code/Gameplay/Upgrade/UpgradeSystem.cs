@@ -56,7 +56,7 @@ public class UpgradeSystem
         switch (upgradeDef.EffectType)
         {
             case UpgradeEffectType.FaithIncomeBonus:
-                runState.DayFaithIncome = Mathf.Max(0, runState.DayFaithIncome + effectValue);
+                runState.FaithCollectionPerSecond = Mathf.Max(0f, runState.FaithCollectionPerSecond + effectValue);
                 break;
 
             case UpgradeEffectType.CemeteryRepair:
@@ -79,7 +79,9 @@ public class UpgradeSystem
     private static void ClampRunState(RunState runState)
     {
         runState.Gold = Mathf.Max(0, runState.Gold);
-        runState.DayFaithIncome = Mathf.Max(0, runState.DayFaithIncome);
+        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
+        runState.FaithCollectionPerSecond = Mathf.Max(0f, runState.FaithCollectionPerSecond);
+        runState.FaithCollectionProgress = Mathf.Max(0f, runState.FaithCollectionProgress);
         runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
         runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
     }

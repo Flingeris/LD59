@@ -167,9 +167,29 @@ public class DayScreenView : MonoBehaviour
         return
             $"Day {runState.CurrentDay}\n" +
             $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
-            $"Reward: +{runState.LastDayReward.FaithReward} Faith, +{runState.LastDayReward.GoldReward} Gold\n" +
+            $"Reward: {BuildRewardSummary(runState.LastDayReward)}\n" +
             $"Faith: {runState.Faith}\n" +
             $"Gold: {runState.Gold}\n" +
             $"Cemetery: {runState.CemeteryState}";
+    }
+
+    private static string BuildRewardSummary(DayRewardData reward)
+    {
+        if (reward == null || !reward.HasAnyReward)
+        {
+            return "none";
+        }
+
+        if (reward.FaithReward > 0 && reward.GoldReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
+        }
+
+        if (reward.FaithReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith";
+        }
+
+        return $"+{reward.GoldReward} Gold";
     }
 }

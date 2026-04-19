@@ -15,8 +15,11 @@ public class CombatHpBarView : MonoBehaviour
 
     private Vector3 initialFillLocalScale;
     private Vector3 initialFillLocalPosition;
+
     private int maxHp = 1;
     private bool isBound;
+    private bool isInitialized;
+    private SpriteRenderer ownerRenderer;
 
     private void Awake()
     {
@@ -28,70 +31,86 @@ public class CombatHpBarView : MonoBehaviour
         EnsureInitialized();
 
         this.maxHp = Mathf.Max(1, maxHp);
+        this.ownerRenderer = ownerRenderer;
 
         if (backgroundRenderer != null)
         {
             backgroundRenderer.color = BackgroundColor;
-            ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+            ApplySorting(backgroundRenderer, this.ownerRenderer, sortingOffset);
         }
 
         if (fillRenderer != null)
         {
             fillRenderer.color = isEnemy ? EnemyFillColor : AllyFillColor;
-            ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
+            ApplySorting(fillRenderer, this.ownerRenderer, sortingOffset + 1);
         }
 
         isBound = true;
         Refresh(this.maxHp);
     }
 
+    private void LateUpdate()
+    {
+        if (!isBound || ownerRenderer == null)
+            return;
+
+        ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+        ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
+    }
+
     public void Refresh(int currentHp)
     {
         if (!isBound || fillRenderer == null)
-        {
             return;
-        }
 
-        var normalized = Mathf.Clamp01((float)Mathf.Max(0, currentHp) / maxHp);
-        var updatedScale = initialFillLocalScale;
-        updatedScale.x = initialFillLocalScale.x * normalized;
+        float normalized = Mathf.Clamp01((float)Mathf.Max(0, currentHp) / maxHp);
 
         fillRenderer.enabled = normalized > 0f;
+        if (!fillRenderer.enabled)
+            return;
+
+        Vector3 updatedScale = initialFillLocalScale;
+        updatedScale.x = initialFillLocalScale.x * normalized;
         fillRenderer.transform.localScale = updatedScale;
 
-        var updatedPosition = initialFillLocalPosition;
-        updatedPosition.x -= (initialFillLocalScale.x - updatedScale.x) * 0.5f;
+        float initialLeftEdge = initialFillLocalPosition.x - (initialFillLocalScale.x * 0.5f);
+
+        Vector3 updatedPosition = initialFillLocalPosition;
+        updatedPosition.x = initialLeftEdge + (updatedScale.x * 0.5f);
         fillRenderer.transform.localPosition = updatedPosition;
     }
 
     private void EnsureInitialized()
     {
+        if (isInitialized)
+            return;
+
+        EnsureBarSprite(backgroundRenderer);
+        EnsureBarSprite(fillRenderer);
+
         if (fillRenderer != null)
         {
             initialFillLocalScale = fillRenderer.transform.localScale;
             initialFillLocalPosition = fillRenderer.transform.localPosition;
         }
 
-        EnsureBarSprite(backgroundRenderer);
-        EnsureBarSprite(fillRenderer);
+        isInitialized = true;
     }
 
     private void EnsureBarSprite(SpriteRenderer renderer)
     {
         if (renderer == null || renderer.sprite != null)
-        {
             return;
-        }
 
         renderer.sprite = GetRuntimeBarSprite();
+        renderer.flipX = false;
+        renderer.flipY = false;
     }
 
     private void ApplySorting(SpriteRenderer renderer, SpriteRenderer ownerRenderer, int offset)
     {
         if (renderer == null || ownerRenderer == null)
-        {
             return;
-        }
 
         renderer.sortingLayerID = ownerRenderer.sortingLayerID;
         renderer.sortingOrder = ownerRenderer.sortingOrder + offset;
@@ -100,19 +119,23 @@ public class CombatHpBarView : MonoBehaviour
     private static Sprite GetRuntimeBarSprite()
     {
         if (runtimeBarSprite != null)
-        {
             return runtimeBarSprite;
-        }
 
-        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
         {
             filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp
         };
+
         texture.SetPixel(0, 0, Color.white);
         texture.Apply();
 
-        runtimeBarSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        runtimeBarSprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, 1f, 1f),
+            new Vector2(0.5f, 0.5f),
+            1f);
+
         return runtimeBarSprite;
     }
 }

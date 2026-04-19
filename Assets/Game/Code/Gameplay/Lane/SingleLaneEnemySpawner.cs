@@ -39,7 +39,27 @@ public class SingleLaneEnemySpawner
             laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
         }
 
-        laneEnemy.Initialize(enemyDef, laneHost.EnemyForwardTarget.position);
+        var forwardTargetPosition = laneHost.EnemyForwardTarget.position;
+        var breakthroughPoint = laneHost.EnemyBreakthroughPoint;
+        if (breakthroughPoint != null)
+        {
+            var spawnX = laneHost.EnemySpawnPoint.position.x;
+            var targetX = forwardTargetPosition.x;
+            var breakthroughX = breakthroughPoint.position.x;
+            var movesLeft = breakthroughX < spawnX;
+            var targetStopsBeforeBreakthrough = movesLeft
+                ? targetX > breakthroughX
+                : targetX < breakthroughX;
+
+            if (targetStopsBeforeBreakthrough)
+            {
+                Debug.LogWarning(
+                    "EnemyForwardTarget stops before EnemyBreakthroughPoint. Falling back to breakthrough point.");
+                forwardTargetPosition = breakthroughPoint.position;
+            }
+        }
+
+        laneEnemy.Initialize(enemyDef, forwardTargetPosition);
         return EnemySpawnResult.Success(laneEnemy);
     }
 }

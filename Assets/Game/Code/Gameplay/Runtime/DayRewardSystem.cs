@@ -1,13 +1,8 @@
 public class DayRewardSystem
 {
-    public DayRewardData CreateInitialDayReward(int faithReward)
+    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int goldReward)
     {
-        return CreateReward(0, faithReward, 0);
-    }
-
-    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int faithReward, int goldReward)
-    {
-        return CreateReward(completedNightIndex, faithReward, goldReward);
+        return CreateReward(completedNightIndex, 0, goldReward);
     }
 
     public void ApplyReward(RunState runState, DayRewardData reward)

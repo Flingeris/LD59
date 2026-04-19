@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyDef
   id: en1
   hp: 10
-  damage: 2
-  attackInterval: 0.5
+  damage: 1
+  attackInterval: 1
   moveSpeed: 2
   viewPrefab: {fileID: 7472344182768934562, guid: 7a846b1f4ad6bbe43904f3ef6e98ab00, type: 3}

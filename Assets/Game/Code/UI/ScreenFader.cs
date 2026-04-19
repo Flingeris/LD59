@@ -1,6 +1,6 @@
-using DG.Tweening;
 using System;
 using System.Collections;
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -30,7 +30,8 @@ public class ScreenFader : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-        DontDestroyOnLoad(this.gameObject);
+
+        DontDestroyOnLoad(gameObject);
 
         G.ScreenFader = this;
         fadeImage.gameObject.SetActive(false);
@@ -83,10 +84,7 @@ public class ScreenFader : MonoBehaviour
         }
         else
         {
-            currentSequence.OnComplete(() =>
-            {
-                fadeImage.gameObject.SetActive(false);
-            });
+            currentSequence.OnComplete(() => { fadeImage.gameObject.SetActive(false); });
         }
     }
 
@@ -116,10 +114,7 @@ public class ScreenFader : MonoBehaviour
         }
         else
         {
-            currentSequence.OnComplete(() =>
-            {
-                screen.gameObject.SetActive(false);
-            });
+            currentSequence.OnComplete(() => { screen.gameObject.SetActive(false); });
         }
     }
 
@@ -151,7 +146,7 @@ public class ScreenFader : MonoBehaviour
     {
         G.ScreenFader.FadeIn(1f);
         yield return new WaitForSeconds(0.5f);
-        G.audioSystem.Play(SoundId.SFX_LevelTransiton);
+        G.audioSystem.Play(SoundId.SFX_LevelTransition);
         yield return new WaitForSeconds(1f);
         G.ScreenFader.FadeOut(1f);
     }

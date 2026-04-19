@@ -348,3 +348,17 @@ Request:
 - что является следующим логичным шагом.
 
 Без длинных отчётов и без лишнего повторения кода.
+
+## Bellgrave Night-Loop Priority
+Для текущей итерации Bellgrave Codex должен в первую очередь усиливать новый night-management loop.
+
+Приоритетный порядок:
+1. keeper movement
+2. points of interest
+3. action gating by keeper position
+4. faith collection during night
+5. persistent breakthrough enemies
+6. timer / wave readability
+7. progression updates
+
+Нельзя по умолчанию откатываться к старому паттерну, где bell gameplay живёт как изолированная HUD-кнопка без пространственного ограничения.

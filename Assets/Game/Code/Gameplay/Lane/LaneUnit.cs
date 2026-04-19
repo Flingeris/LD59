@@ -4,6 +4,8 @@ public class LaneUnit : MonoBehaviour
 {
     private const float IdleHoldDistance = 0.05f;
     private const int IdleTargetPickAttempts = 6;
+    private const int SortingPrecision = 100;
+    private const float FacingThreshold = 0.001f;
 
     public UnitDef UnitDef { get; private set; }
     public Vector3 Position => transform.position;
@@ -24,6 +26,8 @@ public class LaneUnit : MonoBehaviour
     private float idleMicroRetargetTimer;
     private int idleMicroRetargetIndex;
     private LaneCombatFeedbackView combatFeedbackView;
+    private SpriteRenderer spriteRenderer;
+    private float remainingLifetime = -1f;
 
     private void Update()
     {
@@ -32,7 +36,17 @@ public class LaneUnit : MonoBehaviour
             return;
         }
 
+        if (UpdateLifetime(Time.deltaTime))
+        {
+            return;
+        }
+
         UpdateState(Time.deltaTime);
+    }
+
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
     }
 
     public void Initialize(UnitDef unitDef)
@@ -42,13 +56,20 @@ public class LaneUnit : MonoBehaviour
         State = LaneUnitState.Waiting;
         TargetEnemy = null;
         attackCooldown = unitDef.AttackInterval;
+        remainingLifetime = unitDef.LifetimeSeconds > 0f ? unitDef.LifetimeSeconds : -1f;
         combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
         if (combatFeedbackView == null)
         {
             combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
         }
 
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+
         combatFeedbackView.Bind(unitDef.Hp, false);
+        UpdateSortingOrder();
     }
 
     public void AssignHomePosition(
@@ -216,6 +237,7 @@ public class LaneUnit : MonoBehaviour
         }
 
         TargetEnemy.ApplyDamage(UnitDef.Damage);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
         attackCooldown = UnitDef.AttackInterval;
     }
 
@@ -244,6 +266,7 @@ public class LaneUnit : MonoBehaviour
         }
 
         var direction = offset.normalized;
+        UpdateFacing(direction);
         var moveStep = UnitDef.MoveSpeed * deltaTime;
         if (offset.magnitude <= moveStep)
         {
@@ -315,6 +338,7 @@ public class LaneUnit : MonoBehaviour
         }
 
         var direction = offset.normalized;
+        UpdateFacing(direction);
         var moveStep = moveSpeedOverride * deltaTime;
         if (offset.magnitude <= moveStep)
         {
@@ -324,5 +348,52 @@ public class LaneUnit : MonoBehaviour
 
         transform.position += direction * moveStep;
         return false;
+    }
+
+    private void UpdateSortingOrder()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+
+        spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+    }
+
+    private void UpdateFacing(Vector3 direction)
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+
+        if (spriteRenderer == null || Mathf.Abs(direction.x) <= FacingThreshold)
+        {
+            return;
+        }
+
+        spriteRenderer.flipX = direction.x < 0f;
+    }
+
+    private bool UpdateLifetime(float deltaTime)
+    {
+        if (remainingLifetime <= 0f)
+        {
+            return false;
+        }
+
+        remainingLifetime -= deltaTime;
+        if (remainingLifetime > 0f)
+        {
+            return false;
+        }
+
+        Destroy(gameObject);
+        return true;
     }
 }

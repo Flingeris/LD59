@@ -14,6 +14,15 @@
       "dependencies": {},
       "hash": "5fadcb6564f0c6e988641e2e4a4aba4b6b1caafe"
     },
+    "com.singularitygroup.hotreload": {
+      "version": "file:com.singularitygroup.hotreload",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.unity.ugui": "1.0.0",
+        "com.unity.modules.unitywebrequest": "1.0.0"
+      }
+    },
     "com.unity.2d.animation": {
       "version": "14.0.3",
       "depth": 0,

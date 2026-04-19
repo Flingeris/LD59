@@ -1,6 +1,7 @@
 using System;
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 
@@ -13,23 +14,34 @@ public class Main : MonoBehaviour
 
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
+    [SerializeField] private KeeperActor keeperActor;
     [SerializeField] private string debugBellId;
     [SerializeField] private string debugUpgradeId;
     [SerializeField] private EnemyDef debugEnemyDef;
     [SerializeField] private WaveSpawnEntry[] fixedNightWave;
     [Min(0)] [SerializeField] private int initialCemeteryState = 100;
-    [Min(0)] [SerializeField] private int dayFaithReward = 20;
+    [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
+    [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
+    [FormerlySerializedAs("dayFaithReward")]
+    [Min(0)] [SerializeField] private int startingNightFaith = 10;
+    [Min(0f)] [SerializeField] private float initialFaithCollectionPerSecond = 3f;
     [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
+
     [FormerlySerializedAs("targetSurvivedNights")]
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
 
     private BellSystem bellSystem;
     private DayRewardSystem dayRewardSystem;
+    private FaithCollectionSystem faithCollectionSystem;
     private UpgradeSystem upgradeSystem;
     private SingleLaneUnitSpawner unitSpawner;
     private SingleLaneEnemySpawner enemySpawner;
     private WaveSystem waveSystem;
+    private KeeperMovementSystem keeperMovementSystem;
+    private NightPoiSystem nightPoiSystem;
     private bool laneSetupWarningShown;
+    private bool keeperBindingWarningShown;
+    private bool keeperSceneBindingInitialized;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
 
     public RunState RunState { get; private set; }
@@ -38,14 +50,20 @@ public class Main : MonoBehaviour
     {
         Time.timeScale = 1f;
         G.main = this;
-        RunState = RunState.CreateInitial(initialCemeteryState);
-        RunState.DayFaithIncome = Mathf.Max(0, dayFaithReward);
+        RunState = RunState.CreateInitial(
+            initialCemeteryState,
+            initialKeeperMoveSpeed,
+            startingNightFaith,
+            initialFaithCollectionPerSecond);
         bellSystem = new BellSystem();
         dayRewardSystem = new DayRewardSystem();
+        faithCollectionSystem = new FaithCollectionSystem();
         upgradeSystem = new UpgradeSystem();
         unitSpawner = new SingleLaneUnitSpawner();
         enemySpawner = new SingleLaneEnemySpawner();
         waveSystem = new WaveSystem();
+        keeperMovementSystem = new KeeperMovementSystem();
+        nightPoiSystem = new NightPoiSystem();
 
         if (laneEncounterCoordinator != null)
         {
@@ -55,9 +73,12 @@ public class Main : MonoBehaviour
 
     private void Start()
     {
+        TryResolveKeeperActor();
+        RebuildNightPoiRegistry();
+        G.audioSystem.Play(SoundId.Ambient_Forest);
+        G.audioSystem.Play(SoundId.Music_Main);
         BindHud();
         EnterDay();
-        ApplyInitialDayReward();
         ValidateLanePrototypeSetup();
     }
 
@@ -74,6 +95,8 @@ public class Main : MonoBehaviour
             return;
         }
 
+        UpdateKeeper();
+        UpdateNightFaithCollection();
         UpdateWaveSpawning();
         UpdateNightCompletion();
         HandleDebugInput();
@@ -94,7 +117,9 @@ public class Main : MonoBehaviour
         }
 
         RunState.CurrentPhase = GamePhase.Day;
+        faithCollectionSystem.EndNight(RunState);
         waveSystem.StopWave();
+        StopKeeperMovement();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Day);
         return true;
@@ -111,6 +136,8 @@ public class Main : MonoBehaviour
 
         RunState.CurrentNight++;
         RunState.CurrentPhase = GamePhase.Night;
+        faithCollectionSystem.StartNight(RunState);
+        PrepareKeeperForNight();
         StartNightWave();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Night);
@@ -173,6 +200,49 @@ public class Main : MonoBehaviour
         }
 
         TryEnterDefeat();
+    }
+
+    public bool TryMoveKeeperTo(Vector2 targetPosition, string targetPointId = null)
+    {
+        if (RunState == null || RunState.Keeper == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return false;
+        }
+
+        if (!TryResolveKeeperActor())
+        {
+            return false;
+        }
+
+        keeperMovementSystem.SetMoveTarget(RunState.Keeper, targetPosition, targetPointId);
+        return true;
+    }
+
+    public bool TryMoveKeeperToPoi(string poiId)
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return false;
+        }
+
+        if (!TryResolveNightPoiById(poiId, out var poi))
+        {
+            Debug.LogWarning($"Keeper move failed: night poi '{poiId}' not found");
+            return false;
+        }
+
+        return TryMoveKeeperTo(poi.GetWorldPosition(), poi.Id);
+    }
+
+    public bool TryMoveKeeperToPoiType(NightPoiType poiType)
+    {
+        if (!TryResolveNightPoiByType(poiType, out var poi))
+        {
+            Debug.LogWarning($"Keeper move failed: night poi type '{poiType}' not found");
+            return false;
+        }
+
+        return TryMoveKeeperToPoi(poi.Id);
     }
 
     private void HandleEnemyBreakthrough(LaneEnemy laneEnemy)
@@ -360,9 +430,33 @@ public class Main : MonoBehaviour
         EnterDay();
     }
 
-    private void ApplyInitialDayReward()
+    private void UpdateKeeper()
     {
-        ApplyDayReward(dayRewardSystem.CreateInitialDayReward(RunState.DayFaithIncome), "Initial day reward");
+        if (RunState == null || RunState.Keeper == null)
+        {
+            return;
+        }
+
+        if (!TryResolveKeeperActor())
+        {
+            return;
+        }
+
+        if (RunState.CurrentPhase == GamePhase.Night)
+        {
+            keeperMovementSystem.UpdateMovement(RunState.Keeper, Time.deltaTime, keeperArrivalDistance);
+        }
+        else
+        {
+            ClearKeeperInteractionAvailability();
+        }
+
+        if (RunState.CurrentPhase == GamePhase.Night)
+        {
+            UpdateKeeperInteractionAvailability();
+        }
+
+        keeperActor.SetWorldPosition(RunState.Keeper.Position);
     }
 
     private void ApplyCompletedNightReward()
@@ -370,7 +464,6 @@ public class Main : MonoBehaviour
         ApplyDayReward(
             dayRewardSystem.CreateCompletedNightReward(
                 RunState.CurrentNight,
-                RunState.DayFaithIncome,
                 completedNightGoldReward),
             $"Completed night {RunState.CurrentNight} reward");
     }
@@ -389,10 +482,111 @@ public class Main : MonoBehaviour
             return;
         }
 
-        Debug.Log(
-            $"{rewardSource}: +{RunState.LastDayReward.FaithReward} Faith, +{RunState.LastDayReward.GoldReward} Gold");
+        Debug.Log($"{rewardSource}: {BuildRewardSummary(RunState.LastDayReward)}");
 
         RefreshPresentation();
+    }
+
+    private void UpdateNightFaithCollection()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+
+        faithCollectionSystem.UpdateCollection(RunState, Time.deltaTime);
+    }
+
+    private bool TryResolveKeeperActor()
+    {
+        if (keeperActor == null)
+        {
+            keeperActor = FindAnyObjectByType<KeeperActor>();
+        }
+
+        if (keeperActor == null)
+        {
+            if (!keeperBindingWarningShown)
+            {
+                Debug.LogWarning("Keeper setup incomplete: add a KeeperActor scene instance");
+                keeperBindingWarningShown = true;
+            }
+
+            return false;
+        }
+
+        keeperBindingWarningShown = false;
+
+        if (!keeperSceneBindingInitialized && RunState != null && RunState.Keeper != null)
+        {
+            RunState.Keeper.Position = keeperActor.GetWorldPosition();
+            RunState.Keeper.TargetPosition = RunState.Keeper.Position;
+            keeperActor.SetWorldPosition(RunState.Keeper.Position);
+            keeperSceneBindingInitialized = true;
+        }
+
+        return true;
+    }
+
+    private void RebuildNightPoiRegistry()
+    {
+        var scenePois = FindObjectsByType<NightPointOfInterest>();
+        nightPoiSystem.RebuildFromScene(scenePois);
+        ValidateNightPoiClickSetup(scenePois);
+    }
+
+    private bool TryResolveNightPoiById(string poiId, out NightPointOfInterest poi)
+    {
+        poi = null;
+
+        if (nightPoiSystem == null)
+        {
+            return false;
+        }
+
+        if (nightPoiSystem.RegisteredPoiCount <= 0)
+        {
+            RebuildNightPoiRegistry();
+        }
+
+        return nightPoiSystem.TryGetPoiById(poiId, out poi);
+    }
+
+    private bool TryResolveNightPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
+    {
+        poi = null;
+
+        if (nightPoiSystem == null)
+        {
+            return false;
+        }
+
+        if (nightPoiSystem.RegisteredPoiCount <= 0)
+        {
+            RebuildNightPoiRegistry();
+        }
+
+        return nightPoiSystem.TryGetPoiByType(poiType, out poi);
+    }
+
+    private void ValidateNightPoiClickSetup(IReadOnlyList<NightPointOfInterest> scenePois)
+    {
+        if (scenePois == null || scenePois.Count == 0)
+        {
+            return;
+        }
+
+        var mainCamera = Camera.main;
+        if (mainCamera == null)
+        {
+            Debug.LogWarning("Night POI click setup incomplete: main camera not found");
+            return;
+        }
+
+        if (mainCamera.GetComponent<Physics2DRaycaster>() == null)
+        {
+            Debug.LogWarning("Night POI click setup incomplete: main camera is missing Physics2DRaycaster");
+        }
     }
 
     private void BindHud()
@@ -483,6 +677,82 @@ public class Main : MonoBehaviour
         }
     }
 
+    private void UpdateKeeperInteractionAvailability()
+    {
+        if (RunState?.Keeper == null)
+        {
+            return;
+        }
+
+        if (RunState.Keeper.ActivityState == KeeperActivityState.Moving)
+        {
+            ClearKeeperInteractionAvailability();
+            return;
+        }
+
+        if (nightPoiSystem == null)
+        {
+            ClearKeeperInteractionAvailability();
+            return;
+        }
+
+        if (nightPoiSystem.RegisteredPoiCount <= 0)
+        {
+            RebuildNightPoiRegistry();
+        }
+
+        if (!nightPoiSystem.TryResolveKeeperInteraction(
+                RunState.Keeper.Position,
+                out var poi,
+                out var interactionState))
+        {
+            ClearKeeperInteractionAvailability();
+            return;
+        }
+
+        RunState.Keeper.CurrentPoiId = poi.Id;
+        RunState.Keeper.InteractionState = interactionState;
+    }
+
+    private void StopKeeperMovement()
+    {
+        if (RunState?.Keeper == null)
+        {
+            return;
+        }
+
+        keeperMovementSystem.Stop(RunState.Keeper);
+        ClearKeeperInteractionAvailability();
+    }
+
+    private void PrepareKeeperForNight()
+    {
+        if (RunState?.Keeper == null)
+        {
+            return;
+        }
+
+        RunState.Keeper.InteractionState = KeeperInteractionState.None;
+        if (RunState.Keeper.ActivityState != KeeperActivityState.Moving)
+        {
+            RunState.Keeper.TargetPosition = RunState.Keeper.Position;
+            RunState.Keeper.CurrentPoiId = string.Empty;
+            RunState.Keeper.CurrentTargetPointId = string.Empty;
+            RunState.Keeper.ActivityState = KeeperActivityState.Idle;
+        }
+    }
+
+    private void ClearKeeperInteractionAvailability()
+    {
+        if (RunState?.Keeper == null)
+        {
+            return;
+        }
+
+        RunState.Keeper.CurrentPoiId = string.Empty;
+        RunState.Keeper.InteractionState = KeeperInteractionState.None;
+    }
+
     private List<DayUpgradeItemData> BuildDayUpgradeDisplayItems()
     {
         var displayItems = new List<DayUpgradeItemData>();
@@ -553,11 +823,31 @@ public class Main : MonoBehaviour
 
         return upgradeDef.EffectType switch
         {
-            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} day Faith income",
+            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith/sec at Faith Point",
             UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
             _ => string.Empty
         };
+    }
+
+    private static string BuildRewardSummary(DayRewardData reward)
+    {
+        if (reward == null || !reward.HasAnyReward)
+        {
+            return "no reward";
+        }
+
+        if (reward.FaithReward > 0 && reward.GoldReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
+        }
+
+        if (reward.FaithReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith";
+        }
+
+        return $"+{reward.GoldReward} Gold";
     }
 
     private void UpdateLoseCondition()

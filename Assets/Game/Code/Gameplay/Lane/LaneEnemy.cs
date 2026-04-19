@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class LaneEnemy : MonoBehaviour
 {
+    private const int SortingPrecision = 100;
+
     public EnemyDef EnemyDef { get; private set; }
     public Vector3 Position => transform.position;
     public int CurrentHp { get; private set; }
@@ -12,6 +14,7 @@ public class LaneEnemy : MonoBehaviour
     private Vector3 forwardTargetPosition;
     private float attackCooldown;
     private LaneCombatFeedbackView combatFeedbackView;
+    private SpriteRenderer spriteRenderer;
 
     private void Update()
     {
@@ -21,6 +24,11 @@ public class LaneEnemy : MonoBehaviour
         }
 
         UpdateBehavior(Time.deltaTime);
+    }
+
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
     }
 
     public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
@@ -36,7 +44,13 @@ public class LaneEnemy : MonoBehaviour
             combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
         }
 
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+
         combatFeedbackView.Bind(enemyDef.Hp, true);
+        UpdateSortingOrder();
     }
 
     public void SetTargetUnit(LaneUnit laneUnit)
@@ -106,6 +120,7 @@ public class LaneEnemy : MonoBehaviour
         }
 
         TargetUnit.ApplyDamage(EnemyDef.Damage);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
         attackCooldown = EnemyDef.AttackInterval;
     }
 
@@ -127,5 +142,20 @@ public class LaneEnemy : MonoBehaviour
         }
 
         transform.position += direction * moveStep;
+    }
+
+    private void UpdateSortingOrder()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+
+        spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
     }
 }

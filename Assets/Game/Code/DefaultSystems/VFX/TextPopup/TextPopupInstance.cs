@@ -11,6 +11,7 @@ public class TextPopupInstance : MonoBehaviour
     [SerializeField] private float startScale = 0.9f;
     [SerializeField] private float endScale = 1.1f;
     [SerializeField] private float fadeDelayNormalized = 0.3f;
+    [SerializeField] private int sortingOrder = 20;
 
     private Sequence sequence;
 
@@ -31,6 +32,19 @@ public class TextPopupInstance : MonoBehaviour
         label.text = text;
         label.color = color;
         label.alpha = 1f;
+
+        if (label is TextMeshPro worldText)
+        {
+            worldText.sortingOrder = sortingOrder;
+        }
+        else
+        {
+            var labelRenderer = label.GetComponent<Renderer>();
+            if (labelRenderer != null)
+            {
+                labelRenderer.sortingOrder = sortingOrder;
+            }
+        }
 
         Transform tr = transform;
         Vector3 startPos = tr.position;

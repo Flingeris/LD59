@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
 
 public class Main : MonoBehaviour
 {
@@ -15,8 +17,11 @@ public class Main : MonoBehaviour
     [SerializeField] private string debugUpgradeId;
     [SerializeField] private EnemyDef debugEnemyDef;
     [SerializeField] private WaveSpawnEntry[] fixedNightWave;
+    [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0)] [SerializeField] private int dayFaithReward = 20;
     [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
+    [FormerlySerializedAs("targetSurvivedNights")]
+    [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
 
     private BellSystem bellSystem;
     private DayRewardSystem dayRewardSystem;
@@ -31,8 +36,9 @@ public class Main : MonoBehaviour
 
     private void Awake()
     {
+        Time.timeScale = 1f;
         G.main = this;
-        RunState = RunState.CreateInitial();
+        RunState = RunState.CreateInitial(initialCemeteryState);
         RunState.DayFaithIncome = Mathf.Max(0, dayFaithReward);
         bellSystem = new BellSystem();
         dayRewardSystem = new DayRewardSystem();
@@ -62,6 +68,12 @@ public class Main : MonoBehaviour
 
     private void Update()
     {
+        UpdateLoseCondition();
+        if (RunState == null || RunState.CurrentPhase == GamePhase.Defeat || RunState.CurrentPhase == GamePhase.Win)
+        {
+            return;
+        }
+
         UpdateWaveSpawning();
         UpdateNightCompletion();
         HandleDebugInput();
@@ -69,7 +81,9 @@ public class Main : MonoBehaviour
 
     public bool EnterDay()
     {
-        if (RunState.CurrentPhase == GamePhase.Day)
+        if (RunState.CurrentPhase == GamePhase.Day ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win)
         {
             return false;
         }
@@ -82,12 +96,15 @@ public class Main : MonoBehaviour
         RunState.CurrentPhase = GamePhase.Day;
         waveSystem.StopWave();
         RefreshPresentation();
+        PlayPhaseTransitionCue(GamePhase.Day);
         return true;
     }
 
     public bool EnterNight()
     {
-        if (RunState.CurrentPhase == GamePhase.Night)
+        if (RunState.CurrentPhase == GamePhase.Night ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win)
         {
             return false;
         }
@@ -96,6 +113,7 @@ public class Main : MonoBehaviour
         RunState.CurrentPhase = GamePhase.Night;
         StartNightWave();
         RefreshPresentation();
+        PlayPhaseTransitionCue(GamePhase.Night);
         return true;
     }
 
@@ -153,12 +171,28 @@ public class Main : MonoBehaviour
         {
             RunState.CemeteryState = 0;
         }
+
+        TryEnterDefeat();
     }
 
     private void HandleEnemyBreakthrough(LaneEnemy laneEnemy)
     {
-        DamageCemetery(1);
-        Debug.Log("Enemy breakthrough: cemetery damaged");
+        if (laneEnemy == null)
+        {
+            Debug.LogWarning("Enemy breakthrough failed: laneEnemy is missing");
+            return;
+        }
+
+        if (laneEnemy.EnemyDef == null)
+        {
+            Debug.LogWarning("Enemy breakthrough failed: EnemyDef is missing");
+            return;
+        }
+
+        var breakthroughDamage = laneEnemy.EnemyDef.Damage;
+        DamageCemetery(breakthroughDamage);
+        Debug.Log(
+            $"Enemy breakthrough: '{laneEnemy.EnemyDef.Id}' dealt {breakthroughDamage} cemetery damage");
     }
 
     public BellRingResult TryRingBell(string bellId)
@@ -318,6 +352,11 @@ public class Main : MonoBehaviour
     {
         ApplyCompletedNightReward();
         Debug.Log("Night completed");
+        if (TryEnterWin())
+        {
+            return;
+        }
+
         EnterDay();
     }
 
@@ -367,6 +406,10 @@ public class Main : MonoBehaviour
         G.HUD.DayScreenStartNightRequested += HandleDayScreenStartNightRequested;
         G.HUD.DayScreenUpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
         G.HUD.DayScreenUpgradePurchaseRequested += HandleDayScreenUpgradePurchaseRequested;
+        G.HUD.DefeatScreenRestartRequested -= HandleDefeatScreenRestartRequested;
+        G.HUD.DefeatScreenRestartRequested += HandleDefeatScreenRestartRequested;
+        G.HUD.WinScreenRestartRequested -= HandleWinScreenRestartRequested;
+        G.HUD.WinScreenRestartRequested += HandleWinScreenRestartRequested;
     }
 
     private void UnbindHud()
@@ -378,6 +421,8 @@ public class Main : MonoBehaviour
 
         G.HUD.DayScreenStartNightRequested -= HandleDayScreenStartNightRequested;
         G.HUD.DayScreenUpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
+        G.HUD.DefeatScreenRestartRequested -= HandleDefeatScreenRestartRequested;
+        G.HUD.WinScreenRestartRequested -= HandleWinScreenRestartRequested;
     }
 
     private void HandleDayScreenStartNightRequested()
@@ -390,12 +435,43 @@ public class Main : MonoBehaviour
         TryPurchaseUpgrade(upgradeId);
     }
 
+    private void HandleDefeatScreenRestartRequested()
+    {
+        TryRestartFromDefeatScreen();
+    }
+
+    private void HandleWinScreenRestartRequested()
+    {
+        TryRestartFromWinScreen();
+    }
+
     private void RefreshPresentation()
     {
         if (G.HUD == null || RunState == null)
         {
             return;
         }
+
+        if (RunState.CurrentPhase == GamePhase.Defeat)
+        {
+            G.HUD.HideDayScreen();
+            G.HUD.HideWinScreen();
+            G.HUD.HidePhaseTransition();
+            G.HUD.ShowDefeatScreen(RunState);
+            return;
+        }
+
+        G.HUD.HideDefeatScreen();
+
+        if (RunState.CurrentPhase == GamePhase.Win)
+        {
+            G.HUD.HideDayScreen();
+            G.HUD.HidePhaseTransition();
+            G.HUD.ShowWinScreen(RunState);
+            return;
+        }
+
+        G.HUD.HideWinScreen();
 
         if (RunState.CurrentPhase == GamePhase.Day)
         {
@@ -482,6 +558,99 @@ public class Main : MonoBehaviour
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
             _ => string.Empty
         };
+    }
+
+    private void UpdateLoseCondition()
+    {
+        if (RunState == null ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win ||
+            RunState.CemeteryState > 0)
+        {
+            return;
+        }
+
+        TryEnterDefeat();
+    }
+
+    private bool TryEnterDefeat()
+    {
+        if (RunState == null ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win ||
+            RunState.CemeteryState > 0)
+        {
+            return false;
+        }
+
+        RunState.CurrentPhase = GamePhase.Defeat;
+        waveSystem.StopWave();
+        Time.timeScale = 0f;
+        Debug.Log("Defeat: cemetery destroyed");
+        RefreshPresentation();
+        return true;
+    }
+
+    private void PlayPhaseTransitionCue(GamePhase phase)
+    {
+        if (G.HUD == null)
+        {
+            return;
+        }
+
+        G.HUD.ShowPhaseTransition(phase);
+    }
+
+    private bool TryEnterWin()
+    {
+        if (RunState == null ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win)
+        {
+            return false;
+        }
+
+        var requiredDayCount = Mathf.Max(1, targetSurvivedDays);
+        if (RunState.CurrentDay < requiredDayCount)
+        {
+            return false;
+        }
+
+        RunState.CurrentPhase = GamePhase.Win;
+        waveSystem.StopWave();
+        Time.timeScale = 0f;
+        Debug.Log($"Victory: survived day {RunState.CurrentDay} of {requiredDayCount}");
+        RefreshPresentation();
+        return true;
+    }
+
+    public bool TryRestartFromDefeatScreen()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Defeat)
+        {
+            return false;
+        }
+
+        RestartCurrentScene();
+        return true;
+    }
+
+    public bool TryRestartFromWinScreen()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Win)
+        {
+            return false;
+        }
+
+        RestartCurrentScene();
+        return true;
+    }
+
+    private void RestartCurrentScene()
+    {
+        Time.timeScale = 1f;
+        var activeScene = SceneManager.GetActiveScene();
+        SceneManager.LoadScene(activeScene.name);
     }
 
     private void HandleDebugInput()

@@ -76,6 +76,7 @@ Assets/Game/Code/Gameplay/Defs/UnitDef.cs
 Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs
 Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs
 Assets/Game/Code/Gameplay/Lane/EnemySpawnResult.cs
+Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs
 Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs
 Assets/Game/Code/Gameplay/Lane/LaneUnit.cs
 Assets/Game/Code/Gameplay/Lane/LaneUnitState.cs
@@ -100,425 +101,428 @@ Assets/Game/Code/Service/ServiceMain.cs
 Assets/Game/Code/Service/TextStuff.cs
 Assets/Game/Code/UI/DayScreenView.cs
 Assets/Game/Code/UI/DayUpgradeItemView.cs
+Assets/Game/Code/UI/DefeatScreenView.cs
 Assets/Game/Code/UI/HUD.cs
+Assets/Game/Code/UI/PhaseTransitionView.cs
 Assets/Game/Code/UI/ScreenFader.cs
 Assets/Game/Code/UI/UI.cs
+Assets/Game/Code/UI/WinScreenView.cs
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
 
-<file path="Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs">
+<file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
+using System.Collections;
 using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Upgrade Def")]
-public class UpgradeDef : ContentDef
+[DisallowMultipleComponent]
+public class LaneCombatFeedbackView : MonoBehaviour
 {
-    [SerializeField] private string displayName;
-    [SerializeField] private int price;
-    [SerializeField] private UpgradeEffectType effectType;
-    [SerializeField] private int effectValue;
-    public string DisplayName => displayName;
-    public int Price => price;
-    public UpgradeEffectType EffectType => effectType;
-    public int EffectValue => effectValue;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs">
-public enum UpgradeEffectType
-{
-    FaithIncomeBonus = 0,
-    CemeteryRepair = 1,
-    CemeteryMaxStateBonus = 2,
-    UnlockBell = 3,
-    BellFaithCostModifier = 4,
-    UnitDamageModifier = 5
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardData.cs">
-public class DayRewardData
-{
-    public int SourceNightIndex;
-    public int FaithReward;
-    public int GoldReward;
-    public bool HasAnyReward => FaithReward > 0 || GoldReward > 0;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardSystem.cs">
-public class DayRewardSystem
-{
-    public DayRewardData CreateInitialDayReward(int faithReward)
+    private static readonly Color AllyHealthColor = new(0.38f, 1f, 0.55f, 1f);
+    private static readonly Color EnemyHealthColor = new(1f, 0.4f, 0.4f, 1f);
+    private static readonly Color HealthBarBackgroundColor = new(0f, 0f, 0f, 0.75f);
+    private static readonly Color AllyHitFlashColor = new(1f, 0.45f, 0.45f, 1f);
+    private static readonly Color EnemyHitFlashColor = Color.white;
+    private static Sprite runtimeBarSprite;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    [Min(0.1f)] [SerializeField] private float minBarWidth = 0.42f;
+    [Min(0.01f)] [SerializeField] private float barHeight = 0.06f;
+    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+    [Min(0f)] [SerializeField] private float hitFlashDuration = 0.08f;
+    [Min(1)] [SerializeField] private int feedbackSortingOffset = 10;
+    private SpriteRenderer backgroundBarRenderer;
+    private SpriteRenderer fillBarRenderer;
+    private Transform barRoot;
+    private Coroutine flashCoroutine;
+    private Color baseSpriteColor = Color.white;
+    private Color hitFlashColor = Color.white;
+    private float barWidth;
+    private float popupOffsetY;
+    private int maxHp = 1;
+    private bool isBound;
+    private void Awake()
     {
-        return CreateReward(0, faithReward, 0);
+        EnsureTargetRenderer();
     }
-    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int faithReward, int goldReward)
+    private void OnDestroy()
     {
-        return CreateReward(completedNightIndex, faithReward, goldReward);
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+            flashCoroutine = null;
+        }
     }
-    public void ApplyReward(RunState runState, DayRewardData reward)
+    public void Bind(int maxHp, bool isEnemy)
     {
-        if (runState == null || reward == null)
+        EnsureTargetRenderer();
+        EnsureHealthBar();
+        this.maxHp = Mathf.Max(1, maxHp);
+        baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
+        hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
+        if (fillBarRenderer != null)
+        {
+            fillBarRenderer.color = isEnemy ? EnemyHealthColor : AllyHealthColor;
+        }
+        isBound = true;
+        RefreshHealth(this.maxHp);
+    }
+    public void RefreshHealth(int currentHp)
+    {
+        if (!isBound || fillBarRenderer == null)
         {
             return;
         }
-        var faithReward = reward.FaithReward < 0 ? 0 : reward.FaithReward;
-        var goldReward = reward.GoldReward < 0 ? 0 : reward.GoldReward;
-        runState.Faith += faithReward;
-        runState.Gold += goldReward;
-        runState.LastDayReward = new DayRewardData
+        var normalized = Mathf.Clamp01((float)Mathf.Max(0, currentHp) / maxHp);
+        var fillWidth = barWidth * normalized;
+        fillBarRenderer.enabled = normalized > 0f;
+        fillBarRenderer.transform.localScale = new Vector3(fillWidth, barHeight, 1f);
+        fillBarRenderer.transform.localPosition = new Vector3(-(barWidth - fillWidth) * 0.5f, 0f, 0f);
+    }
+    public void PlayDamageFeedback(int damage, int currentHp)
+    {
+        if (!isBound || damage <= 0)
         {
-            SourceNightIndex = reward.SourceNightIndex,
-            FaithReward = faithReward,
-            GoldReward = goldReward
+            return;
+        }
+        RefreshHealth(currentHp);
+        Popups.DamageAbove(transform, popupOffsetY, damage);
+        PlayHitFlash();
+    }
+    private void PlayHitFlash()
+    {
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+        }
+        flashCoroutine = StartCoroutine(HitFlashRoutine());
+    }
+    private IEnumerator HitFlashRoutine()
+    {
+        targetRenderer.color = hitFlashColor;
+        yield return new WaitForSeconds(hitFlashDuration);
+        targetRenderer.color = baseSpriteColor;
+        flashCoroutine = null;
+    }
+    private void EnsureHealthBar()
+    {
+        if (barRoot != null && backgroundBarRenderer != null && fillBarRenderer != null)
+        {
+            return;
+        }
+        EnsureTargetRenderer();
+        var spriteWidth = targetRenderer != null ? targetRenderer.bounds.size.x : minBarWidth;
+        var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
+        barWidth = Mathf.Max(minBarWidth, spriteWidth * 0.9f);
+        popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
+        var barOffsetY = spriteHeight * 0.55f + barVerticalPadding;
+        barRoot = new GameObject("CombatFeedback").transform;
+        barRoot.SetParent(transform, false);
+        barRoot.localRotation = Quaternion.identity;
+        barRoot.localScale = GetInverseLossyScale();
+        barRoot.localPosition = transform.InverseTransformPoint(transform.position + Vector3.up * barOffsetY);
+        backgroundBarRenderer = CreateBarRenderer("HealthBarBackground", barRoot, HealthBarBackgroundColor, barWidth, barHeight);
+        fillBarRenderer = CreateBarRenderer("HealthBarFill", barRoot, AllyHealthColor, barWidth, barHeight);
+        if (fillBarRenderer != null)
+        {
+            fillBarRenderer.sortingOrder += 1;
+        }
+    }
+    private SpriteRenderer CreateBarRenderer(string objectName, Transform parent, Color color, float width, float height)
+    {
+        var barObject = new GameObject(objectName);
+        barObject.transform.SetParent(parent, false);
+        barObject.transform.localRotation = Quaternion.identity;
+        barObject.transform.localPosition = Vector3.zero;
+        barObject.transform.localScale = new Vector3(width, height, 1f);
+        var renderer = barObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = GetRuntimeBarSprite();
+        renderer.color = color;
+        if (targetRenderer != null)
+        {
+            renderer.sortingLayerID = targetRenderer.sortingLayerID;
+            renderer.sortingOrder = targetRenderer.sortingOrder + feedbackSortingOffset;
+        }
+        return renderer;
+    }
+    private void EnsureTargetRenderer()
+    {
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+    }
+    private Vector3 GetInverseLossyScale()
+    {
+        var lossyScale = transform.lossyScale;
+        return new Vector3(
+            1f / Mathf.Max(0.0001f, lossyScale.x),
+            1f / Mathf.Max(0.0001f, lossyScale.y),
+            1f / Mathf.Max(0.0001f, lossyScale.z));
+    }
+    private static Sprite GetRuntimeBarSprite()
+    {
+        if (runtimeBarSprite != null)
+        {
+            return runtimeBarSprite;
+        }
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
         };
-    }
-    private DayRewardData CreateReward(int sourceNightIndex, int faithReward, int goldReward)
-    {
-        return new DayRewardData
-        {
-            SourceNightIndex = sourceNightIndex,
-            FaithReward = faithReward,
-            GoldReward = goldReward
-        };
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply();
+        runtimeBarSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return runtimeBarSprite;
     }
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradePurchaseResult.cs">
-public enum UpgradePurchaseFailureReason
-{
-    None = 0,
-    InvalidState = 1,
-    WrongPhase = 2,
-    UpgradeNotFound = 3,
-    AlreadyPurchased = 4,
-    NotEnoughGold = 5,
-    EffectNotSupported = 6
-}
-public class UpgradePurchaseResult
-{
-    public bool IsSuccess { get; }
-    public UpgradePurchaseFailureReason FailureReason { get; }
-    public UpgradeDef UpgradeDef { get; }
-    private UpgradePurchaseResult(bool isSuccess, UpgradePurchaseFailureReason failureReason, UpgradeDef upgradeDef)
-    {
-        IsSuccess = isSuccess;
-        FailureReason = failureReason;
-        UpgradeDef = upgradeDef;
-    }
-    public static UpgradePurchaseResult Success(UpgradeDef upgradeDef)
-    {
-        return new UpgradePurchaseResult(true, UpgradePurchaseFailureReason.None, upgradeDef);
-    }
-    public static UpgradePurchaseResult Failure(UpgradePurchaseFailureReason failureReason, UpgradeDef upgradeDef = null)
-    {
-        return new UpgradePurchaseResult(false, failureReason, upgradeDef);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
-using System.Collections.Generic;
-using UnityEngine;
-public class UpgradeSystem
-{
-    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
-    {
-        if (runState == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
-        }
-        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
-        if (upgradeDef == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
-        }
-        runState.PurchasedUpgradeIds ??= new HashSet<string>();
-        if (runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
-        }
-        if (!SupportsEffectType(upgradeDef.EffectType))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
-        }
-        var price = Mathf.Max(0, upgradeDef.Price);
-        if (runState.Gold < price)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
-        }
-        runState.Gold -= price;
-        runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
-        ApplyEffect(upgradeDef, runState);
-        ClampRunState(runState);
-        return UpgradePurchaseResult.Success(upgradeDef);
-    }
-    public static bool SupportsEffectType(UpgradeEffectType effectType)
-    {
-        return effectType == UpgradeEffectType.FaithIncomeBonus
-            || effectType == UpgradeEffectType.CemeteryRepair
-            || effectType == UpgradeEffectType.CemeteryMaxStateBonus;
-    }
-    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
-    {
-        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
-        switch (upgradeDef.EffectType)
-        {
-            case UpgradeEffectType.FaithIncomeBonus:
-                runState.DayFaithIncome = Mathf.Max(0, runState.DayFaithIncome + effectValue);
-                break;
-            case UpgradeEffectType.CemeteryRepair:
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-            case UpgradeEffectType.CemeteryMaxStateBonus:
-                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectValue);
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-        }
-    }
-    private static void ClampRunState(RunState runState)
-    {
-        runState.Gold = Mathf.Max(0, runState.Gold);
-        runState.DayFaithIncome = Mathf.Max(0, runState.DayFaithIncome);
-        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
-        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/DayScreenView.cs">
+<file path="Assets/Game/Code/UI/DefeatScreenView.cs">
 using System;
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 [DisallowMultipleComponent]
-public class DayScreenView : MonoBehaviour
+public class DefeatScreenView : MonoBehaviour
 {
-    private const float UpgradeItemSpacing = 12f;
     [SerializeField] private TMP_Text summaryText;
-    [SerializeField] private RectTransform upgradeItemsContainer;
-    [SerializeField] private DayUpgradeItemView upgradeItemTemplate;
-    [SerializeField] private Button startNightButton;
-    public event Action StartNightRequested;
-    public event Action<string> UpgradePurchaseRequested;
+    [SerializeField] private Button restartButton;
+    public event Action RestartRequested;
     private bool isInitialized;
-    private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
     private void Awake()
     {
         EnsureInitialized();
     }
     private void OnDestroy()
     {
-        if (!isInitialized || startNightButton == null)
+        if (!isInitialized || restartButton == null)
         {
-            ClearUpgradeItems();
             return;
         }
-        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
+        restartButton.onClick.RemoveListener(HandleRestartPressed);
         isInitialized = false;
-        ClearUpgradeItems();
     }
-    public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    public void Show(RunState runState)
     {
         EnsureInitialized();
         gameObject.SetActive(true);
-        Refresh(runState, upgradeItems);
+        Refresh(runState);
     }
     public void Hide()
     {
         gameObject.SetActive(false);
     }
-    public void Refresh(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    public void Refresh(RunState runState)
     {
-        if (runState == null)
-        {
-            return;
-        }
         if (summaryText != null)
         {
             summaryText.text = BuildSummary(runState);
         }
-        if (startNightButton != null)
+        if (restartButton != null)
         {
-            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
+            restartButton.interactable = runState != null && runState.CurrentPhase == GamePhase.Defeat;
         }
-        RebuildUpgradeItems(upgradeItems);
     }
     private void EnsureInitialized()
     {
-        if (upgradeItemTemplate != null)
-        {
-            upgradeItemTemplate.gameObject.SetActive(false);
-        }
-        if (isInitialized || startNightButton == null)
+        if (isInitialized || restartButton == null)
         {
             return;
         }
-        startNightButton.onClick.AddListener(HandleStartNightPressed);
+        restartButton.onClick.AddListener(HandleRestartPressed);
         isInitialized = true;
     }
-    private void HandleStartNightPressed()
+    private void HandleRestartPressed()
     {
-        StartNightRequested?.Invoke();
+        RestartRequested?.Invoke();
     }
-    private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    private static string BuildSummary(RunState runState)
     {
-        ClearUpgradeItems();
-        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
+        if (runState == null)
         {
-            return;
-        }
-        var templateRect = upgradeItemTemplate.transform as RectTransform;
-        if (templateRect == null)
-        {
-            return;
-        }
-        var itemStep = templateRect.sizeDelta.y + UpgradeItemSpacing;
-        for (var i = 0; i < upgradeItems.Count; i++)
-        {
-            var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
-            var itemRect = itemView.transform as RectTransform;
-            if (itemRect != null)
-            {
-                itemRect.anchorMin = templateRect.anchorMin;
-                itemRect.anchorMax = templateRect.anchorMax;
-                itemRect.pivot = templateRect.pivot;
-                itemRect.sizeDelta = templateRect.sizeDelta;
-                itemRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, itemStep * i);
-            }
-            itemView.gameObject.name = $"UpgradeItem_{i}";
-            itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.BuyRequested += HandleUpgradeBuyRequested;
-            itemView.Bind(upgradeItems[i]);
-            itemView.gameObject.SetActive(true);
-            spawnedUpgradeItems.Add(itemView);
-        }
-    }
-    private void ClearUpgradeItems()
-    {
-        for (var i = 0; i < spawnedUpgradeItems.Count; i++)
-        {
-            var itemView = spawnedUpgradeItems[i];
-            if (itemView == null)
-            {
-                continue;
-            }
-            itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.gameObject.SetActive(false);
-            Destroy(itemView.gameObject);
-        }
-        spawnedUpgradeItems.Clear();
-    }
-    private void HandleUpgradeBuyRequested(string upgradeId)
-    {
-        UpgradePurchaseRequested?.Invoke(upgradeId);
-    }
-    private string BuildSummary(RunState runState)
-    {
-        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
-        {
-            return
-                $"Day {runState.CurrentDay}\n" +
-                "The cemetery is quiet.\n" +
-                $"Faith: {runState.Faith}\n" +
-                $"Gold: {runState.Gold}\n" +
-                $"Cemetery: {runState.CemeteryState}";
+            return "Defeat\nThe cemetery has fallen.";
         }
         return
-            $"Day {runState.CurrentDay}\n" +
-            $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
-            $"Reward: +{runState.LastDayReward.FaithReward} Faith, +{runState.LastDayReward.GoldReward} Gold\n" +
-            $"Faith: {runState.Faith}\n" +
-            $"Gold: {runState.Gold}\n" +
-            $"Cemetery: {runState.CemeteryState}";
+            "Defeat\n" +
+            "The cemetery has fallen.\n" +
+            $"Day reached: {runState.CurrentDay}\n" +
+            $"Night reached: {runState.CurrentNight}";
     }
 }
 </file>
 
-<file path="Assets/Game/Code/UI/DayUpgradeItemView.cs">
+<file path="Assets/Game/Code/UI/PhaseTransitionView.cs">
+using System.Collections;
+using TMPro;
+using UnityEngine;
+[DisallowMultipleComponent]
+public class PhaseTransitionView : MonoBehaviour
+{
+    [SerializeField] private CanvasGroup canvasGroup;
+    [SerializeField] private TMP_Text bannerText;
+    [SerializeField] private string dayLabel = "Day";
+    [SerializeField] private string nightLabel = "Night";
+    [Min(0f)] [SerializeField] private float fadeInDuration = 0.12f;
+    [Min(0f)] [SerializeField] private float holdDuration = 0.45f;
+    [Min(0f)] [SerializeField] private float fadeOutDuration = 0.2f;
+    public void Play(GamePhase phase)
+    {
+        var phaseLabel = GetPhaseLabel(phase);
+        if (string.IsNullOrWhiteSpace(phaseLabel))
+        {
+            Hide();
+            return;
+        }
+        StopAllCoroutines();
+        if (bannerText != null)
+        {
+            bannerText.text = phaseLabel;
+        }
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+        }
+        gameObject.SetActive(true);
+        StartCoroutine(PlayRoutine());
+    }
+    public void Hide()
+    {
+        StopAllCoroutines();
+        HideImmediate();
+    }
+    private IEnumerator PlayRoutine()
+    {
+        yield return Fade(0f, 1f, fadeInDuration);
+        if (holdDuration > 0f)
+        {
+            yield return new WaitForSecondsRealtime(holdDuration);
+        }
+        yield return Fade(1f, 0f, fadeOutDuration);
+        HideImmediate();
+    }
+    private IEnumerator Fade(float fromAlpha, float toAlpha, float duration)
+    {
+        if (canvasGroup == null)
+        {
+            yield break;
+        }
+        if (duration <= 0f)
+        {
+            canvasGroup.alpha = toAlpha;
+            yield break;
+        }
+        var elapsed = 0f;
+        canvasGroup.alpha = fromAlpha;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            var progress = Mathf.Clamp01(elapsed / duration);
+            canvasGroup.alpha = Mathf.Lerp(fromAlpha, toAlpha, progress);
+            yield return null;
+        }
+        canvasGroup.alpha = toAlpha;
+    }
+    private void HideImmediate()
+    {
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+        }
+        gameObject.SetActive(false);
+    }
+    private string GetPhaseLabel(GamePhase phase)
+    {
+        return phase switch
+        {
+            GamePhase.Day => dayLabel,
+            GamePhase.Night => nightLabel,
+            _ => string.Empty
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/WinScreenView.cs">
 using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-public class DayUpgradeItemData
-{
-    public string UpgradeId;
-    public string NameText;
-    public string PriceText;
-    public string EffectText;
-    public bool CanBuy;
-}
 [DisallowMultipleComponent]
-public class DayUpgradeItemView : MonoBehaviour
+public class WinScreenView : MonoBehaviour
 {
-    [SerializeField] private TMP_Text nameText;
-    [SerializeField] private TMP_Text priceText;
-    [SerializeField] private TMP_Text effectText;
-    [SerializeField] private Button buyButton;
-    public event Action<string> BuyRequested;
+    [SerializeField] private TMP_Text summaryText;
+    [SerializeField] private Button restartButton;
+    public event Action RestartRequested;
     private bool isInitialized;
-    private string currentUpgradeId;
     private void Awake()
     {
         EnsureInitialized();
     }
     private void OnDestroy()
     {
-        if (!isInitialized || buyButton == null)
+        if (!isInitialized || restartButton == null)
         {
             return;
         }
-        buyButton.onClick.RemoveListener(HandleBuyPressed);
+        restartButton.onClick.RemoveListener(HandleRestartPressed);
         isInitialized = false;
     }
-    public void Bind(DayUpgradeItemData itemData)
+    public void Show(RunState runState)
     {
         EnsureInitialized();
-        currentUpgradeId = itemData?.UpgradeId ?? string.Empty;
-        if (nameText != null)
+        gameObject.SetActive(true);
+        Refresh(runState);
+    }
+    public void Hide()
+    {
+        gameObject.SetActive(false);
+    }
+    public void Refresh(RunState runState)
+    {
+        if (summaryText != null)
         {
-            nameText.text = itemData?.NameText ?? string.Empty;
+            summaryText.text = BuildSummary(runState);
         }
-        if (priceText != null)
+        if (restartButton != null)
         {
-            priceText.text = itemData?.PriceText ?? string.Empty;
-        }
-        if (effectText != null)
-        {
-            effectText.text = itemData?.EffectText ?? string.Empty;
-        }
-        if (buyButton != null)
-        {
-            buyButton.interactable = itemData != null
-                && itemData.CanBuy
-                && !string.IsNullOrWhiteSpace(itemData.UpgradeId);
+            restartButton.interactable = runState != null && runState.CurrentPhase == GamePhase.Win;
         }
     }
     private void EnsureInitialized()
     {
-        if (isInitialized || buyButton == null)
+        if (isInitialized || restartButton == null)
         {
             return;
         }
-        buyButton.onClick.AddListener(HandleBuyPressed);
+        restartButton.onClick.AddListener(HandleRestartPressed);
         isInitialized = true;
     }
-    private void HandleBuyPressed()
+    private void HandleRestartPressed()
     {
-        if (string.IsNullOrWhiteSpace(currentUpgradeId))
+        RestartRequested?.Invoke();
+    }
+    private static string BuildSummary(RunState runState)
+    {
+        if (runState == null)
         {
-            return;
+            return "Victory\nYou survived the graveyard watch.";
         }
-        BuyRequested?.Invoke(currentUpgradeId);
+        return
+            "Victory\n" +
+            "The cemetery endured the night watch.\n" +
+            $"Day reached: {runState.CurrentDay}\n" +
+            $"Nights survived: {runState.CurrentNight}\n" +
+            $"Days survived: {runState.CurrentDay}";
     }
 }
 </file>
@@ -1544,6 +1548,7 @@ public class TextPopupInstance : MonoBehaviour
     [SerializeField] private float startScale = 0.9f;
     [SerializeField] private float endScale = 1.1f;
     [SerializeField] private float fadeDelayNormalized = 0.3f;
+    [SerializeField] private int sortingOrder = 20;
     private Sequence sequence;
     public void Play(string text, Color color)
     {
@@ -1559,6 +1564,7 @@ public class TextPopupInstance : MonoBehaviour
         label.text = text;
         label.color = color;
         label.alpha = 1f;
+        label.sortingOrder = sortingOrder;
         Transform tr = transform;
         Vector3 startPos = tr.position;
         tr.localScale = Vector3.one * startScale;
@@ -1759,6 +1765,34 @@ public class UnitDef : ContentDef
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Upgrade Def")]
+public class UpgradeDef : ContentDef
+{
+    [SerializeField] private string displayName;
+    [SerializeField] private int price;
+    [SerializeField] private UpgradeEffectType effectType;
+    [SerializeField] private int effectValue;
+    public string DisplayName => displayName;
+    public int Price => price;
+    public UpgradeEffectType EffectType => effectType;
+    public int EffectValue => effectValue;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs">
+public enum UpgradeEffectType
+{
+    FaithIncomeBonus = 0,
+    CemeteryRepair = 1,
+    CemeteryMaxStateBonus = 2,
+    UnlockBell = 3,
+    BellFaithCostModifier = 4,
+    UnitDamageModifier = 5
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Lane/EnemySpawnResult.cs">
 public class EnemySpawnResult
 {
@@ -1797,6 +1831,7 @@ public class LaneEnemy : MonoBehaviour
     public bool IsInCombat => TargetUnit != null;
     private Vector3 forwardTargetPosition;
     private float attackCooldown;
+    private LaneCombatFeedbackView combatFeedbackView;
     private void Update()
     {
         if (EnemyDef == null)
@@ -1812,6 +1847,12 @@ public class LaneEnemy : MonoBehaviour
         forwardTargetPosition = targetPosition;
         TargetUnit = null;
         attackCooldown = enemyDef.AttackInterval;
+        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
+        if (combatFeedbackView == null)
+        {
+            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
+        }
+        combatFeedbackView.Bind(enemyDef.Hp, true);
     }
     public void SetTargetUnit(LaneUnit laneUnit)
     {
@@ -1827,7 +1868,12 @@ public class LaneEnemy : MonoBehaviour
     }
     public void ApplyDamage(int damage)
     {
+        if (damage <= 0)
+        {
+            return;
+        }
         CurrentHp -= damage;
+        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
     }
     public bool IsDead()
     {
@@ -2033,45 +2079,171 @@ public class UnitSpawnResult
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardData.cs">
+public class DayRewardData
+{
+    public int SourceNightIndex;
+    public int FaithReward;
+    public int GoldReward;
+    public bool HasAnyReward => FaithReward > 0 || GoldReward > 0;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardSystem.cs">
+public class DayRewardSystem
+{
+    public DayRewardData CreateInitialDayReward(int faithReward)
+    {
+        return CreateReward(0, faithReward, 0);
+    }
+    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int faithReward, int goldReward)
+    {
+        return CreateReward(completedNightIndex, faithReward, goldReward);
+    }
+    public void ApplyReward(RunState runState, DayRewardData reward)
+    {
+        if (runState == null || reward == null)
+        {
+            return;
+        }
+        var faithReward = reward.FaithReward < 0 ? 0 : reward.FaithReward;
+        var goldReward = reward.GoldReward < 0 ? 0 : reward.GoldReward;
+        runState.Faith += faithReward;
+        runState.Gold += goldReward;
+        runState.LastDayReward = new DayRewardData
+        {
+            SourceNightIndex = reward.SourceNightIndex,
+            FaithReward = faithReward,
+            GoldReward = goldReward
+        };
+    }
+    private DayRewardData CreateReward(int sourceNightIndex, int faithReward, int goldReward)
+    {
+        return new DayRewardData
+        {
+            SourceNightIndex = sourceNightIndex,
+            FaithReward = faithReward,
+            GoldReward = goldReward
+        };
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Runtime/GamePhase.cs">
 public enum GamePhase
 {
     Day,
     Night,
-    Transition
+    Transition,
+    Defeat,
+    Win
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Runtime/RunState.cs">
-using System.Collections.Generic;
-public class RunState
+<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradePurchaseResult.cs">
+public enum UpgradePurchaseFailureReason
 {
-    private const int InitialCemeteryState = 100;
-    public int Faith;
-    public int Gold;
-    public int DayFaithIncome;
-    public int CemeteryState;
-    public int CemeteryMaxState;
-    public int CurrentDay;
-    public int CurrentNight;
-    public GamePhase CurrentPhase;
-    public DayRewardData LastDayReward;
-    public HashSet<string> PurchasedUpgradeIds;
-    public static RunState CreateInitial()
+    None = 0,
+    InvalidState = 1,
+    WrongPhase = 2,
+    UpgradeNotFound = 3,
+    AlreadyPurchased = 4,
+    NotEnoughGold = 5,
+    EffectNotSupported = 6
+}
+public class UpgradePurchaseResult
+{
+    public bool IsSuccess { get; }
+    public UpgradePurchaseFailureReason FailureReason { get; }
+    public UpgradeDef UpgradeDef { get; }
+    private UpgradePurchaseResult(bool isSuccess, UpgradePurchaseFailureReason failureReason, UpgradeDef upgradeDef)
     {
-        return new RunState
+        IsSuccess = isSuccess;
+        FailureReason = failureReason;
+        UpgradeDef = upgradeDef;
+    }
+    public static UpgradePurchaseResult Success(UpgradeDef upgradeDef)
+    {
+        return new UpgradePurchaseResult(true, UpgradePurchaseFailureReason.None, upgradeDef);
+    }
+    public static UpgradePurchaseResult Failure(UpgradePurchaseFailureReason failureReason, UpgradeDef upgradeDef = null)
+    {
+        return new UpgradePurchaseResult(false, failureReason, upgradeDef);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
+using System.Collections.Generic;
+using UnityEngine;
+public class UpgradeSystem
+{
+    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
+    {
+        if (runState == null)
         {
-            Faith = 0,
-            Gold = 0,
-            DayFaithIncome = 0,
-            CemeteryState = InitialCemeteryState,
-            CemeteryMaxState = InitialCemeteryState,
-            CurrentDay = 1,
-            CurrentNight = 0,
-            CurrentPhase = GamePhase.Transition,
-            LastDayReward = new DayRewardData(),
-            PurchasedUpgradeIds = new HashSet<string>()
-        };
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
+        }
+        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
+        if (upgradeDef == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
+        }
+        runState.PurchasedUpgradeIds ??= new HashSet<string>();
+        if (runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
+        }
+        if (!SupportsEffectType(upgradeDef.EffectType))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
+        }
+        var price = Mathf.Max(0, upgradeDef.Price);
+        if (runState.Gold < price)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
+        }
+        runState.Gold -= price;
+        runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
+        ApplyEffect(upgradeDef, runState);
+        ClampRunState(runState);
+        return UpgradePurchaseResult.Success(upgradeDef);
+    }
+    public static bool SupportsEffectType(UpgradeEffectType effectType)
+    {
+        return effectType == UpgradeEffectType.FaithIncomeBonus
+            || effectType == UpgradeEffectType.CemeteryRepair
+            || effectType == UpgradeEffectType.CemeteryMaxStateBonus;
+    }
+    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
+    {
+        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
+        switch (upgradeDef.EffectType)
+        {
+            case UpgradeEffectType.FaithIncomeBonus:
+                runState.DayFaithIncome = Mathf.Max(0, runState.DayFaithIncome + effectValue);
+                break;
+            case UpgradeEffectType.CemeteryRepair:
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+            case UpgradeEffectType.CemeteryMaxStateBonus:
+                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectValue);
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+        }
+    }
+    private static void ClampRunState(RunState runState)
+    {
+        runState.Gold = Mathf.Max(0, runState.Gold);
+        runState.DayFaithIncome = Mathf.Max(0, runState.DayFaithIncome);
+        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
     }
 }
 </file>
@@ -2248,6 +2420,235 @@ public static class TextStuff
 }
 </file>
 
+<file path="Assets/Game/Code/UI/DayScreenView.cs">
+using System;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+[DisallowMultipleComponent]
+public class DayScreenView : MonoBehaviour
+{
+    private const float UpgradeItemSpacing = 12f;
+    [SerializeField] private TMP_Text summaryText;
+    [SerializeField] private RectTransform upgradeItemsContainer;
+    [SerializeField] private DayUpgradeItemView upgradeItemTemplate;
+    [SerializeField] private Button startNightButton;
+    public event Action StartNightRequested;
+    public event Action<string> UpgradePurchaseRequested;
+    private bool isInitialized;
+    private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
+    private void Awake()
+    {
+        EnsureInitialized();
+    }
+    private void OnDestroy()
+    {
+        if (!isInitialized || startNightButton == null)
+        {
+            ClearUpgradeItems();
+            return;
+        }
+        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
+        isInitialized = false;
+        ClearUpgradeItems();
+    }
+    public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        EnsureInitialized();
+        gameObject.SetActive(true);
+        Refresh(runState, upgradeItems);
+    }
+    public void Hide()
+    {
+        gameObject.SetActive(false);
+    }
+    public void Refresh(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        if (summaryText != null)
+        {
+            summaryText.text = BuildSummary(runState);
+        }
+        if (startNightButton != null)
+        {
+            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
+        }
+        RebuildUpgradeItems(upgradeItems);
+    }
+    private void EnsureInitialized()
+    {
+        if (upgradeItemTemplate != null)
+        {
+            upgradeItemTemplate.gameObject.SetActive(false);
+        }
+        if (isInitialized || startNightButton == null)
+        {
+            return;
+        }
+        startNightButton.onClick.AddListener(HandleStartNightPressed);
+        isInitialized = true;
+    }
+    private void HandleStartNightPressed()
+    {
+        StartNightRequested?.Invoke();
+    }
+    private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        ClearUpgradeItems();
+        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
+        {
+            return;
+        }
+        var templateRect = upgradeItemTemplate.transform as RectTransform;
+        if (templateRect == null)
+        {
+            return;
+        }
+        var itemStep = templateRect.sizeDelta.y + UpgradeItemSpacing;
+        for (var i = 0; i < upgradeItems.Count; i++)
+        {
+            var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
+            var itemRect = itemView.transform as RectTransform;
+            if (itemRect != null)
+            {
+                itemRect.anchorMin = templateRect.anchorMin;
+                itemRect.anchorMax = templateRect.anchorMax;
+                itemRect.pivot = templateRect.pivot;
+                itemRect.sizeDelta = templateRect.sizeDelta;
+                itemRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, itemStep * i);
+            }
+            itemView.gameObject.name = $"UpgradeItem_{i}";
+            itemView.BuyRequested -= HandleUpgradeBuyRequested;
+            itemView.BuyRequested += HandleUpgradeBuyRequested;
+            itemView.Bind(upgradeItems[i]);
+            itemView.gameObject.SetActive(true);
+            spawnedUpgradeItems.Add(itemView);
+        }
+    }
+    private void ClearUpgradeItems()
+    {
+        for (var i = 0; i < spawnedUpgradeItems.Count; i++)
+        {
+            var itemView = spawnedUpgradeItems[i];
+            if (itemView == null)
+            {
+                continue;
+            }
+            itemView.BuyRequested -= HandleUpgradeBuyRequested;
+            itemView.gameObject.SetActive(false);
+            Destroy(itemView.gameObject);
+        }
+        spawnedUpgradeItems.Clear();
+    }
+    private void HandleUpgradeBuyRequested(string upgradeId)
+    {
+        UpgradePurchaseRequested?.Invoke(upgradeId);
+    }
+    private string BuildSummary(RunState runState)
+    {
+        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
+        {
+            return
+                $"Day {runState.CurrentDay}\n" +
+                "The cemetery is quiet.\n" +
+                $"Faith: {runState.Faith}\n" +
+                $"Gold: {runState.Gold}\n" +
+                $"Cemetery: {runState.CemeteryState}";
+        }
+        return
+            $"Day {runState.CurrentDay}\n" +
+            $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
+            $"Reward: +{runState.LastDayReward.FaithReward} Faith, +{runState.LastDayReward.GoldReward} Gold\n" +
+            $"Faith: {runState.Faith}\n" +
+            $"Gold: {runState.Gold}\n" +
+            $"Cemetery: {runState.CemeteryState}";
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/DayUpgradeItemView.cs">
+using System;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+public class DayUpgradeItemData
+{
+    public string UpgradeId;
+    public string NameText;
+    public string PriceText;
+    public string EffectText;
+    public bool CanBuy;
+}
+[DisallowMultipleComponent]
+public class DayUpgradeItemView : MonoBehaviour
+{
+    [SerializeField] private TMP_Text nameText;
+    [SerializeField] private TMP_Text priceText;
+    [SerializeField] private TMP_Text effectText;
+    [SerializeField] private Button buyButton;
+    public event Action<string> BuyRequested;
+    private bool isInitialized;
+    private string currentUpgradeId;
+    private void Awake()
+    {
+        EnsureInitialized();
+    }
+    private void OnDestroy()
+    {
+        if (!isInitialized || buyButton == null)
+        {
+            return;
+        }
+        buyButton.onClick.RemoveListener(HandleBuyPressed);
+        isInitialized = false;
+    }
+    public void Bind(DayUpgradeItemData itemData)
+    {
+        EnsureInitialized();
+        currentUpgradeId = itemData?.UpgradeId ?? string.Empty;
+        if (nameText != null)
+        {
+            nameText.text = itemData?.NameText ?? string.Empty;
+        }
+        if (priceText != null)
+        {
+            priceText.text = itemData?.PriceText ?? string.Empty;
+        }
+        if (effectText != null)
+        {
+            effectText.text = itemData?.EffectText ?? string.Empty;
+        }
+        if (buyButton != null)
+        {
+            buyButton.interactable = itemData != null
+                && itemData.CanBuy
+                && !string.IsNullOrWhiteSpace(itemData.UpgradeId);
+        }
+    }
+    private void EnsureInitialized()
+    {
+        if (isInitialized || buyButton == null)
+        {
+            return;
+        }
+        buyButton.onClick.AddListener(HandleBuyPressed);
+        isInitialized = true;
+    }
+    private void HandleBuyPressed()
+    {
+        if (string.IsNullOrWhiteSpace(currentUpgradeId))
+        {
+            return;
+        }
+        BuyRequested?.Invoke(currentUpgradeId);
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/UI/ScreenFader.cs">
 using DG.Tweening;
 using System;
@@ -2380,13 +2781,6 @@ public class ScreenFader : MonoBehaviour
         yield return new WaitForSeconds(1f);
         G.ScreenFader.FadeOut(1f);
     }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/UI.cs">
-using UnityEngine;
-public class UI : MonoBehaviour
-{
 }
 </file>
 
@@ -3334,6 +3728,7 @@ public class LaneUnit : MonoBehaviour
     private float idleMicroRetargetDelay;
     private float idleMicroRetargetTimer;
     private int idleMicroRetargetIndex;
+    private LaneCombatFeedbackView combatFeedbackView;
     private void Update()
     {
         if (UnitDef == null)
@@ -3349,6 +3744,12 @@ public class LaneUnit : MonoBehaviour
         State = LaneUnitState.Waiting;
         TargetEnemy = null;
         attackCooldown = unitDef.AttackInterval;
+        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
+        if (combatFeedbackView == null)
+        {
+            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
+        }
+        combatFeedbackView.Bind(unitDef.Hp, false);
     }
     public void AssignHomePosition(
         Vector3 homeSlotCenter,
@@ -3407,7 +3808,12 @@ public class LaneUnit : MonoBehaviour
     }
     public void ApplyDamage(int damage)
     {
+        if (damage <= 0)
+        {
+            return;
+        }
         CurrentHp -= damage;
+        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
     }
     public bool IsDead()
     {
@@ -4048,6 +4454,41 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Runtime/RunState.cs">
+using System.Collections.Generic;
+using UnityEngine;
+public class RunState
+{
+    public int Faith;
+    public int Gold;
+    public int DayFaithIncome;
+    public int CemeteryState;
+    public int CemeteryMaxState;
+    public int CurrentDay;
+    public int CurrentNight;
+    public GamePhase CurrentPhase;
+    public DayRewardData LastDayReward;
+    public HashSet<string> PurchasedUpgradeIds;
+    public static RunState CreateInitial(int initialCemeteryState)
+    {
+        var clampedInitialCemeteryState = Mathf.Max(0, initialCemeteryState);
+        return new RunState
+        {
+            Faith = 0,
+            Gold = 0,
+            DayFaithIncome = 0,
+            CemeteryState = clampedInitialCemeteryState,
+            CemeteryMaxState = clampedInitialCemeteryState,
+            CurrentDay = 1,
+            CurrentNight = 0,
+            CurrentPhase = GamePhase.Transition,
+            LastDayReward = new DayRewardData(),
+            PurchasedUpgradeIds = new HashSet<string>()
+        };
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Service/ServiceMain.cs">
 using UnityEngine;
 public class ServiceMain : MonoBehaviour
@@ -4079,6 +4520,13 @@ public class ServiceMain : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/UI/UI.cs">
+using UnityEngine;
+public class UI : MonoBehaviour
+{
+}
+</file>
+
 <file path="Assets/Game/Code/UI/HUD.cs">
 using System;
 using System.Collections.Generic;
@@ -4101,22 +4549,32 @@ public class HUD : MonoBehaviour
     [SerializeField] private TMP_Text cemeteryStateText;
     [SerializeField] private TMP_Text phaseText;
     [SerializeField] private DayScreenView dayScreenView;
+    [SerializeField] private DefeatScreenView defeatScreenView;
+    [SerializeField] private WinScreenView winScreenView;
+    [SerializeField] private PhaseTransitionView phaseTransitionView;
     [SerializeField] private TMP_Text bellFeedbackText;
     [SerializeField] private BellButtonBinding[] bellButtons;
     public event Action DayScreenStartNightRequested;
     public event Action<string> DayScreenUpgradePurchaseRequested;
+    public event Action DefeatScreenRestartRequested;
+    public event Action WinScreenRestartRequested;
     private bool missingMainWarningShown;
     private void Awake()
     {
         G.HUD = this;
         BindBellButtons();
         BindDayScreenView();
+        BindDefeatScreenView();
+        BindWinScreenView();
         RefreshBellButtonLabels();
+        RefreshBellButtonInteractivity(null);
     }
     private void OnDestroy()
     {
         UnbindBellButtons();
         UnbindDayScreenView();
+        UnbindDefeatScreenView();
+        UnbindWinScreenView();
         if (G.HUD == this)
         {
             G.HUD = null;
@@ -4130,6 +4588,7 @@ public class HUD : MonoBehaviour
     {
         if (G.main == null || G.main.RunState == null)
         {
+            RefreshBellButtonInteractivity(null);
             if (!missingMainWarningShown)
             {
                 Debug.LogWarning("HUD: Main or RunState not found");
@@ -4139,6 +4598,7 @@ public class HUD : MonoBehaviour
         }
         missingMainWarningShown = false;
         var runState = G.main.RunState;
+        RefreshBellButtonInteractivity(runState);
         if (faithText != null)
         {
             faithText.text = $"Faith: {runState.Faith}";
@@ -4179,6 +4639,54 @@ public class HUD : MonoBehaviour
             return;
         }
         dayScreenView.Refresh(runState, upgradeItems);
+    }
+    public void ShowDefeatScreen(RunState runState)
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+        defeatScreenView.Show(runState);
+    }
+    public void HideDefeatScreen()
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+        defeatScreenView.Hide();
+    }
+    public void ShowWinScreen(RunState runState)
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+        winScreenView.Show(runState);
+    }
+    public void HideWinScreen()
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+        winScreenView.Hide();
+    }
+    public void ShowPhaseTransition(GamePhase phase)
+    {
+        if (phaseTransitionView == null)
+        {
+            return;
+        }
+        phaseTransitionView.Play(phase);
+    }
+    public void HidePhaseTransition()
+    {
+        if (phaseTransitionView == null)
+        {
+            return;
+        }
+        phaseTransitionView.Hide();
     }
     private void BindBellButtons()
     {
@@ -4237,6 +4745,40 @@ public class HUD : MonoBehaviour
         dayScreenView.StartNightRequested -= HandleDayScreenStartNightRequested;
         dayScreenView.UpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
     }
+    private void BindDefeatScreenView()
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+        defeatScreenView.RestartRequested -= HandleDefeatScreenRestartRequested;
+        defeatScreenView.RestartRequested += HandleDefeatScreenRestartRequested;
+    }
+    private void UnbindDefeatScreenView()
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+        defeatScreenView.RestartRequested -= HandleDefeatScreenRestartRequested;
+    }
+    private void BindWinScreenView()
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+        winScreenView.RestartRequested -= HandleWinScreenRestartRequested;
+        winScreenView.RestartRequested += HandleWinScreenRestartRequested;
+    }
+    private void UnbindWinScreenView()
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+        winScreenView.RestartRequested -= HandleWinScreenRestartRequested;
+    }
     private void RefreshBellButtonLabels()
     {
         if (bellButtons == null)
@@ -4257,6 +4799,23 @@ public class HUD : MonoBehaviour
                 continue;
             }
             binding.label.text = $"{bellDef.DisplayName} ({bellDef.FaithCost})";
+        }
+    }
+    private void RefreshBellButtonInteractivity(RunState runState)
+    {
+        if (bellButtons == null)
+        {
+            return;
+        }
+        var canRingBells = runState != null && runState.CurrentPhase == GamePhase.Night;
+        for (var i = 0; i < bellButtons.Length; i++)
+        {
+            var binding = bellButtons[i];
+            if (binding == null || binding.button == null)
+            {
+                continue;
+            }
+            binding.button.interactable = canRingBells;
         }
     }
     private void OnBellButtonPressed(string bellId)
@@ -4292,6 +4851,14 @@ public class HUD : MonoBehaviour
     {
         DayScreenUpgradePurchaseRequested?.Invoke(upgradeId);
     }
+    private void HandleDefeatScreenRestartRequested()
+    {
+        DefeatScreenRestartRequested?.Invoke();
+    }
+    private void HandleWinScreenRestartRequested()
+    {
+        WinScreenRestartRequested?.Invoke();
+    }
 }
 </file>
 
@@ -4299,6 +4866,8 @@ public class HUD : MonoBehaviour
 using System;
 using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
 public class Main : MonoBehaviour
 {
     private const int DebugFaithAmount = 10;
@@ -4311,8 +4880,11 @@ public class Main : MonoBehaviour
     [SerializeField] private string debugUpgradeId;
     [SerializeField] private EnemyDef debugEnemyDef;
     [SerializeField] private WaveSpawnEntry[] fixedNightWave;
+    [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0)] [SerializeField] private int dayFaithReward = 20;
     [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
+    [FormerlySerializedAs("targetSurvivedNights")]
+    [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
     private BellSystem bellSystem;
     private DayRewardSystem dayRewardSystem;
     private UpgradeSystem upgradeSystem;
@@ -4324,8 +4896,9 @@ public class Main : MonoBehaviour
     public RunState RunState { get; private set; }
     private void Awake()
     {
+        Time.timeScale = 1f;
         G.main = this;
-        RunState = RunState.CreateInitial();
+        RunState = RunState.CreateInitial(initialCemeteryState);
         RunState.DayFaithIncome = Mathf.Max(0, dayFaithReward);
         bellSystem = new BellSystem();
         dayRewardSystem = new DayRewardSystem();
@@ -4351,13 +4924,20 @@ public class Main : MonoBehaviour
     }
     private void Update()
     {
+        UpdateLoseCondition();
+        if (RunState == null || RunState.CurrentPhase == GamePhase.Defeat || RunState.CurrentPhase == GamePhase.Win)
+        {
+            return;
+        }
         UpdateWaveSpawning();
         UpdateNightCompletion();
         HandleDebugInput();
     }
     public bool EnterDay()
     {
-        if (RunState.CurrentPhase == GamePhase.Day)
+        if (RunState.CurrentPhase == GamePhase.Day ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win)
         {
             return false;
         }
@@ -4368,11 +4948,14 @@ public class Main : MonoBehaviour
         RunState.CurrentPhase = GamePhase.Day;
         waveSystem.StopWave();
         RefreshPresentation();
+        PlayPhaseTransitionCue(GamePhase.Day);
         return true;
     }
     public bool EnterNight()
     {
-        if (RunState.CurrentPhase == GamePhase.Night)
+        if (RunState.CurrentPhase == GamePhase.Night ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win)
         {
             return false;
         }
@@ -4380,6 +4963,7 @@ public class Main : MonoBehaviour
         RunState.CurrentPhase = GamePhase.Night;
         StartNightWave();
         RefreshPresentation();
+        PlayPhaseTransitionCue(GamePhase.Night);
         return true;
     }
     public bool TryStartNightFromDayScreen()
@@ -4427,11 +5011,24 @@ public class Main : MonoBehaviour
         {
             RunState.CemeteryState = 0;
         }
+        TryEnterDefeat();
     }
     private void HandleEnemyBreakthrough(LaneEnemy laneEnemy)
     {
-        DamageCemetery(1);
-        Debug.Log("Enemy breakthrough: cemetery damaged");
+        if (laneEnemy == null)
+        {
+            Debug.LogWarning("Enemy breakthrough failed: laneEnemy is missing");
+            return;
+        }
+        if (laneEnemy.EnemyDef == null)
+        {
+            Debug.LogWarning("Enemy breakthrough failed: EnemyDef is missing");
+            return;
+        }
+        var breakthroughDamage = laneEnemy.EnemyDef.Damage;
+        DamageCemetery(breakthroughDamage);
+        Debug.Log(
+            $"Enemy breakthrough: '{laneEnemy.EnemyDef.Id}' dealt {breakthroughDamage} cemetery damage");
     }
     public BellRingResult TryRingBell(string bellId)
     {
@@ -4564,6 +5161,10 @@ public class Main : MonoBehaviour
     {
         ApplyCompletedNightReward();
         Debug.Log("Night completed");
+        if (TryEnterWin())
+        {
+            return;
+        }
         EnterDay();
     }
     private void ApplyInitialDayReward()
@@ -4604,6 +5205,10 @@ public class Main : MonoBehaviour
         G.HUD.DayScreenStartNightRequested += HandleDayScreenStartNightRequested;
         G.HUD.DayScreenUpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
         G.HUD.DayScreenUpgradePurchaseRequested += HandleDayScreenUpgradePurchaseRequested;
+        G.HUD.DefeatScreenRestartRequested -= HandleDefeatScreenRestartRequested;
+        G.HUD.DefeatScreenRestartRequested += HandleDefeatScreenRestartRequested;
+        G.HUD.WinScreenRestartRequested -= HandleWinScreenRestartRequested;
+        G.HUD.WinScreenRestartRequested += HandleWinScreenRestartRequested;
     }
     private void UnbindHud()
     {
@@ -4613,6 +5218,8 @@ public class Main : MonoBehaviour
         }
         G.HUD.DayScreenStartNightRequested -= HandleDayScreenStartNightRequested;
         G.HUD.DayScreenUpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
+        G.HUD.DefeatScreenRestartRequested -= HandleDefeatScreenRestartRequested;
+        G.HUD.WinScreenRestartRequested -= HandleWinScreenRestartRequested;
     }
     private void HandleDayScreenStartNightRequested()
     {
@@ -4622,12 +5229,37 @@ public class Main : MonoBehaviour
     {
         TryPurchaseUpgrade(upgradeId);
     }
+    private void HandleDefeatScreenRestartRequested()
+    {
+        TryRestartFromDefeatScreen();
+    }
+    private void HandleWinScreenRestartRequested()
+    {
+        TryRestartFromWinScreen();
+    }
     private void RefreshPresentation()
     {
         if (G.HUD == null || RunState == null)
         {
             return;
         }
+        if (RunState.CurrentPhase == GamePhase.Defeat)
+        {
+            G.HUD.HideDayScreen();
+            G.HUD.HideWinScreen();
+            G.HUD.HidePhaseTransition();
+            G.HUD.ShowDefeatScreen(RunState);
+            return;
+        }
+        G.HUD.HideDefeatScreen();
+        if (RunState.CurrentPhase == GamePhase.Win)
+        {
+            G.HUD.HideDayScreen();
+            G.HUD.HidePhaseTransition();
+            G.HUD.ShowWinScreen(RunState);
+            return;
+        }
+        G.HUD.HideWinScreen();
         if (RunState.CurrentPhase == GamePhase.Day)
         {
             G.HUD.ShowDayScreen(RunState, BuildDayUpgradeDisplayItems());
@@ -4700,6 +5332,85 @@ public class Main : MonoBehaviour
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
             _ => string.Empty
         };
+    }
+    private void UpdateLoseCondition()
+    {
+        if (RunState == null ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win ||
+            RunState.CemeteryState > 0)
+        {
+            return;
+        }
+        TryEnterDefeat();
+    }
+    private bool TryEnterDefeat()
+    {
+        if (RunState == null ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win ||
+            RunState.CemeteryState > 0)
+        {
+            return false;
+        }
+        RunState.CurrentPhase = GamePhase.Defeat;
+        waveSystem.StopWave();
+        Time.timeScale = 0f;
+        Debug.Log("Defeat: cemetery destroyed");
+        RefreshPresentation();
+        return true;
+    }
+    private void PlayPhaseTransitionCue(GamePhase phase)
+    {
+        if (G.HUD == null)
+        {
+            return;
+        }
+        G.HUD.ShowPhaseTransition(phase);
+    }
+    private bool TryEnterWin()
+    {
+        if (RunState == null ||
+            RunState.CurrentPhase == GamePhase.Defeat ||
+            RunState.CurrentPhase == GamePhase.Win)
+        {
+            return false;
+        }
+        var requiredDayCount = Mathf.Max(1, targetSurvivedDays);
+        if (RunState.CurrentDay < requiredDayCount)
+        {
+            return false;
+        }
+        RunState.CurrentPhase = GamePhase.Win;
+        waveSystem.StopWave();
+        Time.timeScale = 0f;
+        Debug.Log($"Victory: survived day {RunState.CurrentDay} of {requiredDayCount}");
+        RefreshPresentation();
+        return true;
+    }
+    public bool TryRestartFromDefeatScreen()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Defeat)
+        {
+            return false;
+        }
+        RestartCurrentScene();
+        return true;
+    }
+    public bool TryRestartFromWinScreen()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Win)
+        {
+            return false;
+        }
+        RestartCurrentScene();
+        return true;
+    }
+    private void RestartCurrentScene()
+    {
+        Time.timeScale = 1f;
+        var activeScene = SceneManager.GetActiveScene();
+        SceneManager.LoadScene(activeScene.name);
     }
     private void HandleDebugInput()
     {

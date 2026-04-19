@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 5212600661709876347}
   - component: {fileID: 5920263454918678487}
   - component: {fileID: 3497965420854131290}
+  - component: {fileID: 6822222222222222222}
   m_Layer: 0
   m_Name: EnemyPrefab
   m_TagString: Untagged
@@ -104,3 +105,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2d296c7fe0ab08c4abcb652c10184431, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LaneEnemy
+--- !u!114 &6822222222222222222
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7472344182768934562}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ddf4d9c81434915a0ad12689d3db16f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LaneCombatFeedbackView
+  hpBarPrefab: {fileID: 9100000000000000002, guid: 5d99182cb9d64e8ca84af2036b744ef9, type: 3}
+  targetRenderer: {fileID: 5920263454918678487}
+  barVerticalPadding: 0.08
+  popupVerticalPadding: 0.28
+  hitFlashDuration: 0.08

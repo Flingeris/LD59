@@ -1,9 +1,8 @@
 using System.Collections.Generic;
+using UnityEngine;
 
 public class RunState
 {
-    private const int InitialCemeteryState = 100;
-
     public int Faith;
     public int Gold;
     public int DayFaithIncome;
@@ -15,15 +14,17 @@ public class RunState
     public DayRewardData LastDayReward;
     public HashSet<string> PurchasedUpgradeIds;
 
-    public static RunState CreateInitial()
+    public static RunState CreateInitial(int initialCemeteryState)
     {
+        var clampedInitialCemeteryState = Mathf.Max(0, initialCemeteryState);
+
         return new RunState
         {
             Faith = 0,
             Gold = 0,
             DayFaithIncome = 0,
-            CemeteryState = InitialCemeteryState,
-            CemeteryMaxState = InitialCemeteryState,
+            CemeteryState = clampedInitialCemeteryState,
+            CemeteryMaxState = clampedInitialCemeteryState,
             CurrentDay = 1,
             CurrentNight = 0,
             CurrentPhase = GamePhase.Transition,

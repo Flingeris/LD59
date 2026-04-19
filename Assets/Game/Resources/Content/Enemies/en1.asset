@@ -16,5 +16,5 @@ MonoBehaviour:
   hp: 10
   damage: 2
   attackInterval: 0.5
-  moveSpeed: 1
+  moveSpeed: 2
   viewPrefab: {fileID: 7472344182768934562, guid: 7a846b1f4ad6bbe43904f3ef6e98ab00, type: 3}

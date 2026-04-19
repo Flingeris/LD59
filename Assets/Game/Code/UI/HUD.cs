@@ -21,11 +21,16 @@ public class HUD : MonoBehaviour
     [SerializeField] private TMP_Text cemeteryStateText;
     [SerializeField] private TMP_Text phaseText;
     [SerializeField] private DayScreenView dayScreenView;
+    [SerializeField] private DefeatScreenView defeatScreenView;
+    [SerializeField] private WinScreenView winScreenView;
+    [SerializeField] private PhaseTransitionView phaseTransitionView;
     [SerializeField] private TMP_Text bellFeedbackText;
     [SerializeField] private BellButtonBinding[] bellButtons;
 
     public event Action DayScreenStartNightRequested;
     public event Action<string> DayScreenUpgradePurchaseRequested;
+    public event Action DefeatScreenRestartRequested;
+    public event Action WinScreenRestartRequested;
 
     private bool missingMainWarningShown;
 
@@ -34,13 +39,18 @@ public class HUD : MonoBehaviour
         G.HUD = this;
         BindBellButtons();
         BindDayScreenView();
+        BindDefeatScreenView();
+        BindWinScreenView();
         RefreshBellButtonLabels();
+        RefreshBellButtonInteractivity(null);
     }
 
     private void OnDestroy()
     {
         UnbindBellButtons();
         UnbindDayScreenView();
+        UnbindDefeatScreenView();
+        UnbindWinScreenView();
 
         if (G.HUD == this)
         {
@@ -57,6 +67,8 @@ public class HUD : MonoBehaviour
     {
         if (G.main == null || G.main.RunState == null)
         {
+            RefreshBellButtonInteractivity(null);
+
             if (!missingMainWarningShown)
             {
                 Debug.LogWarning("HUD: Main or RunState not found");
@@ -69,6 +81,7 @@ public class HUD : MonoBehaviour
         missingMainWarningShown = false;
 
         var runState = G.main.RunState;
+        RefreshBellButtonInteractivity(runState);
 
         if (faithText != null)
         {
@@ -119,6 +132,66 @@ public class HUD : MonoBehaviour
         }
 
         dayScreenView.Refresh(runState, upgradeItems);
+    }
+
+    public void ShowDefeatScreen(RunState runState)
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+
+        defeatScreenView.Show(runState);
+    }
+
+    public void HideDefeatScreen()
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+
+        defeatScreenView.Hide();
+    }
+
+    public void ShowWinScreen(RunState runState)
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+
+        winScreenView.Show(runState);
+    }
+
+    public void HideWinScreen()
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+
+        winScreenView.Hide();
+    }
+
+    public void ShowPhaseTransition(GamePhase phase)
+    {
+        if (phaseTransitionView == null)
+        {
+            return;
+        }
+
+        phaseTransitionView.Play(phase);
+    }
+
+    public void HidePhaseTransition()
+    {
+        if (phaseTransitionView == null)
+        {
+            return;
+        }
+
+        phaseTransitionView.Hide();
     }
 
     private void BindBellButtons()
@@ -188,6 +261,48 @@ public class HUD : MonoBehaviour
         dayScreenView.UpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
     }
 
+    private void BindDefeatScreenView()
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+
+        defeatScreenView.RestartRequested -= HandleDefeatScreenRestartRequested;
+        defeatScreenView.RestartRequested += HandleDefeatScreenRestartRequested;
+    }
+
+    private void UnbindDefeatScreenView()
+    {
+        if (defeatScreenView == null)
+        {
+            return;
+        }
+
+        defeatScreenView.RestartRequested -= HandleDefeatScreenRestartRequested;
+    }
+
+    private void BindWinScreenView()
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+
+        winScreenView.RestartRequested -= HandleWinScreenRestartRequested;
+        winScreenView.RestartRequested += HandleWinScreenRestartRequested;
+    }
+
+    private void UnbindWinScreenView()
+    {
+        if (winScreenView == null)
+        {
+            return;
+        }
+
+        winScreenView.RestartRequested -= HandleWinScreenRestartRequested;
+    }
+
     private void RefreshBellButtonLabels()
     {
         if (bellButtons == null)
@@ -211,6 +326,26 @@ public class HUD : MonoBehaviour
             }
 
             binding.label.text = $"{bellDef.DisplayName} ({bellDef.FaithCost})";
+        }
+    }
+
+    private void RefreshBellButtonInteractivity(RunState runState)
+    {
+        if (bellButtons == null)
+        {
+            return;
+        }
+
+        var canRingBells = runState != null && runState.CurrentPhase == GamePhase.Night;
+        for (var i = 0; i < bellButtons.Length; i++)
+        {
+            var binding = bellButtons[i];
+            if (binding == null || binding.button == null)
+            {
+                continue;
+            }
+
+            binding.button.interactable = canRingBells;
         }
     }
 
@@ -252,6 +387,16 @@ public class HUD : MonoBehaviour
     private void HandleDayScreenUpgradePurchaseRequested(string upgradeId)
     {
         DayScreenUpgradePurchaseRequested?.Invoke(upgradeId);
+    }
+
+    private void HandleDefeatScreenRestartRequested()
+    {
+        DefeatScreenRestartRequested?.Invoke();
+    }
+
+    private void HandleWinScreenRestartRequested()
+    {
+        WinScreenRestartRequested?.Invoke();
     }
 
 }

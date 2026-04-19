@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 2776261613044126576}
   - component: {fileID: 8165175480599496251}
   - component: {fileID: 3269294100103990433}
+  - component: {fileID: 5811111111111111111}
   m_Layer: 0
   m_Name: SkelPrefab
   m_TagString: Untagged
@@ -104,3 +105,20 @@ SpriteRenderer:
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
+--- !u!114 &5811111111111111111
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7541570758843446100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ddf4d9c81434915a0ad12689d3db16f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LaneCombatFeedbackView
+  hpBarPrefab: {fileID: 9100000000000000002, guid: 5d99182cb9d64e8ca84af2036b744ef9, type: 3}
+  targetRenderer: {fileID: 3269294100103990433}
+  barVerticalPadding: 0.08
+  popupVerticalPadding: 0.28
+  hitFlashDuration: 0.08

@@ -23,6 +23,7 @@ public class LaneUnit : MonoBehaviour
     private float idleMicroRetargetDelay;
     private float idleMicroRetargetTimer;
     private int idleMicroRetargetIndex;
+    private LaneCombatFeedbackView combatFeedbackView;
 
     private void Update()
     {
@@ -41,6 +42,13 @@ public class LaneUnit : MonoBehaviour
         State = LaneUnitState.Waiting;
         TargetEnemy = null;
         attackCooldown = unitDef.AttackInterval;
+        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
+        if (combatFeedbackView == null)
+        {
+            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
+        }
+
+        combatFeedbackView.Bind(unitDef.Hp, false);
     }
 
     public void AssignHomePosition(
@@ -108,7 +116,18 @@ public class LaneUnit : MonoBehaviour
 
     public void ApplyDamage(int damage)
     {
+        if (damage <= 0)
+        {
+            return;
+        }
+
         CurrentHp -= damage;
+        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
+    }
+
+    private void OnDestroy()
+    {
+        combatFeedbackView?.Cleanup();
     }
 
     public bool IsDead()

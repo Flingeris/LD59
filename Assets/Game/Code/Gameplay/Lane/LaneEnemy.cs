@@ -11,6 +11,7 @@ public class LaneEnemy : MonoBehaviour
 
     private Vector3 forwardTargetPosition;
     private float attackCooldown;
+    private LaneCombatFeedbackView combatFeedbackView;
 
     private void Update()
     {
@@ -29,6 +30,13 @@ public class LaneEnemy : MonoBehaviour
         forwardTargetPosition = targetPosition;
         TargetUnit = null;
         attackCooldown = enemyDef.AttackInterval;
+        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
+        if (combatFeedbackView == null)
+        {
+            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
+        }
+
+        combatFeedbackView.Bind(enemyDef.Hp, true);
     }
 
     public void SetTargetUnit(LaneUnit laneUnit)
@@ -48,7 +56,18 @@ public class LaneEnemy : MonoBehaviour
 
     public void ApplyDamage(int damage)
     {
+        if (damage <= 0)
+        {
+            return;
+        }
+
         CurrentHp -= damage;
+        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
+    }
+
+    private void OnDestroy()
+    {
+        combatFeedbackView?.Cleanup();
     }
 
     public bool IsDead()

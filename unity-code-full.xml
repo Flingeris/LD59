@@ -100,1139 +100,6 @@ Assets/Game/Code/UI/UI.cs
 <files>
 This section contains the contents of the repository's files.
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs">
-public enum BellRingFailureReason
-{
-    None,
-    WrongPhase,
-    BellNotFound,
-    UnitNotFound,
-    NotEnoughFaith
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Bell/BellRingResult.cs">
-public class BellRingResult
-{
-    public bool IsSuccess;
-    public BellRingFailureReason FailureReason;
-    public BellDef BellDef;
-    public UnitDef UnitDef;
-    public UnitSpawnResult SpawnResult;
-    public static BellRingResult Success(BellDef bellDef, UnitDef unitDef)
-    {
-        return new BellRingResult
-        {
-            IsSuccess = true,
-            FailureReason = BellRingFailureReason.None,
-            BellDef = bellDef,
-            UnitDef = unitDef
-        };
-    }
-    public static BellRingResult Failure(BellRingFailureReason failureReason)
-    {
-        return new BellRingResult
-        {
-            IsSuccess = false,
-            FailureReason = failureReason,
-            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
-        };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Bell/BellSystem.cs">
-public class BellSystem
-{
-    public BellRingResult TryRingBell(string bellId, RunState runState)
-    {
-        if (runState == null)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
-        }
-        if (runState.CurrentPhase != GamePhase.Night)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
-        }
-        var bellDef = CMS.Get<BellDef>(bellId);
-        if (bellDef == null)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.BellNotFound);
-        }
-        var unitDef = CMS.Get<UnitDef>(bellDef.LinkedUnitId);
-        if (unitDef == null)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.UnitNotFound);
-        }
-        if (runState.Faith < bellDef.FaithCost)
-        {
-            return BellRingResult.Failure(BellRingFailureReason.NotEnoughFaith);
-        }
-        runState.Faith -= bellDef.FaithCost;
-        return BellRingResult.Success(bellDef, unitDef);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
-public class BellDef : ContentDef
-{
-    [SerializeField] private string displayName;
-    [SerializeField] private int faithCost;
-    [SerializeField] private string linkedUnitId;
-    [SerializeField] private Sprite icon;
-    public string DisplayName => displayName;
-    public int FaithCost => faithCost;
-    public string LinkedUnitId => linkedUnitId;
-    public Sprite Icon => icon;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/EnemyDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Enemy Def")]
-public class EnemyDef : ContentDef
-{
-    [SerializeField] private int hp;
-    [SerializeField] private int damage;
-    [SerializeField] private float attackInterval;
-    [SerializeField] private float moveSpeed;
-    [SerializeField] private GameObject viewPrefab;
-    public int Hp => hp;
-    public int Damage => damage;
-    public float AttackInterval => attackInterval;
-    public float MoveSpeed => moveSpeed;
-    public GameObject ViewPrefab => viewPrefab;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
-public class UnitDef : ContentDef
-{
-    [SerializeField] private int hp;
-    [SerializeField] private int damage;
-    [SerializeField] private float attackInterval;
-    [SerializeField] private float moveSpeed;
-    [SerializeField] private GameObject viewPrefab;
-    public int Hp => hp;
-    public int Damage => damage;
-    public float AttackInterval => attackInterval;
-    public float MoveSpeed => moveSpeed;
-    public GameObject ViewPrefab => viewPrefab;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/EnemySpawnResult.cs">
-public class EnemySpawnResult
-{
-    public bool IsSuccess;
-    public UnitSpawnFailureReason FailureReason;
-    public LaneEnemy SpawnedEnemy;
-    public static EnemySpawnResult Success(LaneEnemy spawnedEnemy)
-    {
-        return new EnemySpawnResult
-        {
-            IsSuccess = true,
-            FailureReason = UnitSpawnFailureReason.None,
-            SpawnedEnemy = spawnedEnemy
-        };
-    }
-    public static EnemySpawnResult Failure(UnitSpawnFailureReason failureReason)
-    {
-        return new EnemySpawnResult
-        {
-            IsSuccess = false,
-            FailureReason = failureReason
-        };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
-using UnityEngine;
-public class LaneEnemy : MonoBehaviour
-{
-    public EnemyDef EnemyDef { get; private set; }
-    public Vector3 Position => transform.position;
-    public int CurrentHp { get; private set; }
-    public LaneUnit TargetUnit { get; private set; }
-    public bool HasTarget => TargetUnit != null;
-    public bool IsInCombat => TargetUnit != null;
-    private Vector3 forwardTargetPosition;
-    private float attackCooldown;
-    private void Update()
-    {
-        if (EnemyDef == null)
-        {
-            return;
-        }
-        UpdateBehavior(Time.deltaTime);
-    }
-    public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
-    {
-        EnemyDef = enemyDef;
-        CurrentHp = enemyDef.Hp;
-        forwardTargetPosition = targetPosition;
-        TargetUnit = null;
-        attackCooldown = enemyDef.AttackInterval;
-    }
-    public void SetTargetUnit(LaneUnit laneUnit)
-    {
-        if (laneUnit == null)
-        {
-            return;
-        }
-        TargetUnit = laneUnit;
-    }
-    public void ClearTargetUnit()
-    {
-        TargetUnit = null;
-    }
-    public void ApplyDamage(int damage)
-    {
-        CurrentHp -= damage;
-    }
-    public bool IsDead()
-    {
-        return CurrentHp <= 0;
-    }
-    public bool IsWithinAttackRange(LaneUnit laneUnit, float attackDistance)
-    {
-        if (laneUnit == null)
-        {
-            return false;
-        }
-        return Vector3.Distance(Position, laneUnit.Position) <= attackDistance;
-    }
-    public bool HasReachedBreakthrough(float breakthroughX)
-    {
-        return Position.x <= breakthroughX;
-    }
-    private void UpdateBehavior(float deltaTime)
-    {
-        if (TargetUnit == null || TargetUnit.IsDead())
-        {
-            TargetUnit = null;
-            MoveForward(deltaTime);
-            return;
-        }
-        attackCooldown -= deltaTime;
-        if (attackCooldown > 0f)
-        {
-            return;
-        }
-        TargetUnit.ApplyDamage(EnemyDef.Damage);
-        attackCooldown = EnemyDef.AttackInterval;
-    }
-    private void MoveForward(float deltaTime)
-    {
-        var offset = forwardTargetPosition - transform.position;
-        if (offset.sqrMagnitude <= 0.0001f)
-        {
-            transform.position = forwardTargetPosition;
-            return;
-        }
-        var direction = offset.normalized;
-        var moveStep = EnemyDef.MoveSpeed * deltaTime;
-        if (offset.magnitude <= moveStep)
-        {
-            transform.position = forwardTargetPosition;
-            return;
-        }
-        transform.position += direction * moveStep;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/LaneUnit.cs">
-using UnityEngine;
-public class LaneUnit : MonoBehaviour
-{
-    private const float IdleHoldDistance = 0.05f;
-    public UnitDef UnitDef { get; private set; }
-    public Vector3 Position => transform.position;
-    public LaneUnitState State { get; private set; }
-    public bool IsInCombat => State == LaneUnitState.Attacking;
-    public int CurrentHp { get; private set; }
-    public Vector3 HomeSlotCenter { get; private set; }
-    public Vector3 IdleAnchorPosition { get; private set; }
-    public LaneEnemy TargetEnemy { get; private set; }
-    public bool HasTarget => TargetEnemy != null;
-    private float attackCooldown;
-    private bool hasHomePosition;
-    private Vector3 idleMicroTargetPosition;
-    private float idleMicroRadius;
-    private float idleMicroMoveSpeed;
-    private float idleMicroRetargetDelay;
-    private float idleMicroRetargetTimer;
-    private int idleMicroRetargetIndex;
-    private void Update()
-    {
-        if (UnitDef == null)
-        {
-            return;
-        }
-        UpdateState(Time.deltaTime);
-    }
-    public void Initialize(UnitDef unitDef)
-    {
-        UnitDef = unitDef;
-        CurrentHp = unitDef.Hp;
-        State = LaneUnitState.Waiting;
-        TargetEnemy = null;
-        attackCooldown = unitDef.AttackInterval;
-    }
-    public void AssignHomePosition(
-        Vector3 homeSlotCenter,
-        Vector3 idleAnchorPosition,
-        float idleMicroRadius,
-        float idleMicroMoveSpeed,
-        float idleMicroRetargetDelay)
-    {
-        HomeSlotCenter = homeSlotCenter;
-        IdleAnchorPosition = idleAnchorPosition;
-        hasHomePosition = true;
-        this.idleMicroRadius = Mathf.Max(0f, idleMicroRadius);
-        this.idleMicroMoveSpeed = Mathf.Max(0.01f, idleMicroMoveSpeed);
-        this.idleMicroRetargetDelay = Mathf.Max(0.1f, idleMicroRetargetDelay);
-        idleMicroRetargetTimer = 0f;
-        idleMicroRetargetIndex = 0;
-        idleMicroTargetPosition = idleAnchorPosition;
-        ReturnToHome();
-    }
-    public void SetTargetEnemy(LaneEnemy laneEnemy)
-    {
-        if (laneEnemy == null)
-        {
-            return;
-        }
-        TargetEnemy = laneEnemy;
-        State = LaneUnitState.Chasing;
-    }
-    public void EnterCombat()
-    {
-        if (TargetEnemy == null || TargetEnemy.IsDead())
-        {
-            ClearTargetEnemy();
-            return;
-        }
-        State = LaneUnitState.Attacking;
-    }
-    public void ClearTargetEnemy()
-    {
-        TargetEnemy = null;
-        if (hasHomePosition)
-        {
-            ReturnToHome();
-        }
-        else
-        {
-            State = LaneUnitState.Waiting;
-        }
-    }
-    public void ReturnToHome()
-    {
-        TargetEnemy = null;
-        idleMicroTargetPosition = IdleAnchorPosition;
-        idleMicroRetargetTimer = 0f;
-        State = hasHomePosition ? LaneUnitState.Returning : LaneUnitState.Waiting;
-    }
-    public void ApplyDamage(int damage)
-    {
-        CurrentHp -= damage;
-    }
-    public bool IsDead()
-    {
-        return CurrentHp <= 0;
-    }
-    public bool IsAvailableForAssignment()
-    {
-        return !IsDead() && (State == LaneUnitState.Waiting || State == LaneUnitState.Returning) && TargetEnemy == null;
-    }
-    public bool IsWithinAttackRange(LaneEnemy laneEnemy, float attackDistance)
-    {
-        if (laneEnemy == null)
-        {
-            return false;
-        }
-        return Vector3.Distance(Position, laneEnemy.Position) <= attackDistance;
-    }
-    private void UpdateState(float deltaTime)
-    {
-        switch (State)
-        {
-            case LaneUnitState.Waiting:
-                UpdateWaiting(deltaTime);
-                break;
-            case LaneUnitState.Chasing:
-                UpdateChasing(deltaTime);
-                break;
-            case LaneUnitState.Attacking:
-                UpdateAttacking(deltaTime);
-                break;
-            case LaneUnitState.Returning:
-                UpdateReturning(deltaTime);
-                break;
-        }
-    }
-    private void UpdateWaiting(float deltaTime)
-    {
-        if (!hasHomePosition)
-        {
-            return;
-        }
-        if (idleMicroRadius <= 0f)
-        {
-            if (IsCloseEnoughToIdleAnchor())
-            {
-                transform.position = IdleAnchorPosition;
-                return;
-            }
-            MoveToPosition(IdleAnchorPosition, deltaTime);
-            return;
-        }
-        UpdateIdleMicroMovement(deltaTime);
-    }
-    private void UpdateChasing(float deltaTime)
-    {
-        if (TargetEnemy == null || TargetEnemy.IsDead())
-        {
-            ClearTargetEnemy();
-            return;
-        }
-        MoveToPosition(TargetEnemy.Position, deltaTime);
-    }
-    private void UpdateAttacking(float deltaTime)
-    {
-        if (TargetEnemy == null || TargetEnemy.IsDead())
-        {
-            ClearTargetEnemy();
-            return;
-        }
-        attackCooldown -= deltaTime;
-        if (attackCooldown > 0f)
-        {
-            return;
-        }
-        TargetEnemy.ApplyDamage(UnitDef.Damage);
-        attackCooldown = UnitDef.AttackInterval;
-    }
-    private void UpdateReturning(float deltaTime)
-    {
-        if (!hasHomePosition)
-        {
-            State = LaneUnitState.Waiting;
-            return;
-        }
-        if (MoveToPosition(IdleAnchorPosition, deltaTime) || IsCloseEnoughToIdleAnchor())
-        {
-            transform.position = IdleAnchorPosition;
-            idleMicroTargetPosition = IdleAnchorPosition;
-            idleMicroRetargetTimer = 0f;
-            State = LaneUnitState.Waiting;
-        }
-    }
-    private bool MoveToPosition(Vector3 targetPosition, float deltaTime)
-    {
-        var offset = targetPosition - transform.position;
-        if (offset.sqrMagnitude <= 0.0001f)
-        {
-            transform.position = targetPosition;
-            return true;
-        }
-        var direction = offset.normalized;
-        var moveStep = UnitDef.MoveSpeed * deltaTime;
-        if (offset.magnitude <= moveStep)
-        {
-            transform.position = targetPosition;
-            return true;
-        }
-        transform.position += direction * moveStep;
-        return false;
-    }
-    private bool IsCloseEnoughToIdleAnchor()
-    {
-        return (IdleAnchorPosition - transform.position).sqrMagnitude <= IdleHoldDistance * IdleHoldDistance;
-    }
-    private void UpdateIdleMicroMovement(float deltaTime)
-    {
-        if (IsCloseEnoughToPosition(idleMicroTargetPosition))
-        {
-            transform.position = idleMicroTargetPosition;
-            idleMicroRetargetTimer += deltaTime;
-            if (idleMicroRetargetTimer >= idleMicroRetargetDelay)
-            {
-                PickNextIdleMicroTarget();
-            }
-            return;
-        }
-        idleMicroRetargetTimer = 0f;
-        MoveToPosition(idleMicroTargetPosition, deltaTime, idleMicroMoveSpeed);
-    }
-    private void PickNextIdleMicroTarget()
-    {
-        idleMicroRetargetIndex++;
-        idleMicroRetargetTimer = 0f;
-        var angleSeed = Mathf.Abs(GetInstanceID() * 41 + idleMicroRetargetIndex * 59);
-        var radiusSeed = Mathf.Abs(GetInstanceID() * 67 + idleMicroRetargetIndex * 83);
-        var angle = angleSeed % 360;
-        var radiusFactor = Mathf.Sqrt((radiusSeed % 1000) / 1000f);
-        var radius = idleMicroRadius * radiusFactor;
-        var radians = angle * Mathf.Deg2Rad;
-        var offset = new Vector3(Mathf.Cos(radians) * radius, Mathf.Sin(radians) * radius, 0f);
-        idleMicroTargetPosition = IdleAnchorPosition + offset;
-    }
-    private bool IsCloseEnoughToPosition(Vector3 targetPosition)
-    {
-        return (targetPosition - transform.position).sqrMagnitude <= IdleHoldDistance * IdleHoldDistance;
-    }
-    private bool MoveToPosition(Vector3 targetPosition, float deltaTime, float moveSpeedOverride)
-    {
-        var offset = targetPosition - transform.position;
-        if (offset.sqrMagnitude <= 0.0001f)
-        {
-            transform.position = targetPosition;
-            return true;
-        }
-        var direction = offset.normalized;
-        var moveStep = moveSpeedOverride * deltaTime;
-        if (offset.magnitude <= moveStep)
-        {
-            transform.position = targetPosition;
-            return true;
-        }
-        transform.position += direction * moveStep;
-        return false;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/LaneUnitState.cs">
-public enum LaneUnitState
-{
-    Waiting,
-    Chasing,
-    Attacking,
-    Returning
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEncounterCoordinator.cs">
-using System.Collections.Generic;
-using System;
-using UnityEngine;
-public class SingleLaneEncounterCoordinator : MonoBehaviour
-{
-    [SerializeField] private float attackDistance = 0.75f;
-    [SerializeField] private SingleLaneHost laneHost;
-    public Action<LaneEnemy> OnEnemyBreakthrough;
-    public bool HasActiveEnemyPressure => enemies.Count > 0;
-    private readonly List<LaneUnit> playerUnits = new();
-    private readonly List<LaneEnemy> enemies = new();
-    private readonly Dictionary<LaneUnit, int> assignedHomeSlots = new();
-    private readonly Dictionary<LaneUnit, Vector3> assignedHomePositions = new();
-    private void Update()
-    {
-        CleanupDestroyed();
-        UpdateEnemyTargets();
-        UpdatePlayerAssignments();
-        UpdateCombatStates();
-        CheckEnemyBreakthroughs();
-    }
-    public void RegisterPlayerUnit(LaneUnit laneUnit)
-    {
-        if (laneUnit == null || playerUnits.Contains(laneUnit))
-        {
-            return;
-        }
-        playerUnits.Add(laneUnit);
-        laneUnit.AssignHomePosition(
-            GetHomeSlotCenter(laneUnit),
-            GetIdleAnchorPosition(laneUnit),
-            GetIdleMicroRadius(),
-            GetIdleMicroMoveSpeed(),
-            GetIdleMicroRetargetDelay());
-    }
-    public void RegisterEnemy(LaneEnemy laneEnemy)
-    {
-        if (laneEnemy == null || enemies.Contains(laneEnemy))
-        {
-            return;
-        }
-        enemies.Add(laneEnemy);
-    }
-    private void CleanupDestroyed()
-    {
-        playerUnits.RemoveAll(unit => unit == null);
-        enemies.RemoveAll(enemy => enemy == null);
-        CleanupAssignedSlots();
-    }
-    private void UpdateEnemyTargets()
-    {
-        for (var i = 0; i < enemies.Count; i++)
-        {
-            var enemy = enemies[i];
-            if (enemy == null)
-            {
-                continue;
-            }
-            if (enemy.TargetUnit != null && enemy.TargetUnit.IsDead())
-            {
-                enemy.ClearTargetUnit();
-            }
-            var targetUnit = FindClosestUnitInAttackRange(enemy);
-            if (targetUnit != null)
-            {
-                enemy.SetTargetUnit(targetUnit);
-            }
-            else
-            {
-                enemy.ClearTargetUnit();
-            }
-        }
-    }
-    private void UpdatePlayerAssignments()
-    {
-        if (laneHost == null || laneHost.EnemyAggroThresholdPoint == null)
-        {
-            ReturnIdleUnitsHome();
-            return;
-        }
-        var aggroX = laneHost.EnemyAggroThresholdPoint.position.x;
-        var activeEnemies = GetAggroEnemies(aggroX);
-        if (activeEnemies.Count == 0)
-        {
-            ReturnIdleUnitsHome();
-            return;
-        }
-        for (var i = 0; i < playerUnits.Count; i++)
-        {
-            var unit = playerUnits[i];
-            if (unit == null || unit.IsDead())
-            {
-                continue;
-            }
-            if (unit.TargetEnemy != null && unit.TargetEnemy.IsDead())
-            {
-                unit.ClearTargetEnemy();
-            }
-            if (!unit.HasTarget && unit.IsAvailableForAssignment())
-            {
-                var targetEnemy = FindClosestEnemy(unit.Position, activeEnemies);
-                if (targetEnemy != null)
-                {
-                    unit.SetTargetEnemy(targetEnemy);
-                }
-            }
-        }
-    }
-    private void UpdateCombatStates()
-    {
-        for (var i = 0; i < playerUnits.Count; i++)
-        {
-            var unit = playerUnits[i];
-            if (unit == null || unit.IsDead())
-            {
-                continue;
-            }
-            if (unit.TargetEnemy != null && unit.TargetEnemy.IsDead())
-            {
-                unit.ClearTargetEnemy();
-                continue;
-            }
-            if (!unit.HasTarget)
-            {
-                continue;
-            }
-            if (unit.IsWithinAttackRange(unit.TargetEnemy, attackDistance))
-            {
-                if (unit.State != LaneUnitState.Attacking)
-                {
-                    unit.EnterCombat();
-                }
-                unit.TargetEnemy.SetTargetUnit(unit);
-            }
-            else if (unit.State == LaneUnitState.Attacking)
-            {
-                unit.SetTargetEnemy(unit.TargetEnemy);
-            }
-        }
-        for (var i = enemies.Count - 1; i >= 0; i--)
-        {
-            var enemy = enemies[i];
-            if (enemy == null)
-            {
-                continue;
-            }
-            if (enemy.IsDead())
-            {
-                RemoveEnemyAt(i, false);
-            }
-        }
-        for (var i = playerUnits.Count - 1; i >= 0; i--)
-        {
-            var unit = playerUnits[i];
-            if (unit == null)
-            {
-                continue;
-            }
-            if (unit.IsDead())
-            {
-                assignedHomePositions.Remove(unit);
-                ReleaseAssignedSlot(unit);
-                Destroy(unit.gameObject);
-            }
-        }
-    }
-    private void CheckEnemyBreakthroughs()
-    {
-        if (laneHost == null || laneHost.EnemyBreakthroughPoint == null)
-        {
-            return;
-        }
-        var breakthroughX = laneHost.EnemyBreakthroughPoint.position.x;
-        for (var i = enemies.Count - 1; i >= 0; i--)
-        {
-            var enemy = enemies[i];
-            if (enemy == null || enemy.IsInCombat)
-            {
-                continue;
-            }
-            if (!enemy.HasReachedBreakthrough(breakthroughX))
-            {
-                continue;
-            }
-            RemoveEnemyAt(i, true);
-        }
-    }
-    private void ReturnIdleUnitsHome()
-    {
-        for (var i = 0; i < playerUnits.Count; i++)
-        {
-            var unit = playerUnits[i];
-            if (unit == null || unit.IsDead())
-            {
-                continue;
-            }
-            if (!unit.HasTarget)
-            {
-                if (unit.State != LaneUnitState.Waiting && unit.State != LaneUnitState.Returning)
-                {
-                    unit.ReturnToHome();
-                }
-            }
-        }
-    }
-    private Vector3 GetHomeSlotCenter(LaneUnit laneUnit)
-    {
-        if (assignedHomePositions.TryGetValue(laneUnit, out var assignedPosition))
-        {
-            return assignedPosition;
-        }
-        if (laneHost == null || laneHost.PlayerDefenseSlots == null || laneHost.PlayerDefenseSlots.Length == 0)
-        {
-            var fallbackPosition = laneHost != null && laneHost.PlayerSpawnPoint != null
-                ? laneHost.PlayerSpawnPoint.position
-                : laneUnit.Position;
-            assignedHomePositions[laneUnit] = fallbackPosition;
-            return fallbackPosition;
-        }
-        for (var i = 0; i < laneHost.PlayerDefenseSlots.Length; i++)
-        {
-            if (!assignedHomeSlots.ContainsValue(i))
-            {
-                assignedHomeSlots[laneUnit] = i;
-                assignedHomePositions[laneUnit] = laneHost.PlayerDefenseSlots[i].position;
-                return assignedHomePositions[laneUnit];
-            }
-        }
-        assignedHomeSlots[laneUnit] = 0;
-        assignedHomePositions[laneUnit] = laneHost.PlayerDefenseSlots[0].position;
-        return assignedHomePositions[laneUnit];
-    }
-    private void CleanupAssignedSlots()
-    {
-        var releasedUnits = new List<LaneUnit>();
-        foreach (var pair in assignedHomeSlots)
-        {
-            if (pair.Key == null)
-            {
-                releasedUnits.Add(pair.Key);
-            }
-        }
-        for (var i = 0; i < releasedUnits.Count; i++)
-        {
-            assignedHomeSlots.Remove(releasedUnits[i]);
-            assignedHomePositions.Remove(releasedUnits[i]);
-        }
-    }
-    private void ReleaseAssignedSlot(LaneUnit laneUnit)
-    {
-        assignedHomeSlots.Remove(laneUnit);
-        assignedHomePositions.Remove(laneUnit);
-    }
-    private List<LaneEnemy> GetAggroEnemies(float aggroX)
-    {
-        var activeEnemies = new List<LaneEnemy>();
-        for (var i = 0; i < enemies.Count; i++)
-        {
-            var enemy = enemies[i];
-            if (enemy == null || enemy.IsDead())
-            {
-                continue;
-            }
-            if (enemy.Position.x <= aggroX)
-            {
-                activeEnemies.Add(enemy);
-            }
-        }
-        return activeEnemies;
-    }
-    private LaneEnemy FindClosestEnemy(Vector3 fromPosition, List<LaneEnemy> candidateEnemies)
-    {
-        LaneEnemy closestEnemy = null;
-        var closestDistance = float.MaxValue;
-        for (var i = 0; i < candidateEnemies.Count; i++)
-        {
-            var enemy = candidateEnemies[i];
-            if (enemy == null || enemy.IsDead())
-            {
-                continue;
-            }
-            var distance = Vector3.Distance(fromPosition, enemy.Position);
-            if (distance < closestDistance)
-            {
-                closestDistance = distance;
-                closestEnemy = enemy;
-            }
-        }
-        return closestEnemy;
-    }
-    private LaneUnit FindClosestUnitInAttackRange(LaneEnemy enemy)
-    {
-        LaneUnit closestUnit = null;
-        var closestDistance = float.MaxValue;
-        for (var i = 0; i < playerUnits.Count; i++)
-        {
-            var unit = playerUnits[i];
-            if (unit == null || unit.IsDead())
-            {
-                continue;
-            }
-            if (!enemy.IsWithinAttackRange(unit, attackDistance))
-            {
-                continue;
-            }
-            var distance = Vector3.Distance(enemy.Position, unit.Position);
-            if (distance < closestDistance)
-            {
-                closestDistance = distance;
-                closestUnit = unit;
-            }
-        }
-        return closestUnit;
-    }
-    private void RemoveEnemyAt(int index, bool notifyBreakthrough)
-    {
-        var enemy = enemies[index];
-        enemies.RemoveAt(index);
-        if (enemy != null)
-        {
-            enemy.ClearTargetUnit();
-            Destroy(enemy.gameObject);
-        }
-        if (notifyBreakthrough && enemy != null)
-        {
-            OnEnemyBreakthrough?.Invoke(enemy);
-        }
-    }
-    private Vector3 GetIdleAnchorPosition(LaneUnit laneUnit)
-    {
-        if (assignedHomePositions.TryGetValue(laneUnit, out var assignedPosition))
-        {
-            return GetSpreadSlotPosition(assignedPosition, laneUnit);
-        }
-        return GetSpreadSlotPosition(GetHomeSlotCenter(laneUnit), laneUnit);
-    }
-    private Vector3 GetSpreadSlotPosition(Vector3 basePosition, LaneUnit laneUnit)
-    {
-        if (laneHost == null || laneHost.AlliedHomeSpreadRadius <= 0f)
-        {
-            return basePosition;
-        }
-        var stableSeed = Mathf.Abs(laneUnit.GetInstanceID() * 31 + 97);
-        var angle = stableSeed % 360;
-        var radiusFactor = 0.3f + ((stableSeed / 360) % 100) / 100f * 0.5f;
-        var radius = laneHost.AlliedHomeSpreadRadius * radiusFactor;
-        var radians = angle * Mathf.Deg2Rad;
-        var offset = new Vector3(Mathf.Cos(radians) * radius, Mathf.Sin(radians) * radius, 0f);
-        return basePosition + offset;
-    }
-    private float GetIdleMicroRadius()
-    {
-        return laneHost != null ? laneHost.AlliedIdleMicroRadius : 0f;
-    }
-    private float GetIdleMicroMoveSpeed()
-    {
-        return laneHost != null ? laneHost.AlliedIdleMicroMoveSpeed : 0.25f;
-    }
-    private float GetIdleMicroRetargetDelay()
-    {
-        return laneHost != null ? laneHost.AlliedIdleMicroRetargetDelay : 1f;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
-using UnityEngine;
-public class SingleLaneEnemySpawner
-{
-    public EnemySpawnResult TrySpawnEnemy(EnemyDef enemyDef, SingleLaneHost laneHost)
-    {
-        if (laneHost == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
-        }
-        if (laneHost.EnemySpawnPoint == null || laneHost.EnemyForwardTarget == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
-        }
-        if (enemyDef == null || enemyDef.ViewPrefab == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
-        }
-        var spawnPosition = laneHost.EnemySpawnPoint.position;
-        if (laneHost.EnemySpawnSpreadRadius > 0f)
-        {
-            var angle = Random.value * Mathf.PI * 2f;
-            var radius = Mathf.Sqrt(Random.value) * laneHost.EnemySpawnSpreadRadius;
-            var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
-            spawnPosition += offset;
-        }
-        var spawnedGameObject = Object.Instantiate(
-            enemyDef.ViewPrefab,
-            spawnPosition,
-            laneHost.EnemySpawnPoint.rotation);
-        var laneEnemy = spawnedGameObject.GetComponent<LaneEnemy>();
-        if (laneEnemy == null)
-        {
-            laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
-        }
-        laneEnemy.Initialize(enemyDef, laneHost.EnemyForwardTarget.position);
-        return EnemySpawnResult.Success(laneEnemy);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneHost.cs">
-using UnityEngine;
-public class SingleLaneHost : MonoBehaviour
-{
-    [SerializeField] private Transform playerSpawnPoint;
-    [SerializeField] private Transform[] playerDefenseSlots;
-    [SerializeField] private float alliedHomeSpreadRadius = 0.35f;
-    [SerializeField] private float alliedIdleMicroRadius = 0.08f;
-    [SerializeField] private float alliedIdleMicroMoveSpeed = 0.45f;
-    [SerializeField] private float alliedIdleMicroRetargetDelay = 1.1f;
-    [SerializeField] private Transform enemyAggroThresholdPoint;
-    [SerializeField] private Transform enemyBreakthroughPoint;
-    [SerializeField] private Transform enemySpawnPoint;
-    [SerializeField] private Transform enemyForwardTarget;
-    [SerializeField] private float enemySpawnSpreadRadius = 0.3f;
-    public Transform PlayerSpawnPoint => playerSpawnPoint;
-    public Transform[] PlayerDefenseSlots => playerDefenseSlots;
-    public float AlliedHomeSpreadRadius => alliedHomeSpreadRadius;
-    public float AlliedIdleMicroRadius => alliedIdleMicroRadius;
-    public float AlliedIdleMicroMoveSpeed => alliedIdleMicroMoveSpeed;
-    public float AlliedIdleMicroRetargetDelay => alliedIdleMicroRetargetDelay;
-    public Transform EnemyAggroThresholdPoint => enemyAggroThresholdPoint;
-    public Transform EnemyBreakthroughPoint => enemyBreakthroughPoint;
-    public Transform EnemySpawnPoint => enemySpawnPoint;
-    public Transform EnemyForwardTarget => enemyForwardTarget;
-    public float EnemySpawnSpreadRadius => enemySpawnSpreadRadius;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneUnitSpawner.cs">
-using UnityEngine;
-public class SingleLaneUnitSpawner
-{
-    public UnitSpawnResult TrySpawnPlayerUnit(UnitDef unitDef, SingleLaneHost laneHost)
-    {
-        if (laneHost == null)
-        {
-            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
-        }
-        if (laneHost.PlayerSpawnPoint == null)
-        {
-            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
-        }
-        if (unitDef == null || unitDef.ViewPrefab == null)
-        {
-            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
-        }
-        var spawnedGameObject = Object.Instantiate(
-            unitDef.ViewPrefab,
-            laneHost.PlayerSpawnPoint.position,
-            laneHost.PlayerSpawnPoint.rotation);
-        var laneUnit = spawnedGameObject.GetComponent<LaneUnit>();
-        if (laneUnit == null)
-        {
-            laneUnit = spawnedGameObject.AddComponent<LaneUnit>();
-        }
-        laneUnit.Initialize(unitDef);
-        return UnitSpawnResult.Success(laneUnit);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/UnitSpawnFailureReason.cs">
-public enum UnitSpawnFailureReason
-{
-    None,
-    NotRequested,
-    MissingLaneHost,
-    MissingSpawnPoint,
-    MissingPrefab
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/UnitSpawnResult.cs">
-public class UnitSpawnResult
-{
-    public bool IsSuccess;
-    public UnitSpawnFailureReason FailureReason;
-    public LaneUnit SpawnedUnit;
-    public static UnitSpawnResult Success(LaneUnit spawnedUnit)
-    {
-        return new UnitSpawnResult
-        {
-            IsSuccess = true,
-            FailureReason = UnitSpawnFailureReason.None,
-            SpawnedUnit = spawnedUnit
-        };
-    }
-    public static UnitSpawnResult Failure(UnitSpawnFailureReason failureReason)
-    {
-        return new UnitSpawnResult
-        {
-            IsSuccess = false,
-            FailureReason = failureReason
-        };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/GamePhase.cs">
-public enum GamePhase
-{
-    Day,
-    Night,
-    Transition
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/RunState.cs">
-public class RunState
-{
-    public int Faith;
-    public int Gold;
-    public int CemeteryState;
-    public int CurrentDay;
-    public int CurrentNight;
-    public GamePhase CurrentPhase;
-    public static RunState CreateInitial()
-    {
-        return new RunState
-        {
-            Faith = 0,
-            Gold = 0,
-            CemeteryState = 100,
-            CurrentDay = 1,
-            CurrentNight = 0,
-            CurrentPhase = GamePhase.Transition
-        };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Wave/WaveSpawnEntry.cs">
-using System;
-[Serializable]
-public class WaveSpawnEntry
-{
-    public string enemyId;
-    public float spawnTime;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Wave/WaveSystem.cs">
-using System.Collections.Generic;
-public class WaveSystem
-{
-    private readonly List<WaveSpawnEntry> activeEntries = new();
-    private float elapsedTime;
-    private int nextSpawnIndex;
-    private bool isRunning;
-    public bool IsRunning => isRunning;
-    public bool AreAllSpawnsIssued => !isRunning || nextSpawnIndex >= activeEntries.Count;
-    public void StartWave(IReadOnlyList<WaveSpawnEntry> entries)
-    {
-        activeEntries.Clear();
-        elapsedTime = 0f;
-        nextSpawnIndex = 0;
-        isRunning = true;
-        if (entries == null)
-        {
-            return;
-        }
-        for (var i = 0; i < entries.Count; i++)
-        {
-            var entry = entries[i];
-            if (entry == null)
-            {
-                continue;
-            }
-            activeEntries.Add(new WaveSpawnEntry
-            {
-                enemyId = entry.enemyId,
-                spawnTime = entry.spawnTime
-            });
-        }
-        activeEntries.Sort((a, b) => a.spawnTime.CompareTo(b.spawnTime));
-    }
-    public void StopWave()
-    {
-        isRunning = false;
-        elapsedTime = 0f;
-        nextSpawnIndex = 0;
-        activeEntries.Clear();
-    }
-    public void CollectReadySpawns(float deltaTime, List<string> readyEnemyIds)
-    {
-        if (!isRunning || readyEnemyIds == null)
-        {
-            return;
-        }
-        elapsedTime += deltaTime;
-        while (nextSpawnIndex < activeEntries.Count)
-        {
-            var nextEntry = activeEntries[nextSpawnIndex];
-            if (nextEntry.spawnTime > elapsedTime)
-            {
-                break;
-            }
-            readyEnemyIds.Add(nextEntry.enemyId);
-            nextSpawnIndex++;
-        }
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
 using GameAnalyticsSDK;
 public static class AnalyticsSystem
@@ -2343,6 +1210,1249 @@ public static class WebGLBuilder
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs">
+public enum BellRingFailureReason
+{
+    None,
+    WrongPhase,
+    BellNotFound,
+    UnitNotFound,
+    NotEnoughFaith
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Bell/BellRingResult.cs">
+public class BellRingResult
+{
+    public bool IsSuccess;
+    public BellRingFailureReason FailureReason;
+    public BellDef BellDef;
+    public UnitDef UnitDef;
+    public UnitSpawnResult SpawnResult;
+    public static BellRingResult Success(BellDef bellDef, UnitDef unitDef)
+    {
+        return new BellRingResult
+        {
+            IsSuccess = true,
+            FailureReason = BellRingFailureReason.None,
+            BellDef = bellDef,
+            UnitDef = unitDef
+        };
+    }
+    public static BellRingResult Failure(BellRingFailureReason failureReason)
+    {
+        return new BellRingResult
+        {
+            IsSuccess = false,
+            FailureReason = failureReason,
+            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Bell/BellSystem.cs">
+public class BellSystem
+{
+    public BellRingResult TryRingBell(string bellId, RunState runState)
+    {
+        if (runState == null)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
+        }
+        if (runState.CurrentPhase != GamePhase.Night)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.WrongPhase);
+        }
+        var bellDef = CMS.Get<BellDef>(bellId);
+        if (bellDef == null)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.BellNotFound);
+        }
+        var unitDef = CMS.Get<UnitDef>(bellDef.LinkedUnitId);
+        if (unitDef == null)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.UnitNotFound);
+        }
+        if (runState.Faith < bellDef.FaithCost)
+        {
+            return BellRingResult.Failure(BellRingFailureReason.NotEnoughFaith);
+        }
+        runState.Faith -= bellDef.FaithCost;
+        return BellRingResult.Success(bellDef, unitDef);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
+public class BellDef : ContentDef
+{
+    [SerializeField] private string displayName;
+    [SerializeField] private int faithCost;
+    [SerializeField] private string linkedUnitId;
+    [SerializeField] private Sprite icon;
+    public string DisplayName => displayName;
+    public int FaithCost => faithCost;
+    public string LinkedUnitId => linkedUnitId;
+    public Sprite Icon => icon;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/EnemyDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Enemy Def")]
+public class EnemyDef : ContentDef
+{
+    [SerializeField] private int hp;
+    [SerializeField] private int damage;
+    [SerializeField] private float attackInterval;
+    [SerializeField] private float moveSpeed;
+    [SerializeField] private GameObject viewPrefab;
+    public int Hp => hp;
+    public int Damage => damage;
+    public float AttackInterval => attackInterval;
+    public float MoveSpeed => moveSpeed;
+    public GameObject ViewPrefab => viewPrefab;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
+public class UnitDef : ContentDef
+{
+    [SerializeField] private int hp;
+    [SerializeField] private int damage;
+    [SerializeField] private float attackInterval;
+    [SerializeField] private float moveSpeed;
+    [SerializeField] private GameObject viewPrefab;
+    public int Hp => hp;
+    public int Damage => damage;
+    public float AttackInterval => attackInterval;
+    public float MoveSpeed => moveSpeed;
+    public GameObject ViewPrefab => viewPrefab;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/EnemySpawnResult.cs">
+public class EnemySpawnResult
+{
+    public bool IsSuccess;
+    public UnitSpawnFailureReason FailureReason;
+    public LaneEnemy SpawnedEnemy;
+    public static EnemySpawnResult Success(LaneEnemy spawnedEnemy)
+    {
+        return new EnemySpawnResult
+        {
+            IsSuccess = true,
+            FailureReason = UnitSpawnFailureReason.None,
+            SpawnedEnemy = spawnedEnemy
+        };
+    }
+    public static EnemySpawnResult Failure(UnitSpawnFailureReason failureReason)
+    {
+        return new EnemySpawnResult
+        {
+            IsSuccess = false,
+            FailureReason = failureReason
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
+using UnityEngine;
+public class LaneEnemy : MonoBehaviour
+{
+    public EnemyDef EnemyDef { get; private set; }
+    public Vector3 Position => transform.position;
+    public int CurrentHp { get; private set; }
+    public LaneUnit TargetUnit { get; private set; }
+    public bool HasTarget => TargetUnit != null;
+    public bool IsInCombat => TargetUnit != null;
+    private Vector3 forwardTargetPosition;
+    private float attackCooldown;
+    private void Update()
+    {
+        if (EnemyDef == null)
+        {
+            return;
+        }
+        UpdateBehavior(Time.deltaTime);
+    }
+    public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
+    {
+        EnemyDef = enemyDef;
+        CurrentHp = enemyDef.Hp;
+        forwardTargetPosition = targetPosition;
+        TargetUnit = null;
+        attackCooldown = enemyDef.AttackInterval;
+    }
+    public void SetTargetUnit(LaneUnit laneUnit)
+    {
+        if (laneUnit == null)
+        {
+            return;
+        }
+        TargetUnit = laneUnit;
+    }
+    public void ClearTargetUnit()
+    {
+        TargetUnit = null;
+    }
+    public void ApplyDamage(int damage)
+    {
+        CurrentHp -= damage;
+    }
+    public bool IsDead()
+    {
+        return CurrentHp <= 0;
+    }
+    public bool IsWithinAttackRange(LaneUnit laneUnit, float attackDistance)
+    {
+        if (laneUnit == null)
+        {
+            return false;
+        }
+        return Vector3.Distance(Position, laneUnit.Position) <= attackDistance;
+    }
+    public bool HasReachedBreakthrough(float breakthroughX)
+    {
+        return Position.x <= breakthroughX;
+    }
+    private void UpdateBehavior(float deltaTime)
+    {
+        if (TargetUnit == null || TargetUnit.IsDead())
+        {
+            TargetUnit = null;
+            MoveForward(deltaTime);
+            return;
+        }
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+        TargetUnit.ApplyDamage(EnemyDef.Damage);
+        attackCooldown = EnemyDef.AttackInterval;
+    }
+    private void MoveForward(float deltaTime)
+    {
+        var offset = forwardTargetPosition - transform.position;
+        if (offset.sqrMagnitude <= 0.0001f)
+        {
+            transform.position = forwardTargetPosition;
+            return;
+        }
+        var direction = offset.normalized;
+        var moveStep = EnemyDef.MoveSpeed * deltaTime;
+        if (offset.magnitude <= moveStep)
+        {
+            transform.position = forwardTargetPosition;
+            return;
+        }
+        transform.position += direction * moveStep;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneUnit.cs">
+using UnityEngine;
+public class LaneUnit : MonoBehaviour
+{
+    private const float IdleHoldDistance = 0.05f;
+    private const int IdleTargetPickAttempts = 6;
+    public UnitDef UnitDef { get; private set; }
+    public Vector3 Position => transform.position;
+    public LaneUnitState State { get; private set; }
+    public bool IsInCombat => State == LaneUnitState.Attacking;
+    public int CurrentHp { get; private set; }
+    public Vector3 HomeSlotCenter { get; private set; }
+    public Vector3 IdleAnchorPosition { get; private set; }
+    public LaneEnemy TargetEnemy { get; private set; }
+    public bool HasTarget => TargetEnemy != null;
+    private float attackCooldown;
+    private bool hasHomePosition;
+    private Vector3 idleMicroTargetPosition;
+    private float idleMicroRadius;
+    private float idleMicroMoveSpeed;
+    private float idleMicroRetargetDelay;
+    private float idleMicroRetargetTimer;
+    private int idleMicroRetargetIndex;
+    private void Update()
+    {
+        if (UnitDef == null)
+        {
+            return;
+        }
+        UpdateState(Time.deltaTime);
+    }
+    public void Initialize(UnitDef unitDef)
+    {
+        UnitDef = unitDef;
+        CurrentHp = unitDef.Hp;
+        State = LaneUnitState.Waiting;
+        TargetEnemy = null;
+        attackCooldown = unitDef.AttackInterval;
+    }
+    public void AssignHomePosition(
+        Vector3 homeSlotCenter,
+        Vector3 idleAnchorPosition,
+        float idleMicroRadius,
+        float idleMicroMoveSpeed,
+        float idleMicroRetargetDelay)
+    {
+        HomeSlotCenter = homeSlotCenter;
+        IdleAnchorPosition = idleAnchorPosition;
+        hasHomePosition = true;
+        this.idleMicroRadius = Mathf.Max(0f, idleMicroRadius);
+        this.idleMicroMoveSpeed = Mathf.Max(0.01f, idleMicroMoveSpeed);
+        this.idleMicroRetargetDelay = Mathf.Max(0.1f, idleMicroRetargetDelay);
+        idleMicroRetargetTimer = 0f;
+        idleMicroRetargetIndex = 0;
+        idleMicroTargetPosition = idleAnchorPosition;
+        ReturnToHome();
+    }
+    public void SetTargetEnemy(LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null)
+        {
+            return;
+        }
+        TargetEnemy = laneEnemy;
+        State = LaneUnitState.Chasing;
+    }
+    public void EnterCombat()
+    {
+        if (TargetEnemy == null || TargetEnemy.IsDead())
+        {
+            ClearTargetEnemy();
+            return;
+        }
+        State = LaneUnitState.Attacking;
+    }
+    public void ClearTargetEnemy()
+    {
+        TargetEnemy = null;
+        if (hasHomePosition)
+        {
+            ReturnToHome();
+        }
+        else
+        {
+            State = LaneUnitState.Waiting;
+        }
+    }
+    public void ReturnToHome()
+    {
+        TargetEnemy = null;
+        idleMicroTargetPosition = IdleAnchorPosition;
+        idleMicroRetargetTimer = 0f;
+        State = hasHomePosition ? LaneUnitState.Returning : LaneUnitState.Waiting;
+    }
+    public void ApplyDamage(int damage)
+    {
+        CurrentHp -= damage;
+    }
+    public bool IsDead()
+    {
+        return CurrentHp <= 0;
+    }
+    public bool IsAvailableForAssignment()
+    {
+        return !IsDead() && (State == LaneUnitState.Waiting || State == LaneUnitState.Returning) && TargetEnemy == null;
+    }
+    public bool IsWithinAttackRange(LaneEnemy laneEnemy, float attackDistance)
+    {
+        if (laneEnemy == null)
+        {
+            return false;
+        }
+        return Vector3.Distance(Position, laneEnemy.Position) <= attackDistance;
+    }
+    private void UpdateState(float deltaTime)
+    {
+        switch (State)
+        {
+            case LaneUnitState.Waiting:
+                UpdateWaiting(deltaTime);
+                break;
+            case LaneUnitState.Chasing:
+                UpdateChasing(deltaTime);
+                break;
+            case LaneUnitState.Attacking:
+                UpdateAttacking(deltaTime);
+                break;
+            case LaneUnitState.Returning:
+                UpdateReturning(deltaTime);
+                break;
+        }
+    }
+    private void UpdateWaiting(float deltaTime)
+    {
+        if (!hasHomePosition)
+        {
+            return;
+        }
+        if (idleMicroRadius <= 0f)
+        {
+            if (IsCloseEnoughToIdleAnchor())
+            {
+                return;
+            }
+            MoveToPosition(IdleAnchorPosition, deltaTime);
+            return;
+        }
+        UpdateIdleMicroMovement(deltaTime);
+    }
+    private void UpdateChasing(float deltaTime)
+    {
+        if (TargetEnemy == null || TargetEnemy.IsDead())
+        {
+            ClearTargetEnemy();
+            return;
+        }
+        MoveToPosition(TargetEnemy.Position, deltaTime);
+    }
+    private void UpdateAttacking(float deltaTime)
+    {
+        if (TargetEnemy == null || TargetEnemy.IsDead())
+        {
+            ClearTargetEnemy();
+            return;
+        }
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+        TargetEnemy.ApplyDamage(UnitDef.Damage);
+        attackCooldown = UnitDef.AttackInterval;
+    }
+    private void UpdateReturning(float deltaTime)
+    {
+        if (!hasHomePosition)
+        {
+            State = LaneUnitState.Waiting;
+            return;
+        }
+        if (MoveToPosition(IdleAnchorPosition, deltaTime) || IsCloseEnoughToIdleAnchor())
+        {
+            idleMicroTargetPosition = transform.position;
+            idleMicroRetargetTimer = 0f;
+            State = LaneUnitState.Waiting;
+        }
+    }
+    private bool MoveToPosition(Vector3 targetPosition, float deltaTime)
+    {
+        var offset = targetPosition - transform.position;
+        if (offset.sqrMagnitude <= 0.0001f)
+        {
+            return true;
+        }
+        var direction = offset.normalized;
+        var moveStep = UnitDef.MoveSpeed * deltaTime;
+        if (offset.magnitude <= moveStep)
+        {
+            transform.position = targetPosition;
+            return true;
+        }
+        transform.position += direction * moveStep;
+        return false;
+    }
+    private bool IsCloseEnoughToIdleAnchor()
+    {
+        return (IdleAnchorPosition - transform.position).sqrMagnitude <= IdleHoldDistance * IdleHoldDistance;
+    }
+    private void UpdateIdleMicroMovement(float deltaTime)
+    {
+        if (IsCloseEnoughToPosition(idleMicroTargetPosition))
+        {
+            idleMicroRetargetTimer += deltaTime;
+            if (idleMicroRetargetTimer >= idleMicroRetargetDelay)
+            {
+                PickNextIdleMicroTarget();
+            }
+            return;
+        }
+        idleMicroRetargetTimer = 0f;
+        MoveToPosition(idleMicroTargetPosition, deltaTime, idleMicroMoveSpeed);
+    }
+    private void PickNextIdleMicroTarget()
+    {
+        idleMicroRetargetIndex++;
+        idleMicroRetargetTimer = 0f;
+        var minTravelDistance = Mathf.Max(IdleHoldDistance * 2f, idleMicroRadius * 0.35f);
+        for (var i = 0; i < IdleTargetPickAttempts; i++)
+        {
+            var offset2D = Random.insideUnitCircle * idleMicroRadius;
+            var candidate = IdleAnchorPosition + new Vector3(offset2D.x, offset2D.y, 0f);
+            if (Vector3.Distance(transform.position, candidate) >= minTravelDistance)
+            {
+                idleMicroTargetPosition = candidate;
+                return;
+            }
+        }
+        var fallbackOffset = Random.insideUnitCircle * idleMicroRadius;
+        idleMicroTargetPosition = IdleAnchorPosition + new Vector3(fallbackOffset.x, fallbackOffset.y, 0f);
+    }
+    private bool IsCloseEnoughToPosition(Vector3 targetPosition)
+    {
+        return (targetPosition - transform.position).sqrMagnitude <= IdleHoldDistance * IdleHoldDistance;
+    }
+    private bool MoveToPosition(Vector3 targetPosition, float deltaTime, float moveSpeedOverride)
+    {
+        var offset = targetPosition - transform.position;
+        if (offset.sqrMagnitude <= 0.0001f)
+        {
+            return true;
+        }
+        var direction = offset.normalized;
+        var moveStep = moveSpeedOverride * deltaTime;
+        if (offset.magnitude <= moveStep)
+        {
+            transform.position = targetPosition;
+            return true;
+        }
+        transform.position += direction * moveStep;
+        return false;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneUnitState.cs">
+public enum LaneUnitState
+{
+    Waiting,
+    Chasing,
+    Attacking,
+    Returning
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEncounterCoordinator.cs">
+using System.Collections.Generic;
+using System;
+using UnityEngine;
+public class SingleLaneEncounterCoordinator : MonoBehaviour
+{
+    [SerializeField] private float attackDistance = 0.75f;
+    [SerializeField] private SingleLaneHost laneHost;
+    public Action<LaneEnemy> OnEnemyBreakthrough;
+    public bool HasActiveEnemyPressure => enemies.Count > 0;
+    private readonly List<LaneUnit> playerUnits = new();
+    private readonly List<LaneEnemy> enemies = new();
+    private readonly Dictionary<LaneUnit, int> assignedHomeSlots = new();
+    private readonly Dictionary<LaneUnit, Vector3> assignedHomePositions = new();
+    private void Update()
+    {
+        CleanupDestroyed();
+        UpdateEnemyTargets();
+        UpdatePlayerAssignments();
+        UpdateCombatStates();
+        CheckEnemyBreakthroughs();
+    }
+    public void RegisterPlayerUnit(LaneUnit laneUnit)
+    {
+        if (laneUnit == null || playerUnits.Contains(laneUnit))
+        {
+            return;
+        }
+        playerUnits.Add(laneUnit);
+        laneUnit.AssignHomePosition(
+            GetHomeSlotCenter(laneUnit),
+            GetIdleAnchorPosition(laneUnit),
+            GetIdleMicroRadius(),
+            GetIdleMicroMoveSpeed(),
+            GetIdleMicroRetargetDelay());
+    }
+    public void RegisterEnemy(LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null || enemies.Contains(laneEnemy))
+        {
+            return;
+        }
+        enemies.Add(laneEnemy);
+    }
+    private void CleanupDestroyed()
+    {
+        playerUnits.RemoveAll(unit => unit == null);
+        enemies.RemoveAll(enemy => enemy == null);
+        CleanupAssignedSlots();
+    }
+    private void UpdateEnemyTargets()
+    {
+        for (var i = 0; i < enemies.Count; i++)
+        {
+            var enemy = enemies[i];
+            if (enemy == null)
+            {
+                continue;
+            }
+            if (enemy.TargetUnit != null && enemy.TargetUnit.IsDead())
+            {
+                enemy.ClearTargetUnit();
+            }
+            if (enemy.TargetUnit != null && enemy.IsWithinAttackRange(enemy.TargetUnit, attackDistance))
+            {
+                continue;
+            }
+            if (enemy.TargetUnit != null)
+            {
+                enemy.ClearTargetUnit();
+            }
+            var targetUnit = FindClosestUnitInAttackRange(enemy);
+            if (targetUnit != null)
+            {
+                enemy.SetTargetUnit(targetUnit);
+            }
+            else
+            {
+                enemy.ClearTargetUnit();
+            }
+        }
+    }
+    private void UpdatePlayerAssignments()
+    {
+        if (laneHost == null || laneHost.EnemyAggroThresholdPoint == null)
+        {
+            ReturnIdleUnitsHome();
+            return;
+        }
+        var aggroX = laneHost.EnemyAggroThresholdPoint.position.x;
+        var activeEnemies = GetAggroEnemies(aggroX);
+        if (activeEnemies.Count == 0)
+        {
+            ReturnIdleUnitsHome();
+            return;
+        }
+        for (var i = 0; i < playerUnits.Count; i++)
+        {
+            var unit = playerUnits[i];
+            if (unit == null || unit.IsDead())
+            {
+                continue;
+            }
+            if (unit.TargetEnemy != null && unit.TargetEnemy.IsDead())
+            {
+                TryRetargetOrReturn(unit, activeEnemies);
+                continue;
+            }
+            if (unit.HasTarget && !IsEnemyWithinDefenseLeash(unit, unit.TargetEnemy))
+            {
+                unit.ClearTargetEnemy();
+            }
+            if (!unit.HasTarget && unit.IsAvailableForAssignment())
+            {
+                var targetEnemy = FindPriorityEnemy(unit, activeEnemies);
+                if (targetEnemy != null)
+                {
+                    unit.SetTargetEnemy(targetEnemy);
+                }
+            }
+        }
+    }
+    private void UpdateCombatStates()
+    {
+        for (var i = 0; i < playerUnits.Count; i++)
+        {
+            var unit = playerUnits[i];
+            if (unit == null || unit.IsDead())
+            {
+                continue;
+            }
+            if (unit.TargetEnemy != null && unit.TargetEnemy.IsDead())
+            {
+                TryRetargetOrReturn(unit, GetCurrentThreatEnemies());
+                continue;
+            }
+            if (!unit.HasTarget)
+            {
+                continue;
+            }
+            if (!IsEnemyWithinDefenseLeash(unit, unit.TargetEnemy))
+            {
+                unit.ClearTargetEnemy();
+                continue;
+            }
+            if (unit.IsWithinAttackRange(unit.TargetEnemy, attackDistance))
+            {
+                if (unit.State != LaneUnitState.Attacking)
+                {
+                    unit.EnterCombat();
+                }
+                unit.TargetEnemy.SetTargetUnit(unit);
+            }
+            else if (unit.State == LaneUnitState.Attacking)
+            {
+                unit.SetTargetEnemy(unit.TargetEnemy);
+            }
+        }
+        for (var i = enemies.Count - 1; i >= 0; i--)
+        {
+            var enemy = enemies[i];
+            if (enemy == null)
+            {
+                continue;
+            }
+            if (enemy.IsDead())
+            {
+                RemoveEnemyAt(i, false);
+            }
+        }
+        for (var i = playerUnits.Count - 1; i >= 0; i--)
+        {
+            var unit = playerUnits[i];
+            if (unit == null)
+            {
+                continue;
+            }
+            if (unit.IsDead())
+            {
+                assignedHomePositions.Remove(unit);
+                ReleaseAssignedSlot(unit);
+                Destroy(unit.gameObject);
+            }
+        }
+    }
+    private void CheckEnemyBreakthroughs()
+    {
+        if (laneHost == null || laneHost.EnemyBreakthroughPoint == null)
+        {
+            return;
+        }
+        var breakthroughX = laneHost.EnemyBreakthroughPoint.position.x;
+        for (var i = enemies.Count - 1; i >= 0; i--)
+        {
+            var enemy = enemies[i];
+            if (enemy == null || enemy.IsInCombat)
+            {
+                continue;
+            }
+            if (!enemy.HasReachedBreakthrough(breakthroughX))
+            {
+                continue;
+            }
+            RemoveEnemyAt(i, true);
+        }
+    }
+    private void ReturnIdleUnitsHome()
+    {
+        for (var i = 0; i < playerUnits.Count; i++)
+        {
+            var unit = playerUnits[i];
+            if (unit == null || unit.IsDead())
+            {
+                continue;
+            }
+            if (!unit.HasTarget)
+            {
+                if (unit.State != LaneUnitState.Waiting && unit.State != LaneUnitState.Returning)
+                {
+                    unit.ReturnToHome();
+                }
+            }
+        }
+    }
+    private Vector3 GetHomeSlotCenter(LaneUnit laneUnit)
+    {
+        if (assignedHomePositions.TryGetValue(laneUnit, out var assignedPosition))
+        {
+            return assignedPosition;
+        }
+        if (laneHost == null || laneHost.PlayerDefenseSlots == null || laneHost.PlayerDefenseSlots.Length == 0)
+        {
+            var fallbackPosition = laneHost != null && laneHost.PlayerSpawnPoint != null
+                ? laneHost.PlayerSpawnPoint.position
+                : laneUnit.Position;
+            assignedHomePositions[laneUnit] = fallbackPosition;
+            return fallbackPosition;
+        }
+        var slotIndex = GetLeastPopulatedSlotIndex();
+        assignedHomeSlots[laneUnit] = slotIndex;
+        assignedHomePositions[laneUnit] = laneHost.PlayerDefenseSlots[slotIndex].position;
+        return assignedHomePositions[laneUnit];
+    }
+    private void CleanupAssignedSlots()
+    {
+        var releasedUnits = new List<LaneUnit>();
+        foreach (var pair in assignedHomeSlots)
+        {
+            if (pair.Key == null)
+            {
+                releasedUnits.Add(pair.Key);
+            }
+        }
+        for (var i = 0; i < releasedUnits.Count; i++)
+        {
+            assignedHomeSlots.Remove(releasedUnits[i]);
+            assignedHomePositions.Remove(releasedUnits[i]);
+        }
+    }
+    private void ReleaseAssignedSlot(LaneUnit laneUnit)
+    {
+        assignedHomeSlots.Remove(laneUnit);
+        assignedHomePositions.Remove(laneUnit);
+    }
+    private List<LaneEnemy> GetAggroEnemies(float aggroX)
+    {
+        var activeEnemies = new List<LaneEnemy>();
+        for (var i = 0; i < enemies.Count; i++)
+        {
+            var enemy = enemies[i];
+            if (enemy == null || enemy.IsDead())
+            {
+                continue;
+            }
+            if (enemy.Position.x <= aggroX)
+            {
+                activeEnemies.Add(enemy);
+            }
+        }
+        return activeEnemies;
+    }
+    private List<LaneEnemy> GetCurrentThreatEnemies()
+    {
+        if (laneHost == null || laneHost.EnemyAggroThresholdPoint == null)
+        {
+            return new List<LaneEnemy>();
+        }
+        return GetAggroEnemies(laneHost.EnemyAggroThresholdPoint.position.x);
+    }
+    private LaneEnemy FindPriorityEnemy(LaneUnit laneUnit, List<LaneEnemy> candidateEnemies)
+    {
+        LaneEnemy bestEnemy = null;
+        var bestThreatDistance = float.MaxValue;
+        var bestUnitDistance = float.MaxValue;
+        if (laneHost == null || laneHost.EnemyBreakthroughPoint == null)
+        {
+            return FindClosestEnemyByDistance(laneUnit.Position, candidateEnemies);
+        }
+        var breakthroughX = laneHost.EnemyBreakthroughPoint.position.x;
+        for (var i = 0; i < candidateEnemies.Count; i++)
+        {
+            var enemy = candidateEnemies[i];
+            if (enemy == null || enemy.IsDead())
+            {
+                continue;
+            }
+            if (!IsEnemyWithinDefenseLeash(laneUnit, enemy))
+            {
+                continue;
+            }
+            var threatDistance = Mathf.Abs(enemy.Position.x - breakthroughX);
+            var unitDistance = Vector3.Distance(laneUnit.Position, enemy.Position);
+            if (threatDistance < bestThreatDistance ||
+                (Mathf.Approximately(threatDistance, bestThreatDistance) && unitDistance < bestUnitDistance))
+            {
+                bestThreatDistance = threatDistance;
+                bestUnitDistance = unitDistance;
+                bestEnemy = enemy;
+            }
+        }
+        return bestEnemy;
+    }
+    private LaneUnit FindClosestUnitInAttackRange(LaneEnemy enemy)
+    {
+        LaneUnit closestUnit = null;
+        var closestDistance = float.MaxValue;
+        for (var i = 0; i < playerUnits.Count; i++)
+        {
+            var unit = playerUnits[i];
+            if (unit == null || unit.IsDead())
+            {
+                continue;
+            }
+            if (!enemy.IsWithinAttackRange(unit, attackDistance))
+            {
+                continue;
+            }
+            var distance = Vector3.Distance(enemy.Position, unit.Position);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestUnit = unit;
+            }
+        }
+        return closestUnit;
+    }
+    private void RemoveEnemyAt(int index, bool notifyBreakthrough)
+    {
+        var enemy = enemies[index];
+        enemies.RemoveAt(index);
+        if (enemy != null)
+        {
+            enemy.ClearTargetUnit();
+            Destroy(enemy.gameObject);
+        }
+        if (notifyBreakthrough && enemy != null)
+        {
+            OnEnemyBreakthrough?.Invoke(enemy);
+        }
+    }
+    private int GetLeastPopulatedSlotIndex()
+    {
+        if (laneHost == null || laneHost.PlayerDefenseSlots == null || laneHost.PlayerDefenseSlots.Length == 0)
+        {
+            return 0;
+        }
+        var bestSlotIndex = 0;
+        var lowestPopulation = int.MaxValue;
+        for (var i = 0; i < laneHost.PlayerDefenseSlots.Length; i++)
+        {
+            var population = CountUnitsInSlot(i);
+            if (population < lowestPopulation)
+            {
+                lowestPopulation = population;
+                bestSlotIndex = i;
+            }
+        }
+        return bestSlotIndex;
+    }
+    private int CountUnitsInSlot(int slotIndex)
+    {
+        var population = 0;
+        foreach (var assignedSlot in assignedHomeSlots.Values)
+        {
+            if (assignedSlot == slotIndex)
+            {
+                population++;
+            }
+        }
+        return population;
+    }
+    private LaneEnemy FindClosestEnemyByDistance(Vector3 fromPosition, List<LaneEnemy> candidateEnemies)
+    {
+        LaneEnemy closestEnemy = null;
+        var closestDistance = float.MaxValue;
+        for (var i = 0; i < candidateEnemies.Count; i++)
+        {
+            var enemy = candidateEnemies[i];
+            if (enemy == null || enemy.IsDead())
+            {
+                continue;
+            }
+            var distance = Vector3.Distance(fromPosition, enemy.Position);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestEnemy = enemy;
+            }
+        }
+        return closestEnemy;
+    }
+    private bool IsEnemyWithinDefenseLeash(LaneUnit laneUnit, LaneEnemy laneEnemy)
+    {
+        if (laneEnemy == null)
+        {
+            return false;
+        }
+        if (laneHost == null || laneHost.AlliedDefenseLeashDistance <= 0f)
+        {
+            return true;
+        }
+        return Vector3.Distance(laneUnit.HomeSlotCenter, laneEnemy.Position) <= laneHost.AlliedDefenseLeashDistance;
+    }
+    private void TryRetargetOrReturn(LaneUnit laneUnit, List<LaneEnemy> candidateEnemies)
+    {
+        laneUnit.ClearTargetEnemy();
+        if (candidateEnemies == null || candidateEnemies.Count == 0)
+        {
+            return;
+        }
+        var nextEnemy = FindPriorityEnemy(laneUnit, candidateEnemies);
+        if (nextEnemy != null)
+        {
+            laneUnit.SetTargetEnemy(nextEnemy);
+        }
+    }
+    private Vector3 GetIdleAnchorPosition(LaneUnit laneUnit)
+    {
+        if (assignedHomePositions.TryGetValue(laneUnit, out var assignedPosition))
+        {
+            return GetSpreadSlotPosition(assignedPosition, laneUnit);
+        }
+        return GetSpreadSlotPosition(GetHomeSlotCenter(laneUnit), laneUnit);
+    }
+    private Vector3 GetSpreadSlotPosition(Vector3 basePosition, LaneUnit laneUnit)
+    {
+        if (laneHost == null || laneHost.AlliedHomeSpreadRadius <= 0f)
+        {
+            return basePosition;
+        }
+        var stableSeed = Mathf.Abs(laneUnit.GetInstanceID() * 31 + 97);
+        var angle = stableSeed % 360;
+        var radiusFactor = 0.3f + ((stableSeed / 360) % 100) / 100f * 0.5f;
+        var radius = laneHost.AlliedHomeSpreadRadius * radiusFactor;
+        var radians = angle * Mathf.Deg2Rad;
+        var offset = new Vector3(Mathf.Cos(radians) * radius, Mathf.Sin(radians) * radius, 0f);
+        return basePosition + offset;
+    }
+    private float GetIdleMicroRadius()
+    {
+        return laneHost != null ? laneHost.AlliedIdleMicroRadius : 0f;
+    }
+    private float GetIdleMicroMoveSpeed()
+    {
+        return laneHost != null ? laneHost.AlliedIdleMicroMoveSpeed : 0.25f;
+    }
+    private float GetIdleMicroRetargetDelay()
+    {
+        return laneHost != null ? laneHost.AlliedIdleMicroRetargetDelay : 1f;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
+using UnityEngine;
+public class SingleLaneEnemySpawner
+{
+    public EnemySpawnResult TrySpawnEnemy(EnemyDef enemyDef, SingleLaneHost laneHost)
+    {
+        if (laneHost == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
+        }
+        if (laneHost.EnemySpawnPoint == null || laneHost.EnemyForwardTarget == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
+        }
+        if (enemyDef == null || enemyDef.ViewPrefab == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
+        }
+        var spawnPosition = laneHost.EnemySpawnPoint.position;
+        if (laneHost.EnemySpawnSpreadRadius > 0f)
+        {
+            var angle = Random.value * Mathf.PI * 2f;
+            var radius = Mathf.Sqrt(Random.value) * laneHost.EnemySpawnSpreadRadius;
+            var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
+            spawnPosition += offset;
+        }
+        var spawnedGameObject = Object.Instantiate(
+            enemyDef.ViewPrefab,
+            spawnPosition,
+            laneHost.EnemySpawnPoint.rotation);
+        var laneEnemy = spawnedGameObject.GetComponent<LaneEnemy>();
+        if (laneEnemy == null)
+        {
+            laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
+        }
+        laneEnemy.Initialize(enemyDef, laneHost.EnemyForwardTarget.position);
+        return EnemySpawnResult.Success(laneEnemy);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneHost.cs">
+using UnityEngine;
+public class SingleLaneHost : MonoBehaviour
+{
+    [SerializeField] private Transform playerSpawnPoint;
+    [SerializeField] private Transform[] playerDefenseSlots;
+    [SerializeField] private float alliedHomeSpreadRadius = 0.35f;
+    [SerializeField] private float alliedIdleMicroRadius = 0.08f;
+    [SerializeField] private float alliedIdleMicroMoveSpeed = 0.45f;
+    [SerializeField] private float alliedIdleMicroRetargetDelay = 1.1f;
+    [SerializeField] private float alliedDefenseLeashDistance = 3f;
+    [SerializeField] private Transform enemyAggroThresholdPoint;
+    [SerializeField] private Transform enemyBreakthroughPoint;
+    [SerializeField] private Transform enemySpawnPoint;
+    [SerializeField] private Transform enemyForwardTarget;
+    [SerializeField] private float enemySpawnSpreadRadius = 0.3f;
+    public Transform PlayerSpawnPoint => playerSpawnPoint;
+    public Transform[] PlayerDefenseSlots => playerDefenseSlots;
+    public float AlliedHomeSpreadRadius => alliedHomeSpreadRadius;
+    public float AlliedIdleMicroRadius => alliedIdleMicroRadius;
+    public float AlliedIdleMicroMoveSpeed => alliedIdleMicroMoveSpeed;
+    public float AlliedIdleMicroRetargetDelay => alliedIdleMicroRetargetDelay;
+    public float AlliedDefenseLeashDistance => alliedDefenseLeashDistance;
+    public Transform EnemyAggroThresholdPoint => enemyAggroThresholdPoint;
+    public Transform EnemyBreakthroughPoint => enemyBreakthroughPoint;
+    public Transform EnemySpawnPoint => enemySpawnPoint;
+    public Transform EnemyForwardTarget => enemyForwardTarget;
+    public float EnemySpawnSpreadRadius => enemySpawnSpreadRadius;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneUnitSpawner.cs">
+using UnityEngine;
+public class SingleLaneUnitSpawner
+{
+    public UnitSpawnResult TrySpawnPlayerUnit(UnitDef unitDef, SingleLaneHost laneHost)
+    {
+        if (laneHost == null)
+        {
+            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
+        }
+        if (laneHost.PlayerSpawnPoint == null)
+        {
+            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
+        }
+        if (unitDef == null || unitDef.ViewPrefab == null)
+        {
+            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
+        }
+        var spawnedGameObject = Object.Instantiate(
+            unitDef.ViewPrefab,
+            laneHost.PlayerSpawnPoint.position,
+            laneHost.PlayerSpawnPoint.rotation);
+        var laneUnit = spawnedGameObject.GetComponent<LaneUnit>();
+        if (laneUnit == null)
+        {
+            laneUnit = spawnedGameObject.AddComponent<LaneUnit>();
+        }
+        laneUnit.Initialize(unitDef);
+        return UnitSpawnResult.Success(laneUnit);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/UnitSpawnFailureReason.cs">
+public enum UnitSpawnFailureReason
+{
+    None,
+    NotRequested,
+    MissingLaneHost,
+    MissingSpawnPoint,
+    MissingPrefab
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/UnitSpawnResult.cs">
+public class UnitSpawnResult
+{
+    public bool IsSuccess;
+    public UnitSpawnFailureReason FailureReason;
+    public LaneUnit SpawnedUnit;
+    public static UnitSpawnResult Success(LaneUnit spawnedUnit)
+    {
+        return new UnitSpawnResult
+        {
+            IsSuccess = true,
+            FailureReason = UnitSpawnFailureReason.None,
+            SpawnedUnit = spawnedUnit
+        };
+    }
+    public static UnitSpawnResult Failure(UnitSpawnFailureReason failureReason)
+    {
+        return new UnitSpawnResult
+        {
+            IsSuccess = false,
+            FailureReason = failureReason
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/GamePhase.cs">
+public enum GamePhase
+{
+    Day,
+    Night,
+    Transition
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/RunState.cs">
+public class RunState
+{
+    public int Faith;
+    public int Gold;
+    public int CemeteryState;
+    public int CurrentDay;
+    public int CurrentNight;
+    public GamePhase CurrentPhase;
+    public static RunState CreateInitial()
+    {
+        return new RunState
+        {
+            Faith = 0,
+            Gold = 0,
+            CemeteryState = 100,
+            CurrentDay = 1,
+            CurrentNight = 0,
+            CurrentPhase = GamePhase.Transition
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Wave/WaveSpawnEntry.cs">
+using System;
+[Serializable]
+public class WaveSpawnEntry
+{
+    public string enemyId;
+    public float spawnTime;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Wave/WaveSystem.cs">
+using System.Collections.Generic;
+public class WaveSystem
+{
+    private readonly List<WaveSpawnEntry> activeEntries = new();
+    private float elapsedTime;
+    private int nextSpawnIndex;
+    private bool isRunning;
+    public bool IsRunning => isRunning;
+    public bool AreAllSpawnsIssued => !isRunning || nextSpawnIndex >= activeEntries.Count;
+    public void StartWave(IReadOnlyList<WaveSpawnEntry> entries)
+    {
+        activeEntries.Clear();
+        elapsedTime = 0f;
+        nextSpawnIndex = 0;
+        isRunning = true;
+        if (entries == null)
+        {
+            return;
+        }
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry == null)
+            {
+                continue;
+            }
+            activeEntries.Add(new WaveSpawnEntry
+            {
+                enemyId = entry.enemyId,
+                spawnTime = entry.spawnTime
+            });
+        }
+        activeEntries.Sort((a, b) => a.spawnTime.CompareTo(b.spawnTime));
+    }
+    public void StopWave()
+    {
+        isRunning = false;
+        elapsedTime = 0f;
+        nextSpawnIndex = 0;
+        activeEntries.Clear();
+    }
+    public void CollectReadySpawns(float deltaTime, List<string> readyEnemyIds)
+    {
+        if (!isRunning || readyEnemyIds == null)
+        {
+            return;
+        }
+        elapsedTime += deltaTime;
+        while (nextSpawnIndex < activeEntries.Count)
+        {
+            var nextEntry = activeEntries[nextSpawnIndex];
+            if (nextEntry.spawnTime > elapsedTime)
+            {
+                break;
+            }
+            readyEnemyIds.Add(nextEntry.enemyId);
+            nextSpawnIndex++;
+        }
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Service/G.cs">
 using System.Collections.Generic;
 public static class G
@@ -2438,188 +2548,6 @@ public static class TextStuff
             return valueText;
         var c = m.Groups["c"].Value;
         return $"<color={c}>{valueText}</color>";
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/HUD.cs">
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-using UnityEngine.Events;
-public class HUD : MonoBehaviour
-{
-    [System.Serializable]
-    private class BellButtonBinding
-    {
-        public string bellId;
-        public Button button;
-        public TMP_Text label;
-        [HideInInspector] public UnityAction clickAction;
-    }
-    [SerializeField] private TMP_Text faithText;
-    [SerializeField] private TMP_Text goldText;
-    [SerializeField] private TMP_Text cemeteryStateText;
-    [SerializeField] private TMP_Text phaseText;
-    [SerializeField] private TMP_Text bellFeedbackText;
-    [SerializeField] private BellButtonBinding[] bellButtons;
-    private Main main;
-    private bool missingMainWarningShown;
-    private void Awake()
-    {
-        G.HUD = this;
-        BindBellButtons();
-        RefreshBellButtonLabels();
-    }
-    private void OnDestroy()
-    {
-        UnbindBellButtons();
-    }
-    private void Update()
-    {
-        RefreshView();
-    }
-    public void RefreshView()
-    {
-        if (!TryGetMain(out var currentMain) || currentMain.RunState == null)
-        {
-            if (!missingMainWarningShown)
-            {
-                Debug.LogWarning("HUD: Main or RunState not found");
-                missingMainWarningShown = true;
-            }
-            return;
-        }
-        missingMainWarningShown = false;
-        var runState = currentMain.RunState;
-        if (faithText != null)
-        {
-            faithText.text = $"Faith: {runState.Faith}";
-        }
-        if (goldText != null)
-        {
-            goldText.text = $"Gold: {runState.Gold}";
-        }
-        if (cemeteryStateText != null)
-        {
-            cemeteryStateText.text = $"Cemetery: {runState.CemeteryState}";
-        }
-        if (phaseText != null)
-        {
-            phaseText.text = $"Phase: {runState.CurrentPhase}";
-        }
-    }
-    private void BindBellButtons()
-    {
-        if (bellButtons == null)
-        {
-            return;
-        }
-        for (var i = 0; i < bellButtons.Length; i++)
-        {
-            var binding = bellButtons[i];
-            if (binding == null || binding.button == null)
-            {
-                continue;
-            }
-            var bellId = binding.bellId;
-            binding.clickAction = () => OnBellButtonPressed(bellId);
-            binding.button.onClick.AddListener(binding.clickAction);
-        }
-    }
-    private void UnbindBellButtons()
-    {
-        if (bellButtons == null)
-        {
-            return;
-        }
-        for (var i = 0; i < bellButtons.Length; i++)
-        {
-            var binding = bellButtons[i];
-            if (binding == null || binding.button == null)
-            {
-                continue;
-            }
-            if (binding.clickAction != null)
-            {
-                binding.button.onClick.RemoveListener(binding.clickAction);
-            }
-        }
-    }
-    private void RefreshBellButtonLabels()
-    {
-        if (bellButtons == null)
-        {
-            return;
-        }
-        for (var i = 0; i < bellButtons.Length; i++)
-        {
-            var binding = bellButtons[i];
-            if (binding == null || binding.label == null)
-            {
-                continue;
-            }
-            var bellDef = CMS.Get<BellDef>(binding.bellId);
-            if (bellDef == null)
-            {
-                binding.label.text = binding.bellId;
-                continue;
-            }
-            binding.label.text = $"{bellDef.DisplayName} ({bellDef.FaithCost})";
-        }
-    }
-    private void OnBellButtonPressed(string bellId)
-    {
-        if (!TryGetMain(out var currentMain))
-        {
-            SetBellFeedback("Main not found");
-            return;
-        }
-        var result = currentMain.TryRingBell(bellId);
-        if (result.IsSuccess && result.SpawnResult != null && result.SpawnResult.IsSuccess)
-        {
-            SetBellFeedback($"Bell: {result.BellDef.DisplayName}");
-            return;
-        }
-        if (!result.IsSuccess)
-        {
-            SetBellFeedback($"Bell failed: {result.FailureReason}");
-            return;
-        }
-        if (result.SpawnResult != null && !result.SpawnResult.IsSuccess)
-        {
-            SetBellFeedback($"Spawn failed: {result.SpawnResult.FailureReason}");
-        }
-    }
-    private void SetBellFeedback(string message)
-    {
-        if (bellFeedbackText != null)
-        {
-            bellFeedbackText.text = message;
-        }
-    }
-    private bool TryGetMain(out Main currentMain)
-    {
-        if (main != null)
-        {
-            currentMain = main;
-            return true;
-        }
-        if (G.main != null)
-        {
-            main = G.main;
-            currentMain = main;
-            return true;
-        }
-        main = FindFirstObjectByType<Main>();
-        if (main != null)
-        {
-            G.main = main;
-            currentMain = main;
-            return true;
-        }
-        currentMain = null;
-        return false;
     }
 }
 </file>
@@ -3693,6 +3621,219 @@ public static class Popups
 }
 </file>
 
+<file path="Assets/Game/Code/Service/ServiceMain.cs">
+using UnityEngine;
+public class ServiceMain : MonoBehaviour
+{
+    public static bool isInitialized { get; private set; }
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void GameEntryPoint()
+    {
+        if (isInitialized) return;
+        GameObject servicesGo = new GameObject("===Services===");
+        DontDestroyOnLoad(servicesGo);
+        servicesGo.AddComponent<ServiceMain>();
+        isInitialized = true;
+    }
+    private void Awake()
+    {
+        if (G.ServiceMain != null && G.ServiceMain != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        G.ServiceMain = this;
+        Debug.Log("=========================");
+        Debug.Log("Game EntryPoint");
+        G.audioSystem = gameObject.AddComponent<AudioSystem>();
+        AnalyticsSystem.Init();
+        CMS.Init();
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/HUD.cs">
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.Events;
+public class HUD : MonoBehaviour
+{
+    [System.Serializable]
+    private class BellButtonBinding
+    {
+        public string bellId;
+        public Button button;
+        public TMP_Text label;
+        [HideInInspector] public UnityAction clickAction;
+    }
+    [SerializeField] private TMP_Text faithText;
+    [SerializeField] private TMP_Text goldText;
+    [SerializeField] private TMP_Text cemeteryStateText;
+    [SerializeField] private TMP_Text phaseText;
+    [SerializeField] private TMP_Text bellFeedbackText;
+    [SerializeField] private BellButtonBinding[] bellButtons;
+    private Main main;
+    private bool missingMainWarningShown;
+    private void Awake()
+    {
+        G.HUD = this;
+        BindBellButtons();
+        RefreshBellButtonLabels();
+    }
+    private void OnDestroy()
+    {
+        UnbindBellButtons();
+    }
+    private void Update()
+    {
+        RefreshView();
+    }
+    public void RefreshView()
+    {
+        if (!TryGetMain(out var currentMain) || currentMain.RunState == null)
+        {
+            if (!missingMainWarningShown)
+            {
+                Debug.LogWarning("HUD: Main or RunState not found");
+                missingMainWarningShown = true;
+            }
+            return;
+        }
+        missingMainWarningShown = false;
+        var runState = currentMain.RunState;
+        if (faithText != null)
+        {
+            faithText.text = $"Faith: {runState.Faith}";
+        }
+        if (goldText != null)
+        {
+            goldText.text = $"Gold: {runState.Gold}";
+        }
+        if (cemeteryStateText != null)
+        {
+            cemeteryStateText.text = $"Cemetery: {runState.CemeteryState}";
+        }
+        if (phaseText != null)
+        {
+            phaseText.text = $"Phase: {runState.CurrentPhase}";
+        }
+    }
+    private void BindBellButtons()
+    {
+        if (bellButtons == null)
+        {
+            return;
+        }
+        for (var i = 0; i < bellButtons.Length; i++)
+        {
+            var binding = bellButtons[i];
+            if (binding == null || binding.button == null)
+            {
+                continue;
+            }
+            var bellId = binding.bellId;
+            binding.clickAction = () => OnBellButtonPressed(bellId);
+            binding.button.onClick.AddListener(binding.clickAction);
+        }
+    }
+    private void UnbindBellButtons()
+    {
+        if (bellButtons == null)
+        {
+            return;
+        }
+        for (var i = 0; i < bellButtons.Length; i++)
+        {
+            var binding = bellButtons[i];
+            if (binding == null || binding.button == null)
+            {
+                continue;
+            }
+            if (binding.clickAction != null)
+            {
+                binding.button.onClick.RemoveListener(binding.clickAction);
+            }
+        }
+    }
+    private void RefreshBellButtonLabels()
+    {
+        if (bellButtons == null)
+        {
+            return;
+        }
+        for (var i = 0; i < bellButtons.Length; i++)
+        {
+            var binding = bellButtons[i];
+            if (binding == null || binding.label == null)
+            {
+                continue;
+            }
+            var bellDef = CMS.Get<BellDef>(binding.bellId);
+            if (bellDef == null)
+            {
+                binding.label.text = binding.bellId;
+                continue;
+            }
+            binding.label.text = $"{bellDef.DisplayName} ({bellDef.FaithCost})";
+        }
+    }
+    private void OnBellButtonPressed(string bellId)
+    {
+        if (!TryGetMain(out var currentMain))
+        {
+            SetBellFeedback("Main not found");
+            return;
+        }
+        var result = currentMain.TryRingBell(bellId);
+        if (result.IsSuccess && result.SpawnResult != null && result.SpawnResult.IsSuccess)
+        {
+            SetBellFeedback($"Bell: {result.BellDef.DisplayName}");
+            return;
+        }
+        if (!result.IsSuccess)
+        {
+            SetBellFeedback($"Bell failed: {result.FailureReason}");
+            return;
+        }
+        if (result.SpawnResult != null && !result.SpawnResult.IsSuccess)
+        {
+            SetBellFeedback($"Spawn failed: {result.SpawnResult.FailureReason}");
+        }
+    }
+    private void SetBellFeedback(string message)
+    {
+        if (bellFeedbackText != null)
+        {
+            bellFeedbackText.text = message;
+        }
+    }
+    private bool TryGetMain(out Main currentMain)
+    {
+        if (main != null)
+        {
+            currentMain = main;
+            return true;
+        }
+        if (G.main != null)
+        {
+            main = G.main;
+            currentMain = main;
+            return true;
+        }
+        main = FindFirstObjectByType<Main>();
+        if (main != null)
+        {
+            G.main = main;
+            currentMain = main;
+            return true;
+        }
+        currentMain = null;
+        return false;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Service/Main.cs">
 using UnityEngine;
 using System.Collections.Generic;
@@ -3944,37 +4085,6 @@ public class Main : MonoBehaviour
         {
             TrySpawnDebugEnemy();
         }
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Service/ServiceMain.cs">
-using UnityEngine;
-public class ServiceMain : MonoBehaviour
-{
-    public static bool isInitialized { get; private set; }
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    static void GameEntryPoint()
-    {
-        if (isInitialized) return;
-        GameObject servicesGo = new GameObject("===Services===");
-        DontDestroyOnLoad(servicesGo);
-        servicesGo.AddComponent<ServiceMain>();
-        isInitialized = true;
-    }
-    private void Awake()
-    {
-        if (G.ServiceMain != null && G.ServiceMain != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        G.ServiceMain = this;
-        Debug.Log("=========================");
-        Debug.Log("Game EntryPoint");
-        G.audioSystem = gameObject.AddComponent<AudioSystem>();
-        AnalyticsSystem.Init();
-        CMS.Init();
     }
 }
 </file>

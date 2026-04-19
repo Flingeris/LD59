@@ -3,6 +3,7 @@ using UnityEngine;
 public class LaneUnit : MonoBehaviour
 {
     private const float IdleHoldDistance = 0.05f;
+    private const int IdleTargetPickAttempts = 6;
 
     public UnitDef UnitDef { get; private set; }
     public Vector3 Position => transform.position;
@@ -160,7 +161,6 @@ public class LaneUnit : MonoBehaviour
         {
             if (IsCloseEnoughToIdleAnchor())
             {
-                transform.position = IdleAnchorPosition;
                 return;
             }
 
@@ -210,8 +210,7 @@ public class LaneUnit : MonoBehaviour
 
         if (MoveToPosition(IdleAnchorPosition, deltaTime) || IsCloseEnoughToIdleAnchor())
         {
-            transform.position = IdleAnchorPosition;
-            idleMicroTargetPosition = IdleAnchorPosition;
+            idleMicroTargetPosition = transform.position;
             idleMicroRetargetTimer = 0f;
             State = LaneUnitState.Waiting;
         }
@@ -222,7 +221,6 @@ public class LaneUnit : MonoBehaviour
         var offset = targetPosition - transform.position;
         if (offset.sqrMagnitude <= 0.0001f)
         {
-            transform.position = targetPosition;
             return true;
         }
 
@@ -247,7 +245,6 @@ public class LaneUnit : MonoBehaviour
     {
         if (IsCloseEnoughToPosition(idleMicroTargetPosition))
         {
-            transform.position = idleMicroTargetPosition;
             idleMicroRetargetTimer += deltaTime;
 
             if (idleMicroRetargetTimer >= idleMicroRetargetDelay)
@@ -267,14 +264,22 @@ public class LaneUnit : MonoBehaviour
         idleMicroRetargetIndex++;
         idleMicroRetargetTimer = 0f;
 
-        var angleSeed = Mathf.Abs(GetInstanceID() * 41 + idleMicroRetargetIndex * 59);
-        var radiusSeed = Mathf.Abs(GetInstanceID() * 67 + idleMicroRetargetIndex * 83);
-        var angle = angleSeed % 360;
-        var radiusFactor = Mathf.Sqrt((radiusSeed % 1000) / 1000f);
-        var radius = idleMicroRadius * radiusFactor;
-        var radians = angle * Mathf.Deg2Rad;
-        var offset = new Vector3(Mathf.Cos(radians) * radius, Mathf.Sin(radians) * radius, 0f);
-        idleMicroTargetPosition = IdleAnchorPosition + offset;
+        var minTravelDistance = Mathf.Max(IdleHoldDistance * 2f, idleMicroRadius * 0.35f);
+
+        for (var i = 0; i < IdleTargetPickAttempts; i++)
+        {
+            var offset2D = Random.insideUnitCircle * idleMicroRadius;
+            var candidate = IdleAnchorPosition + new Vector3(offset2D.x, offset2D.y, 0f);
+
+            if (Vector3.Distance(transform.position, candidate) >= minTravelDistance)
+            {
+                idleMicroTargetPosition = candidate;
+                return;
+            }
+        }
+
+        var fallbackOffset = Random.insideUnitCircle * idleMicroRadius;
+        idleMicroTargetPosition = IdleAnchorPosition + new Vector3(fallbackOffset.x, fallbackOffset.y, 0f);
     }
 
     private bool IsCloseEnoughToPosition(Vector3 targetPosition)
@@ -287,7 +292,6 @@ public class LaneUnit : MonoBehaviour
         var offset = targetPosition - transform.position;
         if (offset.sqrMagnitude <= 0.0001f)
         {
-            transform.position = targetPosition;
             return true;
         }
 

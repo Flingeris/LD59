@@ -72,6 +72,16 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
                 enemy.ClearTargetUnit();
             }
 
+            if (enemy.TargetUnit != null && enemy.IsWithinAttackRange(enemy.TargetUnit, attackDistance))
+            {
+                continue;
+            }
+
+            if (enemy.TargetUnit != null)
+            {
+                enemy.ClearTargetUnit();
+            }
+
             var targetUnit = FindClosestUnitInAttackRange(enemy);
             if (targetUnit != null)
             {

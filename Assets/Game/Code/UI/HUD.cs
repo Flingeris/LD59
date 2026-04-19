@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -18,22 +20,32 @@ public class HUD : MonoBehaviour
     [SerializeField] private TMP_Text goldText;
     [SerializeField] private TMP_Text cemeteryStateText;
     [SerializeField] private TMP_Text phaseText;
+    [SerializeField] private DayScreenView dayScreenView;
     [SerializeField] private TMP_Text bellFeedbackText;
     [SerializeField] private BellButtonBinding[] bellButtons;
 
-    private Main main;
+    public event Action DayScreenStartNightRequested;
+    public event Action<string> DayScreenUpgradePurchaseRequested;
+
     private bool missingMainWarningShown;
 
     private void Awake()
     {
         G.HUD = this;
         BindBellButtons();
+        BindDayScreenView();
         RefreshBellButtonLabels();
     }
 
     private void OnDestroy()
     {
         UnbindBellButtons();
+        UnbindDayScreenView();
+
+        if (G.HUD == this)
+        {
+            G.HUD = null;
+        }
     }
 
     private void Update()
@@ -43,7 +55,7 @@ public class HUD : MonoBehaviour
 
     public void RefreshView()
     {
-        if (!TryGetMain(out var currentMain) || currentMain.RunState == null)
+        if (G.main == null || G.main.RunState == null)
         {
             if (!missingMainWarningShown)
             {
@@ -56,7 +68,7 @@ public class HUD : MonoBehaviour
 
         missingMainWarningShown = false;
 
-        var runState = currentMain.RunState;
+        var runState = G.main.RunState;
 
         if (faithText != null)
         {
@@ -77,6 +89,36 @@ public class HUD : MonoBehaviour
         {
             phaseText.text = $"Phase: {runState.CurrentPhase}";
         }
+    }
+
+    public void ShowDayScreen(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        if (dayScreenView == null)
+        {
+            return;
+        }
+
+        dayScreenView.Show(runState, upgradeItems);
+    }
+
+    public void HideDayScreen()
+    {
+        if (dayScreenView == null)
+        {
+            return;
+        }
+
+        dayScreenView.Hide();
+    }
+
+    public void RefreshDayScreen(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        if (dayScreenView == null || !dayScreenView.gameObject.activeSelf)
+        {
+            return;
+        }
+
+        dayScreenView.Refresh(runState, upgradeItems);
     }
 
     private void BindBellButtons()
@@ -117,9 +159,33 @@ public class HUD : MonoBehaviour
 
             if (binding.clickAction != null)
             {
-                binding.button.onClick.RemoveListener(binding.clickAction);
+            binding.button.onClick.RemoveListener(binding.clickAction);
             }
         }
+    }
+
+    private void BindDayScreenView()
+    {
+        if (dayScreenView == null)
+        {
+            return;
+        }
+
+        dayScreenView.StartNightRequested -= HandleDayScreenStartNightRequested;
+        dayScreenView.StartNightRequested += HandleDayScreenStartNightRequested;
+        dayScreenView.UpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
+        dayScreenView.UpgradePurchaseRequested += HandleDayScreenUpgradePurchaseRequested;
+    }
+
+    private void UnbindDayScreenView()
+    {
+        if (dayScreenView == null)
+        {
+            return;
+        }
+
+        dayScreenView.StartNightRequested -= HandleDayScreenStartNightRequested;
+        dayScreenView.UpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
     }
 
     private void RefreshBellButtonLabels()
@@ -150,13 +216,8 @@ public class HUD : MonoBehaviour
 
     private void OnBellButtonPressed(string bellId)
     {
-        if (!TryGetMain(out var currentMain))
-        {
-            SetBellFeedback("Main not found");
-            return;
-        }
 
-        var result = currentMain.TryRingBell(bellId);
+        var result = G.main.TryRingBell(bellId);
         if (result.IsSuccess && result.SpawnResult != null && result.SpawnResult.IsSuccess)
         {
             SetBellFeedback($"Bell: {result.BellDef.DisplayName}");
@@ -183,30 +244,14 @@ public class HUD : MonoBehaviour
         }
     }
 
-    private bool TryGetMain(out Main currentMain)
+    private void HandleDayScreenStartNightRequested()
     {
-        if (main != null)
-        {
-            currentMain = main;
-            return true;
-        }
-
-        if (G.main != null)
-        {
-            main = G.main;
-            currentMain = main;
-            return true;
-        }
-
-        main = FindFirstObjectByType<Main>();
-        if (main != null)
-        {
-            G.main = main;
-            currentMain = main;
-            return true;
-        }
-
-        currentMain = null;
-        return false;
+        DayScreenStartNightRequested?.Invoke();
     }
+
+    private void HandleDayScreenUpgradePurchaseRequested(string upgradeId)
+    {
+        DayScreenUpgradePurchaseRequested?.Invoke(upgradeId);
+    }
+
 }

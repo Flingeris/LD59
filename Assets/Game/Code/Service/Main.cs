@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -6,14 +7,20 @@ public class Main : MonoBehaviour
     private const int DebugFaithAmount = 10;
     private const int DebugGoldAmount = 10;
     private const int DebugCemeteryDamageAmount = 10;
+    private const string DefaultDebugUpgradeId = "upgrade_morning_prayers";
 
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
     [SerializeField] private string debugBellId;
+    [SerializeField] private string debugUpgradeId;
     [SerializeField] private EnemyDef debugEnemyDef;
     [SerializeField] private WaveSpawnEntry[] fixedNightWave;
+    [Min(0)] [SerializeField] private int dayFaithReward = 20;
+    [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
 
     private BellSystem bellSystem;
+    private DayRewardSystem dayRewardSystem;
+    private UpgradeSystem upgradeSystem;
     private SingleLaneUnitSpawner unitSpawner;
     private SingleLaneEnemySpawner enemySpawner;
     private WaveSystem waveSystem;
@@ -26,7 +33,10 @@ public class Main : MonoBehaviour
     {
         G.main = this;
         RunState = RunState.CreateInitial();
+        RunState.DayFaithIncome = Mathf.Max(0, dayFaithReward);
         bellSystem = new BellSystem();
+        dayRewardSystem = new DayRewardSystem();
+        upgradeSystem = new UpgradeSystem();
         unitSpawner = new SingleLaneUnitSpawner();
         enemySpawner = new SingleLaneEnemySpawner();
         waveSystem = new WaveSystem();
@@ -39,8 +49,15 @@ public class Main : MonoBehaviour
 
     private void Start()
     {
+        BindHud();
         EnterDay();
+        ApplyInitialDayReward();
         ValidateLanePrototypeSetup();
+    }
+
+    private void OnDestroy()
+    {
+        UnbindHud();
     }
 
     private void Update()
@@ -64,6 +81,7 @@ public class Main : MonoBehaviour
 
         RunState.CurrentPhase = GamePhase.Day;
         waveSystem.StopWave();
+        RefreshPresentation();
         return true;
     }
 
@@ -77,7 +95,44 @@ public class Main : MonoBehaviour
         RunState.CurrentNight++;
         RunState.CurrentPhase = GamePhase.Night;
         StartNightWave();
+        RefreshPresentation();
         return true;
+    }
+
+    public bool TryStartNightFromDayScreen()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Day)
+        {
+            return false;
+        }
+
+        return EnterNight();
+    }
+
+    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId)
+    {
+        if (RunState == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
+        }
+
+        if (RunState.CurrentPhase != GamePhase.Day)
+        {
+            var wrongPhaseResult = UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.WrongPhase);
+            Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {wrongPhaseResult.FailureReason}");
+            return wrongPhaseResult;
+        }
+
+        var purchaseResult = upgradeSystem.TryPurchaseUpgrade(upgradeId, RunState);
+        if (!purchaseResult.IsSuccess)
+        {
+            Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {purchaseResult.FailureReason}");
+            return purchaseResult;
+        }
+
+        Debug.Log($"Purchased upgrade '{purchaseResult.UpgradeDef.Id}'");
+        RefreshPresentation();
+        return purchaseResult;
     }
 
     public void AddFaith(int amount)
@@ -209,7 +264,8 @@ public class Main : MonoBehaviour
 
         if (!laneSetupWarningShown)
         {
-            Debug.LogWarning("Lane prototype setup incomplete: assign SingleLaneHost and SingleLaneEncounterCoordinator on Main");
+            Debug.LogWarning(
+                "Lane prototype setup incomplete: assign SingleLaneHost and SingleLaneEncounterCoordinator on Main");
             laneSetupWarningShown = true;
         }
 
@@ -260,8 +316,172 @@ public class Main : MonoBehaviour
 
     private void CompleteNight()
     {
+        ApplyCompletedNightReward();
         Debug.Log("Night completed");
         EnterDay();
+    }
+
+    private void ApplyInitialDayReward()
+    {
+        ApplyDayReward(dayRewardSystem.CreateInitialDayReward(RunState.DayFaithIncome), "Initial day reward");
+    }
+
+    private void ApplyCompletedNightReward()
+    {
+        ApplyDayReward(
+            dayRewardSystem.CreateCompletedNightReward(
+                RunState.CurrentNight,
+                RunState.DayFaithIncome,
+                completedNightGoldReward),
+            $"Completed night {RunState.CurrentNight} reward");
+    }
+
+    private void ApplyDayReward(DayRewardData reward, string rewardSource)
+    {
+        if (reward == null)
+        {
+            return;
+        }
+
+        dayRewardSystem.ApplyReward(RunState, reward);
+
+        if (!RunState.LastDayReward.HasAnyReward)
+        {
+            return;
+        }
+
+        Debug.Log(
+            $"{rewardSource}: +{RunState.LastDayReward.FaithReward} Faith, +{RunState.LastDayReward.GoldReward} Gold");
+
+        RefreshPresentation();
+    }
+
+    private void BindHud()
+    {
+        if (G.HUD == null)
+        {
+            return;
+        }
+
+        G.HUD.DayScreenStartNightRequested -= HandleDayScreenStartNightRequested;
+        G.HUD.DayScreenStartNightRequested += HandleDayScreenStartNightRequested;
+        G.HUD.DayScreenUpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
+        G.HUD.DayScreenUpgradePurchaseRequested += HandleDayScreenUpgradePurchaseRequested;
+    }
+
+    private void UnbindHud()
+    {
+        if (G.HUD == null)
+        {
+            return;
+        }
+
+        G.HUD.DayScreenStartNightRequested -= HandleDayScreenStartNightRequested;
+        G.HUD.DayScreenUpgradePurchaseRequested -= HandleDayScreenUpgradePurchaseRequested;
+    }
+
+    private void HandleDayScreenStartNightRequested()
+    {
+        TryStartNightFromDayScreen();
+    }
+
+    private void HandleDayScreenUpgradePurchaseRequested(string upgradeId)
+    {
+        TryPurchaseUpgrade(upgradeId);
+    }
+
+    private void RefreshPresentation()
+    {
+        if (G.HUD == null || RunState == null)
+        {
+            return;
+        }
+
+        if (RunState.CurrentPhase == GamePhase.Day)
+        {
+            G.HUD.ShowDayScreen(RunState, BuildDayUpgradeDisplayItems());
+        }
+        else
+        {
+            G.HUD.HideDayScreen();
+        }
+    }
+
+    private List<DayUpgradeItemData> BuildDayUpgradeDisplayItems()
+    {
+        var displayItems = new List<DayUpgradeItemData>();
+        var upgradeDefs = new List<UpgradeDef>(CMS.GetAll<UpgradeDef>());
+        upgradeDefs.Sort(CompareUpgradeDefsForDisplay);
+
+        for (var i = 0; i < upgradeDefs.Count; i++)
+        {
+            var upgradeDef = upgradeDefs[i];
+            if (upgradeDef == null)
+            {
+                continue;
+            }
+
+            if (RunState.PurchasedUpgradeIds != null && RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+            {
+                continue;
+            }
+
+            if (!UpgradeSystem.SupportsEffectType(upgradeDef.EffectType))
+            {
+                continue;
+            }
+
+            var price = Mathf.Max(0, upgradeDef.Price);
+            displayItems.Add(new DayUpgradeItemData
+            {
+                UpgradeId = upgradeDef.Id,
+                NameText = string.IsNullOrWhiteSpace(upgradeDef.DisplayName) ? upgradeDef.Id : upgradeDef.DisplayName,
+                PriceText = $"{price} Gold",
+                EffectText = BuildUpgradeEffectText(upgradeDef),
+                CanBuy = RunState.CurrentPhase == GamePhase.Day && RunState.Gold >= price
+            });
+        }
+
+        return displayItems;
+    }
+
+    private static int CompareUpgradeDefsForDisplay(UpgradeDef left, UpgradeDef right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left == null)
+        {
+            return 1;
+        }
+
+        if (right == null)
+        {
+            return -1;
+        }
+
+        var priceCompare = Mathf.Max(0, left.Price).CompareTo(Mathf.Max(0, right.Price));
+        if (priceCompare != 0)
+        {
+            return priceCompare;
+        }
+
+        return string.Compare(left.DisplayName, right.DisplayName, StringComparison.Ordinal);
+    }
+
+    private static string BuildUpgradeEffectText(UpgradeDef upgradeDef)
+    {
+        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
+
+        return upgradeDef.EffectType switch
+        {
+            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} day Faith income",
+            UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
+            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
+            _ => string.Empty
+        };
     }
 
     private void HandleDebugInput()
@@ -300,5 +520,15 @@ public class Main : MonoBehaviour
         {
             TrySpawnDebugEnemy();
         }
+
+        if (Input.GetKeyDown(KeyCode.U))
+        {
+            TryPurchaseUpgrade(GetDebugUpgradeId());
+        }
+    }
+
+    private string GetDebugUpgradeId()
+    {
+        return string.IsNullOrWhiteSpace(debugUpgradeId) ? DefaultDebugUpgradeId : debugUpgradeId;
     }
 }

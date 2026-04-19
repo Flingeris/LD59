@@ -17,5 +17,5 @@ MonoBehaviour:
   damage: 3
   attackInterval: 1
   moveSpeed: 1
-  lifetimeSeconds: 30
+  lifetimeSeconds: 20
   viewPrefab: {fileID: 7541570758843446100, guid: a9516fa4d8ea8f34d88d1179324b3642, type: 3}

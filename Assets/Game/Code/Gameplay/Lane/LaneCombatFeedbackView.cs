@@ -9,11 +9,13 @@ public class LaneCombatFeedbackView : MonoBehaviour
 
     [Header("Bars")]
     [SerializeField] private WorldBarFillShrink hpBar;
+
     [SerializeField] private WorldBarFillShrink lifetimeBar;
     [SerializeField] private SpriteRenderer targetRenderer;
 
     [Header("Feedback")]
     [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+
     [Min(0f)] [SerializeField] private float hitFlashDuration = 0.08f;
 
     private Coroutine flashCoroutine;
@@ -64,7 +66,7 @@ public class LaneCombatFeedbackView : MonoBehaviour
             if (boundLaneUnit != null && boundLaneUnit.HasLimitedLifetime)
             {
                 lifetimeBar.SetVisible(true);
-                lifetimeBar.SetNormalized(boundLaneUnit.LifetimeProgressNormalized);
+                lifetimeBar.SetNormalized(1f - boundLaneUnit.LifetimeProgressNormalized);
             }
             else
             {
@@ -118,7 +120,7 @@ public class LaneCombatFeedbackView : MonoBehaviour
         }
 
         lifetimeBar.SetVisible(true);
-        lifetimeBar.SetNormalized(boundLaneUnit.LifetimeProgressNormalized);
+        lifetimeBar.SetNormalized(1f - boundLaneUnit.LifetimeProgressNormalized);
     }
 
     private void PlayHitFlash()

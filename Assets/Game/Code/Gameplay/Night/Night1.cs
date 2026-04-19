@@ -10,8 +10,6 @@ public class Night1 : NightDefinition
         return new List<NightWaveEntry>
         {
             Wave(2f, Spawn("en1", 1)),
-            Wave(8f, Spawn("en1", 3)),
-            Wave(14f, Spawn("en1", 4))
         };
     }
 }

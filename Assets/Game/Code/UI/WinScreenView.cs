@@ -77,11 +77,25 @@ public class WinScreenView : MonoBehaviour
             return "Victory\nYou survived the graveyard watch.";
         }
 
+        var reachedDayCount = GetReachedDayCount(runState);
+
         return
             "Victory\n" +
             "The cemetery endured the night watch.\n" +
-            $"Day reached: {runState.CurrentDay}\n" +
+            $"Day reached: {reachedDayCount}\n" +
             $"Nights survived: {runState.CurrentNight}\n" +
-            $"Days survived: {runState.CurrentDay}";
+            $"Days survived: {reachedDayCount}";
+    }
+
+    private static int GetReachedDayCount(RunState runState)
+    {
+        if (runState == null)
+        {
+            return 0;
+        }
+
+        return runState.CurrentNight > runState.CurrentDay
+            ? runState.CurrentDay + 1
+            : runState.CurrentDay;
     }
 }

@@ -322,12 +322,12 @@ MonoBehaviour:
   debugBellId: bell_small
   debugUpgradeId: 
   debugEnemyDef: {fileID: 11400000, guid: 7db311c77070f9b448075f2f738d8a81, type: 2}
-  initialCemeteryState: 10
+  initialCemeteryState: 24
   initialKeeperMoveSpeed: 3
   keeperArrivalDistance: 0.05
-  startingNightFaith: 10
-  initialFaithCollectionPayoutAmount: 5
-  initialFaithCollectionIntervalSeconds: 3
+  startingNightFaith: 12
+  initialFaithCollectionPayoutAmount: 4
+  initialFaithCollectionIntervalSeconds: 2.5
   initialNightCemeteryRepairAmount: 2
   initialNightCemeteryRepairIntervalSeconds: 2
   completedNightGoldReward: 10

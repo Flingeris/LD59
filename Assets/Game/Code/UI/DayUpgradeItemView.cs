@@ -32,6 +32,9 @@ public class DayUpgradeItemView : MonoBehaviour
     private Image backgroundImage;
     private Image buyButtonImage;
     private TMP_Text buyButtonText;
+    private bool useCompactLayout;
+    private float layoutWidth = -1f;
+    private float layoutHeight = -1f;
 
     private void Awake()
     {
@@ -77,6 +80,15 @@ public class DayUpgradeItemView : MonoBehaviour
             buyButton.interactable = canBuy;
             StyleForState(canBuy);
         }
+    }
+
+    public void ApplyLayout(bool compactLayout, float itemWidth, float itemHeight)
+    {
+        useCompactLayout = compactLayout;
+        layoutWidth = itemWidth;
+        layoutHeight = itemHeight;
+        EnsureInitialized();
+        ApplyRuntimeLayout();
     }
 
     private void EnsureInitialized()
@@ -130,25 +142,43 @@ public class DayUpgradeItemView : MonoBehaviour
 
     private void ApplyRuntimeLayout()
     {
+        var resolvedWidth = layoutWidth > 0f
+            ? layoutWidth
+            : rootRect != null && rootRect.rect.width > 0f
+                ? rootRect.rect.width
+                : 120f;
+        var resolvedHeight = layoutHeight > 0f ? layoutHeight : 78f;
+
         if (rootRect != null)
         {
-            rootRect.sizeDelta = new Vector2(rootRect.sizeDelta.x, 78f);
+            rootRect.sizeDelta = new Vector2(resolvedWidth, resolvedHeight);
         }
+
+        var padding = useCompactLayout
+            ? Mathf.Clamp(resolvedHeight * 0.18f, 3f, 5f)
+            : Mathf.Clamp(resolvedHeight * 0.16f, 6f, 10f);
+        var sideColumnWidth = useCompactLayout
+            ? Mathf.Clamp(resolvedWidth * 0.34f, 42f, 56f)
+            : Mathf.Clamp(resolvedWidth * 0.26f, 74f, 128f);
+        sideColumnWidth = Mathf.Min(sideColumnWidth, Mathf.Max(40f, resolvedWidth - padding * 2f - 44f));
+        var topLineHeight = Mathf.Clamp(resolvedHeight * (useCompactLayout ? 0.34f : 0.28f), 7f, 18f);
+        var buttonHeight = Mathf.Clamp(resolvedHeight * (useCompactLayout ? 0.46f : 0.42f), 10f, 22f);
+        var textRightInset = sideColumnWidth + padding * 2f;
 
         if (nameRect != null)
         {
             nameRect.anchorMin = new Vector2(0f, 1f);
             nameRect.anchorMax = new Vector2(1f, 1f);
-            nameRect.offsetMin = new Vector2(18f, -38f);
-            nameRect.offsetMax = new Vector2(-174f, -12f);
+            nameRect.offsetMin = new Vector2(padding, -(padding + topLineHeight));
+            nameRect.offsetMax = new Vector2(-textRightInset, -padding);
         }
 
         if (effectRect != null)
         {
             effectRect.anchorMin = new Vector2(0f, 0f);
             effectRect.anchorMax = new Vector2(1f, 1f);
-            effectRect.offsetMin = new Vector2(18f, 14f);
-            effectRect.offsetMax = new Vector2(-174f, -40f);
+            effectRect.offsetMin = new Vector2(padding, padding);
+            effectRect.offsetMax = new Vector2(-textRightInset, -(padding + topLineHeight + 1f));
         }
 
         if (priceRect != null)
@@ -156,8 +186,8 @@ public class DayUpgradeItemView : MonoBehaviour
             priceRect.anchorMin = new Vector2(1f, 1f);
             priceRect.anchorMax = new Vector2(1f, 1f);
             priceRect.pivot = new Vector2(1f, 1f);
-            priceRect.anchoredPosition = new Vector2(-150f, -14f);
-            priceRect.sizeDelta = new Vector2(124f, 22f);
+            priceRect.anchoredPosition = new Vector2(-padding, -padding);
+            priceRect.sizeDelta = new Vector2(sideColumnWidth, topLineHeight);
         }
 
         if (buyButtonRect != null)
@@ -165,45 +195,53 @@ public class DayUpgradeItemView : MonoBehaviour
             buyButtonRect.anchorMin = new Vector2(1f, 0f);
             buyButtonRect.anchorMax = new Vector2(1f, 0f);
             buyButtonRect.pivot = new Vector2(1f, 0f);
-            buyButtonRect.anchoredPosition = new Vector2(-16f, 16f);
-            buyButtonRect.sizeDelta = new Vector2(118f, 38f);
+            buyButtonRect.anchoredPosition = new Vector2(-padding, padding);
+            buyButtonRect.sizeDelta = new Vector2(sideColumnWidth, buttonHeight);
         }
 
         if (nameText != null)
         {
             nameText.alignment = TextAlignmentOptions.TopLeft;
             nameText.enableAutoSizing = true;
-            nameText.fontSizeMin = 16f;
-            nameText.fontSizeMax = 26f;
+            nameText.fontSizeMin = useCompactLayout ? 4f : 7f;
+            nameText.fontSizeMax = useCompactLayout ? 8f : 14f;
             nameText.fontStyle = FontStyles.Bold;
             nameText.color = new Color(0.96f, 0.94f, 0.9f, 1f);
+            nameText.textWrappingMode = TextWrappingModes.NoWrap;
+            nameText.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         if (effectText != null)
         {
             effectText.alignment = TextAlignmentOptions.TopLeft;
             effectText.enableAutoSizing = true;
-            effectText.fontSizeMin = 13f;
-            effectText.fontSizeMax = 20f;
+            effectText.fontSizeMin = useCompactLayout ? 3.5f : 6f;
+            effectText.fontSizeMax = useCompactLayout ? 6f : 10f;
             effectText.color = new Color(0.78f, 0.81f, 0.86f, 1f);
+            effectText.textWrappingMode = TextWrappingModes.NoWrap;
+            effectText.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         if (priceText != null)
         {
             priceText.alignment = TextAlignmentOptions.TopRight;
             priceText.enableAutoSizing = true;
-            priceText.fontSizeMin = 13f;
-            priceText.fontSizeMax = 20f;
+            priceText.fontSizeMin = useCompactLayout ? 3.5f : 6f;
+            priceText.fontSizeMax = useCompactLayout ? 6.5f : 10f;
             priceText.fontStyle = FontStyles.Bold;
+            priceText.textWrappingMode = TextWrappingModes.NoWrap;
+            priceText.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         if (buyButtonText != null)
         {
             buyButtonText.alignment = TextAlignmentOptions.Center;
             buyButtonText.enableAutoSizing = true;
-            buyButtonText.fontSizeMin = 13f;
-            buyButtonText.fontSizeMax = 20f;
+            buyButtonText.fontSizeMin = useCompactLayout ? 4f : 6f;
+            buyButtonText.fontSizeMax = useCompactLayout ? 6.5f : 10f;
             buyButtonText.fontStyle = FontStyles.Bold;
+            buyButtonText.textWrappingMode = TextWrappingModes.NoWrap;
+            buyButtonText.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         if (buyButtonImage != null && buyButtonImage.sprite == null)

@@ -7,15 +7,25 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public class DayScreenView : MonoBehaviour
 {
-    private const float UpgradeItemSpacing = 12f;
-    private const float UpgradeItemHeight = 78f;
-    private const float ContentPanelHorizontalMargin = 56f;
-    private const float ContentPanelVerticalMargin = 40f;
-    private const float ContentPanelMaxWidth = 1080f;
-    private const float ContentPanelMaxHeight = 620f;
-    private const float SectionPadding = 24f;
-    private const float SummaryColumnWidthNormalized = 0.34f;
-    private const float BottomButtonHeight = 56f;
+    private const float CompactCanvasWidthThreshold = 420f;
+    private const float CompactCanvasHeightThreshold = 240f;
+    private const float CompactContentHorizontalMargin = 6f;
+    private const float CompactContentVerticalMargin = 6f;
+    private const float CompactSectionPadding = 6f;
+    private const float CompactBottomButtonHeight = 18f;
+    private const float CompactUpgradeItemSpacing = 4f;
+    private const float CompactPreferredUpgradeItemHeight = 24f;
+    private const float CompactMinimumUpgradeItemHeight = 18f;
+    private const float RegularContentHorizontalMargin = 24f;
+    private const float RegularContentVerticalMargin = 18f;
+    private const float RegularContentMaxWidth = 680f;
+    private const float RegularContentMaxHeight = 420f;
+    private const float RegularSectionPadding = 16f;
+    private const float RegularSummaryColumnWidthNormalized = 0.36f;
+    private const float RegularBottomButtonHeight = 40f;
+    private const float RegularUpgradeItemSpacing = 8f;
+    private const float RegularPreferredUpgradeItemHeight = 52f;
+    private const float RegularMinimumUpgradeItemHeight = 40f;
 
     [SerializeField] private TMP_Text summaryText;
     [SerializeField] private RectTransform upgradeItemsContainer;
@@ -34,10 +44,35 @@ public class DayScreenView : MonoBehaviour
     private Image contentPanelImage;
     private Image summaryPanelImage;
     private Image upgradesPanelImage;
+    private RunState currentRunState;
+    private IReadOnlyList<DayUpgradeItemData> currentUpgradeItems = Array.Empty<DayUpgradeItemData>();
+    private LayoutMetrics currentLayout;
+    private bool isApplyingLayout;
 
     private void Awake()
     {
         EnsureInitialized();
+    }
+
+    private void OnRectTransformDimensionsChange()
+    {
+        if (!isActiveAndEnabled || !gameObject.activeInHierarchy || isApplyingLayout)
+        {
+            return;
+        }
+
+        EnsureInitialized();
+        ApplyRuntimeLayout();
+
+        if (currentRunState != null && summaryText != null)
+        {
+            summaryText.text = BuildSummary(currentRunState);
+        }
+
+        if (currentUpgradeItems != null)
+        {
+            RebuildUpgradeItems(currentUpgradeItems);
+        }
     }
 
     private void OnDestroy()
@@ -72,6 +107,8 @@ public class DayScreenView : MonoBehaviour
             return;
         }
 
+        currentRunState = runState;
+        currentUpgradeItems = upgradeItems ?? Array.Empty<DayUpgradeItemData>();
         EnsureInitialized();
         ApplyRuntimeLayout();
 
@@ -85,7 +122,7 @@ public class DayScreenView : MonoBehaviour
             startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
         }
 
-        RebuildUpgradeItems(upgradeItems);
+        RebuildUpgradeItems(currentUpgradeItems);
     }
 
     private void EnsureInitialized()
@@ -128,23 +165,58 @@ public class DayScreenView : MonoBehaviour
             return;
         }
 
-        var itemStep = UpgradeItemHeight + UpgradeItemSpacing;
+        var columnCount = Mathf.Max(1, currentLayout.UpgradeColumnCount);
+        var spacing = currentLayout.UpgradeItemSpacing;
+        var availableWidth = upgradeItemsContainer.rect.width;
+        if (availableWidth <= 1f)
+        {
+            availableWidth = templateRect.rect.width;
+        }
+
+        if (currentLayout.IsCompact && availableWidth < 150f)
+        {
+            columnCount = 1;
+        }
+
+        var rowCount = Mathf.CeilToInt(upgradeItems.Count / (float)columnCount);
+        var availableHeight = upgradeItemsContainer.rect.height;
+        var itemHeight = currentLayout.PreferredUpgradeItemHeight;
+        if (rowCount > 0 && availableHeight > 0f)
+        {
+            var fittedHeight = (availableHeight - spacing * Mathf.Max(0, rowCount - 1)) / rowCount;
+            itemHeight = Mathf.Clamp(
+                fittedHeight,
+                currentLayout.MinimumUpgradeItemHeight,
+                currentLayout.PreferredUpgradeItemHeight);
+        }
+
+        var itemWidth = (availableWidth - spacing * Mathf.Max(0, columnCount - 1)) / columnCount;
+        if (itemWidth <= 1f)
+        {
+            itemWidth = templateRect.rect.width;
+        }
+
         for (var i = 0; i < upgradeItems.Count; i++)
         {
             var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
             var itemRect = itemView.transform as RectTransform;
             if (itemRect != null)
             {
+                var row = i / columnCount;
+                var column = i % columnCount;
                 itemRect.anchorMin = new Vector2(0f, 1f);
-                itemRect.anchorMax = new Vector2(1f, 1f);
-                itemRect.pivot = new Vector2(0.5f, 1f);
-                itemRect.sizeDelta = new Vector2(0f, UpgradeItemHeight);
-                itemRect.anchoredPosition = new Vector2(0f, -(itemStep * i));
+                itemRect.anchorMax = new Vector2(0f, 1f);
+                itemRect.pivot = new Vector2(0f, 1f);
+                itemRect.sizeDelta = new Vector2(itemWidth, itemHeight);
+                itemRect.anchoredPosition = new Vector2(
+                    column * (itemWidth + spacing),
+                    -(row * (itemHeight + spacing)));
             }
 
             itemView.gameObject.name = $"UpgradeItem_{i}";
             itemView.BuyRequested -= HandleUpgradeBuyRequested;
             itemView.BuyRequested += HandleUpgradeBuyRequested;
+            itemView.ApplyLayout(currentLayout.IsCompact, itemWidth, itemHeight);
             itemView.Bind(upgradeItems[i]);
             itemView.gameObject.SetActive(true);
             spawnedUpgradeItems.Add(itemView);
@@ -176,31 +248,46 @@ public class DayScreenView : MonoBehaviour
 
     private string BuildSummary(RunState runState)
     {
-        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
+        var hasLastNight = runState.LastDayReward != null && runState.LastDayReward.SourceNightIndex > 0;
+        var hasReward = runState.LastDayReward != null && runState.LastDayReward.HasAnyReward;
+        var resourcesLine = currentLayout.IsCompact
+            ? $"Faith {runState.Faith}  Gold {runState.Gold}"
+            : $"Faith reserve: <color=#f0ead6>{runState.Faith}</color>\nGold: <color=#f4c96b>{runState.Gold}</color>";
+        var cemeteryLine = currentLayout.IsCompact
+            ? $"Cemetery {runState.CemeteryState}/{runState.CemeteryMaxState}"
+            : $"Cemetery: <color=#d7e3d1>{runState.CemeteryState}/{runState.CemeteryMaxState}</color>";
+
+        if (currentLayout.IsCompact)
         {
+            var leadLine = hasLastNight
+                ? $"Night {runState.LastDayReward.SourceNightIndex} survived."
+                : "Prepare for the next night.";
+            var followupLine = hasReward
+                ? $"{BuildRewardSummary(runState.LastDayReward)}."
+                : "Spend gold before dusk.";
+
             return
-                $"<size=26><b>Day {runState.CurrentDay}</b></size>\n" +
-                "<color=#d7c7a8>The cemetery is quiet. Prepare the next signal.</color>\n\n" +
-                "<size=18><b>State</b></size>\n" +
-                $"Faith reserve: <color=#f0ead6>{runState.Faith}</color>\n" +
-                $"Gold: <color=#f4c96b>{runState.Gold}</color>\n" +
-                $"Cemetery: <color=#d7e3d1>{runState.CemeteryState}/{runState.CemeteryMaxState}</color>";
+                $"<b>Day {runState.CurrentDay}</b>\n" +
+                $"<color=#d7c7a8>{leadLine} {followupLine}</color>\n" +
+                $"{resourcesLine}\n" +
+                cemeteryLine;
         }
 
         var summary =
-            $"<size=26><b>Day {runState.CurrentDay}</b></size>\n" +
-            $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. Spend your gold before dusk.</color>\n\n";
+            $"<b>Day {runState.CurrentDay}</b>\n" +
+            (hasLastNight
+                ? $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. Spend your gold before dusk.</color>\n\n"
+                : "<color=#d7c7a8>The cemetery is quiet. Prepare the next signal.</color>\n\n");
 
-        if (runState.LastDayReward.HasAnyReward)
+        if (hasReward)
         {
-            summary += $"<size=18><b>Last Reward</b></size>\n{BuildRewardSummary(runState.LastDayReward)}\n\n";
+            summary += $"<b>Last Reward</b>\n{BuildRewardSummary(runState.LastDayReward)}\n\n";
         }
 
         summary +=
-            "<size=18><b>State</b></size>\n" +
-            $"Faith reserve: <color=#f0ead6>{runState.Faith}</color>\n" +
-            $"Gold: <color=#f4c96b>{runState.Gold}</color>\n" +
-            $"Cemetery: <color=#d7e3d1>{runState.CemeteryState}/{runState.CemeteryMaxState}</color>";
+            "<b>State</b>\n" +
+            $"{resourcesLine}\n" +
+            cemeteryLine;
 
         return summary;
     }
@@ -313,70 +400,141 @@ public class DayScreenView : MonoBehaviour
 
     private void ApplyRuntimeLayout()
     {
-        if (rootRect == null || contentPanelRect == null || summaryPanelRect == null || upgradesPanelRect == null)
+        if (rootRect == null || contentPanelRect == null || summaryPanelRect == null || upgradesPanelRect == null || isApplyingLayout)
         {
             return;
         }
 
-        var targetWidth = Mathf.Clamp(
-            rootRect.rect.width - ContentPanelHorizontalMargin * 2f,
-            720f,
-            ContentPanelMaxWidth);
-        var targetHeight = Mathf.Clamp(
-            rootRect.rect.height - ContentPanelVerticalMargin * 2f,
-            440f,
-            ContentPanelMaxHeight);
+        isApplyingLayout = true;
 
-        contentPanelRect.anchorMin = new Vector2(0.5f, 0.5f);
-        contentPanelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        contentPanelRect.pivot = new Vector2(0.5f, 0.5f);
-        contentPanelRect.sizeDelta = new Vector2(targetWidth, targetHeight);
-        contentPanelRect.anchoredPosition = Vector2.zero;
-
-        summaryPanelRect.anchorMin = new Vector2(0f, 0f);
-        summaryPanelRect.anchorMax = new Vector2(SummaryColumnWidthNormalized, 1f);
-        summaryPanelRect.offsetMin = new Vector2(SectionPadding, SectionPadding);
-        summaryPanelRect.offsetMax = new Vector2(-SectionPadding * 0.5f, -SectionPadding);
-
-        upgradesPanelRect.anchorMin = new Vector2(SummaryColumnWidthNormalized, 0f);
-        upgradesPanelRect.anchorMax = new Vector2(1f, 1f);
-        upgradesPanelRect.offsetMin = new Vector2(SectionPadding * 0.5f, SectionPadding);
-        upgradesPanelRect.offsetMax = new Vector2(-SectionPadding, -SectionPadding);
-
-        if (summaryText != null)
+        try
         {
-            var summaryRect = summaryText.rectTransform;
-            summaryRect.anchorMin = new Vector2(0f, 0.26f);
-            summaryRect.anchorMax = new Vector2(1f, 1f);
-            summaryRect.offsetMin = new Vector2(22f, 20f);
-            summaryRect.offsetMax = new Vector2(-22f, -20f);
-            summaryText.alignment = TextAlignmentOptions.TopLeft;
-            summaryText.enableAutoSizing = true;
-            summaryText.fontSizeMin = 16f;
-            summaryText.fontSizeMax = 30f;
-            summaryText.color = new Color(0.95f, 0.94f, 0.9f, 1f);
-        }
-
-        if (startNightButton != null)
-        {
-            var buttonRect = startNightButton.transform as RectTransform;
-            if (buttonRect != null)
+            currentLayout = CalculateLayoutMetrics();
+            var targetWidth = Mathf.Max(160f, rootRect.rect.width - currentLayout.ContentHorizontalMargin * 2f);
+            var targetHeight = Mathf.Max(100f, rootRect.rect.height - currentLayout.ContentVerticalMargin * 2f);
+            if (!currentLayout.IsCompact)
             {
-                buttonRect.anchorMin = new Vector2(0f, 0f);
-                buttonRect.anchorMax = new Vector2(1f, 0f);
-                buttonRect.offsetMin = new Vector2(22f, 22f);
-                buttonRect.offsetMax = new Vector2(-22f, 22f + BottomButtonHeight);
+                targetWidth = Mathf.Min(targetWidth, RegularContentMaxWidth);
+                targetHeight = Mathf.Min(targetHeight, RegularContentMaxHeight);
+            }
+
+            contentPanelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            contentPanelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            contentPanelRect.pivot = new Vector2(0.5f, 0.5f);
+            contentPanelRect.sizeDelta = new Vector2(targetWidth, targetHeight);
+            contentPanelRect.anchoredPosition = Vector2.zero;
+
+            if (currentLayout.IsCompact)
+            {
+                var summaryHeight = Mathf.Clamp(targetHeight * 0.36f, 50f, 64f);
+
+                summaryPanelRect.anchorMin = new Vector2(0f, 1f);
+                summaryPanelRect.anchorMax = new Vector2(1f, 1f);
+                summaryPanelRect.pivot = new Vector2(0.5f, 1f);
+                summaryPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding, -(currentLayout.SectionPadding + summaryHeight));
+                summaryPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding, -currentLayout.SectionPadding);
+
+                upgradesPanelRect.anchorMin = new Vector2(0f, 0f);
+                upgradesPanelRect.anchorMax = new Vector2(1f, 1f);
+                upgradesPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding, currentLayout.SectionPadding);
+                upgradesPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding, -(summaryHeight + currentLayout.SectionPadding * 1.5f));
+            }
+            else
+            {
+                summaryPanelRect.anchorMin = new Vector2(0f, 0f);
+                summaryPanelRect.anchorMax = new Vector2(currentLayout.SummaryColumnWidthNormalized, 1f);
+                summaryPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding, currentLayout.SectionPadding);
+                summaryPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding * 0.5f, -currentLayout.SectionPadding);
+
+                upgradesPanelRect.anchorMin = new Vector2(currentLayout.SummaryColumnWidthNormalized, 0f);
+                upgradesPanelRect.anchorMax = new Vector2(1f, 1f);
+                upgradesPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding * 0.5f, currentLayout.SectionPadding);
+                upgradesPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding, -currentLayout.SectionPadding);
+            }
+
+            var textPadding = currentLayout.IsCompact ? 6f : 12f;
+            if (summaryText != null)
+            {
+                var summaryRect = summaryText.rectTransform;
+                summaryRect.anchorMin = new Vector2(0f, 0f);
+                summaryRect.anchorMax = new Vector2(1f, 1f);
+                summaryRect.offsetMin = new Vector2(textPadding, currentLayout.BottomButtonHeight + textPadding + 2f);
+                summaryRect.offsetMax = new Vector2(-textPadding, -textPadding);
+                summaryText.alignment = TextAlignmentOptions.TopLeft;
+                summaryText.enableAutoSizing = true;
+                summaryText.fontSizeMin = currentLayout.IsCompact ? 5f : 8f;
+                summaryText.fontSizeMax = currentLayout.IsCompact ? 10f : 16f;
+                summaryText.color = new Color(0.95f, 0.94f, 0.9f, 1f);
+            }
+
+            if (startNightButton != null)
+            {
+                var buttonRect = startNightButton.transform as RectTransform;
+                if (buttonRect != null)
+                {
+                    buttonRect.anchorMin = new Vector2(0f, 0f);
+                    buttonRect.anchorMax = new Vector2(1f, 0f);
+                    buttonRect.offsetMin = new Vector2(textPadding, textPadding);
+                    buttonRect.offsetMax = new Vector2(-textPadding, textPadding + currentLayout.BottomButtonHeight);
+                }
+
+                var buttonLabel = startNightButton.GetComponentInChildren<TMP_Text>(true);
+                if (buttonLabel != null)
+                {
+                    buttonLabel.fontSizeMin = currentLayout.IsCompact ? 5f : 8f;
+                    buttonLabel.fontSizeMax = currentLayout.IsCompact ? 10f : 16f;
+                }
+            }
+
+            if (upgradeItemsContainer != null)
+            {
+                var listPadding = currentLayout.IsCompact ? 6f : 10f;
+                upgradeItemsContainer.anchorMin = new Vector2(0f, 0f);
+                upgradeItemsContainer.anchorMax = new Vector2(1f, 1f);
+                upgradeItemsContainer.offsetMin = new Vector2(listPadding, listPadding);
+                upgradeItemsContainer.offsetMax = new Vector2(-listPadding, -listPadding);
+                upgradeItemsContainer.pivot = new Vector2(0f, 1f);
             }
         }
-
-        if (upgradeItemsContainer != null)
+        finally
         {
-            upgradeItemsContainer.anchorMin = new Vector2(0f, 0f);
-            upgradeItemsContainer.anchorMax = new Vector2(1f, 1f);
-            upgradeItemsContainer.offsetMin = new Vector2(18f, 18f);
-            upgradeItemsContainer.offsetMax = new Vector2(-18f, -18f);
-            upgradeItemsContainer.pivot = new Vector2(0.5f, 1f);
+            isApplyingLayout = false;
         }
+    }
+
+    private LayoutMetrics CalculateLayoutMetrics()
+    {
+        var canvasWidth = Mathf.Max(1f, rootRect.rect.width);
+        var canvasHeight = Mathf.Max(1f, rootRect.rect.height);
+        var isCompact = canvasWidth <= CompactCanvasWidthThreshold || canvasHeight <= CompactCanvasHeightThreshold;
+
+        return new LayoutMetrics
+        {
+            IsCompact = isCompact,
+            ContentHorizontalMargin = isCompact ? CompactContentHorizontalMargin : RegularContentHorizontalMargin,
+            ContentVerticalMargin = isCompact ? CompactContentVerticalMargin : RegularContentVerticalMargin,
+            SectionPadding = isCompact ? CompactSectionPadding : RegularSectionPadding,
+            SummaryColumnWidthNormalized = RegularSummaryColumnWidthNormalized,
+            BottomButtonHeight = isCompact ? CompactBottomButtonHeight : RegularBottomButtonHeight,
+            UpgradeItemSpacing = isCompact ? CompactUpgradeItemSpacing : RegularUpgradeItemSpacing,
+            PreferredUpgradeItemHeight = isCompact ? CompactPreferredUpgradeItemHeight : RegularPreferredUpgradeItemHeight,
+            MinimumUpgradeItemHeight = isCompact ? CompactMinimumUpgradeItemHeight : RegularMinimumUpgradeItemHeight,
+            UpgradeColumnCount = isCompact ? 2 : 1
+        };
+    }
+
+    private struct LayoutMetrics
+    {
+        public bool IsCompact;
+        public float ContentHorizontalMargin;
+        public float ContentVerticalMargin;
+        public float SectionPadding;
+        public float SummaryColumnWidthNormalized;
+        public float BottomButtonHeight;
+        public float UpgradeItemSpacing;
+        public float PreferredUpgradeItemHeight;
+        public float MinimumUpgradeItemHeight;
+        public int UpgradeColumnCount;
     }
 
     private static RectTransform CreatePanel(string panelName, RectTransform parent, Color color, out Image panelImage)

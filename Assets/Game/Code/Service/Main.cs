@@ -96,7 +96,7 @@ public class Main : MonoBehaviour
         G.audioSystem.Play(SoundId.Ambient_Forest);
         G.audioSystem.Play(SoundId.Music_Main);
         BindHud();
-        EnterDay();
+        EnterNight();
         ValidateLanePrototypeSetup();
     }
 
@@ -411,6 +411,7 @@ public class Main : MonoBehaviour
         }
 
         AddGold(goldReward);
+        G.HUD?.PlayGoldPickupEffect(laneEnemy.Position, goldReward);
         Debug.Log($"Enemy killed: '{laneEnemy.EnemyDef.Id}' awarded {goldReward} gold");
     }
 
@@ -1061,7 +1062,11 @@ public class Main : MonoBehaviour
     {
         return new List<NightDefinition>
         {
-            new Night1()
+            new Night1(),
+            new Night2(),
+            new Night3(),
+            new Night4(),
+            new Night5()
         };
     }
 
@@ -1175,12 +1180,12 @@ public class Main : MonoBehaviour
 
         return upgradeDef.EffectType switch
         {
-            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith per payout at Faith Point",
+            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith per payout",
             UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
-            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
-            UpgradeEffectType.BellFaithCostModifier => $"-{effectValue} Faith cost for bell use",
-            UpgradeEffectType.StartingNightFaithBonus => $"+{effectValue} starting Faith each night",
-            UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValue} keeper move speed",
+            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max",
+            UpgradeEffectType.BellFaithCostModifier => $"-{effectValue} bell Faith cost",
+            UpgradeEffectType.StartingNightFaithBonus => $"+{effectValue} Faith at night start",
+            UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValue} keeper speed",
             _ => string.Empty
         };
     }
@@ -1236,7 +1241,10 @@ public class Main : MonoBehaviour
         }
 
         var requiredDayCount = Mathf.Max(1, targetSurvivedDays);
-        if (RunState.CurrentDay < requiredDayCount)
+        var reachedDayCount = RunState.CurrentPhase == GamePhase.Night
+            ? RunState.CurrentDay + 1
+            : RunState.CurrentDay;
+        if (reachedDayCount < requiredDayCount)
         {
             return false;
         }
@@ -1244,7 +1252,7 @@ public class Main : MonoBehaviour
         RunState.CurrentPhase = GamePhase.Win;
         waveSystem.StopWave();
         Time.timeScale = 0f;
-        Debug.Log($"Victory: survived day {RunState.CurrentDay} of {requiredDayCount}");
+        Debug.Log($"Victory: survived day {reachedDayCount} of {requiredDayCount}");
         RefreshPresentation();
         return true;
     }

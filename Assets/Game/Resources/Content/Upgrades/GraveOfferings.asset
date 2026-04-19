@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDef
   id: upgrade_grave_offerings
   displayName: Grave Offerings
-  price: 10
+  price: 7
   effectType: 0
   effectValue: 2

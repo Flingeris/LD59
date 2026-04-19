@@ -77,10 +77,24 @@ public class DefeatScreenView : MonoBehaviour
             return "Defeat\nThe cemetery has fallen.";
         }
 
+        var reachedDayCount = GetReachedDayCount(runState);
+
         return
             "Defeat\n" +
             "The cemetery has fallen.\n" +
-            $"Day reached: {runState.CurrentDay}\n" +
+            $"Day reached: {reachedDayCount}\n" +
             $"Night reached: {runState.CurrentNight}";
+    }
+
+    private static int GetReachedDayCount(RunState runState)
+    {
+        if (runState == null)
+        {
+            return 0;
+        }
+
+        return runState.CurrentNight > runState.CurrentDay
+            ? runState.CurrentDay + 1
+            : runState.CurrentDay;
     }
 }

@@ -52,7 +52,7 @@ public class RunState
             NightCemeteryRepairAmount = clampedNightCemeteryRepairAmount,
             NightCemeteryRepairIntervalSeconds = clampedNightCemeteryRepairIntervalSeconds,
             NightCemeteryRepairTimerProgress = 0f,
-            CurrentDay = 1,
+            CurrentDay = 0,
             CurrentNight = 0,
             CurrentPhase = GamePhase.Transition,
             LastDayReward = new DayRewardData(),

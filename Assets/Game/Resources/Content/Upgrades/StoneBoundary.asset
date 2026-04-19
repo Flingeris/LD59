@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDef
   id: upgrade_stone_boundary
   displayName: Stone Boundary
-  price: 10
+  price: 9
   effectType: 2
-  effectValue: 5
+  effectValue: 8

@@ -4,64 +4,51 @@ using UnityEngine;
 public class NightPoiProgressView : MonoBehaviour
 {
     [SerializeField] private NightPointOfInterest pointOfInterest;
-    [SerializeField] private WorldProgressBarPresenter progressBarPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
+    [SerializeField] private WorldBarFillGrow progressBar;
 
     private void Awake()
     {
         EnsureReferences();
-        progressBarPresenter?.Bind(targetRenderer);
-        progressBarPresenter?.SetInactive();
+        progressBar?.SetVisible(false);
     }
 
     private void OnDisable()
     {
-        progressBarPresenter?.SetInactive();
+        progressBar?.SetVisible(false);
     }
 
     private void Update()
     {
         EnsureReferences();
 
-        if (progressBarPresenter == null || pointOfInterest == null || G.main == null)
+        if (progressBar == null || pointOfInterest == null || G.main == null)
         {
-            progressBarPresenter?.SetInactive();
+            progressBar?.SetVisible(false);
             return;
         }
 
         if (!G.main.TryGetNightPoiProgress(pointOfInterest.Id, pointOfInterest.Type, out var normalizedProgress))
         {
-            progressBarPresenter.SetInactive();
+            progressBar.SetVisible(false);
             return;
         }
 
-        progressBarPresenter.Refresh(normalizedProgress, false, true);
+        progressBar.SetVisible(true);
+        progressBar.SetNormalized(normalizedProgress);
     }
 
     public void Bind(NightPointOfInterest poi)
     {
         pointOfInterest = poi;
         EnsureReferences();
-        progressBarPresenter?.Bind(targetRenderer);
     }
 
     private void EnsureReferences()
     {
         if (pointOfInterest == null)
-        {
             pointOfInterest = GetComponentInParent<NightPointOfInterest>();
-        }
 
-        if (progressBarPresenter == null)
-        {
-            progressBarPresenter = GetComponent<WorldProgressBarPresenter>();
-        }
-
-        if (targetRenderer == null)
-        {
-            targetRenderer = pointOfInterest != null
-                ? pointOfInterest.GetComponent<SpriteRenderer>()
-                : GetComponentInParent<SpriteRenderer>();
-        }
+        if (progressBar == null)
+            progressBar = GetComponentInChildren<WorldBarFillGrow>();
     }
 }

@@ -4,8 +4,7 @@ using UnityEngine.EventSystems;
 public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 {
     [SerializeField] private string bellId;
-    [SerializeField] private WorldProgressBarPresenter cooldownProgressPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
+    [SerializeField] private WorldBarFillShrink cooldownBar;
 
     private float cooldownRemainingSeconds;
     private float cooldownDurationSeconds;
@@ -17,15 +16,14 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
     private void Awake()
     {
         EnsureReferences();
-        cooldownProgressPresenter?.Bind(targetRenderer);
-        cooldownProgressPresenter?.SetInactive();
+        cooldownBar?.SetVisible(false);
     }
 
     private void Update()
     {
         if (cooldownRemainingSeconds <= 0f)
         {
-            cooldownProgressPresenter?.SetInactive();
+            cooldownBar?.SetVisible(false);
             return;
         }
 
@@ -79,9 +77,7 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
     public void OnPointerClick(PointerEventData eventData)
     {
         if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-        {
             return;
-        }
 
         if (G.main == null)
         {
@@ -94,31 +90,23 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 
     private void RefreshCooldownPresentation()
     {
-        if (cooldownProgressPresenter == null)
-        {
+        if (cooldownBar == null)
             return;
-        }
 
         if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
         {
-            cooldownProgressPresenter.SetInactive();
+            cooldownBar.SetVisible(false);
             return;
         }
 
-        var elapsedNormalized = 1f - (cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds));
-        cooldownProgressPresenter.Refresh(elapsedNormalized, true, true);
+        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
+        cooldownBar.SetVisible(true);
+        cooldownBar.SetNormalized(remainingNormalized);
     }
 
     private void EnsureReferences()
     {
-        if (cooldownProgressPresenter == null)
-        {
-            cooldownProgressPresenter = GetComponentInChildren<WorldProgressBarPresenter>();
-        }
-
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponent<SpriteRenderer>();
-        }
+        if (cooldownBar == null)
+            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
     }
 }

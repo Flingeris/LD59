@@ -132,645 +132,6 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 <files>
 This section contains the contents of the repository's files.
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-public class BellWorldObject : MonoBehaviour, IPointerClickHandler
-{
-    [SerializeField] private string bellId;
-    [SerializeField] private WorldProgressBarPresenter cooldownProgressPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    private float cooldownRemainingSeconds;
-    private float cooldownDurationSeconds;
-    public string BellId => bellId;
-    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
-    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
-    private void Awake()
-    {
-        EnsureReferences();
-        cooldownProgressPresenter?.Bind(targetRenderer);
-        cooldownProgressPresenter?.SetInactive();
-    }
-    private void Update()
-    {
-        if (cooldownRemainingSeconds <= 0f)
-        {
-            cooldownProgressPresenter?.SetInactive();
-            return;
-        }
-        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
-        RefreshCooldownPresentation();
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        if (string.IsNullOrWhiteSpace(bellId))
-        {
-            validationError = "missing bell id";
-            return true;
-        }
-        if (CMS.Get<BellDef>(bellId) == null)
-        {
-            validationError = "missing BellDef";
-            return true;
-        }
-        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void StartCooldown(float cooldownSeconds)
-    {
-        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
-        cooldownRemainingSeconds = cooldownDurationSeconds;
-        RefreshCooldownPresentation();
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-        {
-            return;
-        }
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
-            return;
-        }
-        G.main.TryInteractWithBell(bellId);
-    }
-    private void RefreshCooldownPresentation()
-    {
-        if (cooldownProgressPresenter == null)
-        {
-            return;
-        }
-        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
-        {
-            cooldownProgressPresenter.SetInactive();
-            return;
-        }
-        var elapsedNormalized = 1f - (cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds));
-        cooldownProgressPresenter.Refresh(elapsedNormalized, true, true);
-    }
-    private void EnsureReferences()
-    {
-        if (cooldownProgressPresenter == null)
-        {
-            cooldownProgressPresenter = GetComponentInChildren<WorldProgressBarPresenter>();
-        }
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponent<SpriteRenderer>();
-        }
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs">
-using UnityEngine;
-public class CemeteryStateSystem
-{
-    public bool ApplyBreakthroughDamage(RunState runState, int damageAmount)
-    {
-        if (runState == null || damageAmount <= 0)
-        {
-            return false;
-        }
-        var clampedMaxState = Mathf.Max(0, runState.CemeteryMaxState);
-        var nextState = Mathf.Clamp(runState.CemeteryState - damageAmount, 0, clampedMaxState);
-        if (nextState == runState.CemeteryState)
-        {
-            return false;
-        }
-        runState.CemeteryState = nextState;
-        return true;
-    }
-    public int ApplyNightRepair(RunState runState, float deltaTime)
-    {
-        if (runState == null || deltaTime <= 0f)
-        {
-            return 0;
-        }
-        if (runState.NightCemeteryRepairAmount <= 0 ||
-            runState.NightCemeteryRepairIntervalSeconds <= 0f ||
-            runState.CemeteryState >= runState.CemeteryMaxState)
-        {
-            return 0;
-        }
-        runState.NightCemeteryRepairTimerProgress += deltaTime;
-        var totalRepaired = 0;
-        while (runState.NightCemeteryRepairTimerProgress >= runState.NightCemeteryRepairIntervalSeconds)
-        {
-            runState.NightCemeteryRepairTimerProgress -= runState.NightCemeteryRepairIntervalSeconds;
-            var previousState = runState.CemeteryState;
-            runState.CemeteryState = Mathf.Clamp(
-                runState.CemeteryState + runState.NightCemeteryRepairAmount,
-                0,
-                Mathf.Max(0, runState.CemeteryMaxState));
-            var repairedAmount = runState.CemeteryState - previousState;
-            if (repairedAmount <= 0)
-            {
-                break;
-            }
-            totalRepaired += repairedAmount;
-            if (runState.CemeteryState >= runState.CemeteryMaxState)
-            {
-                runState.NightCemeteryRepairTimerProgress = 0f;
-                break;
-            }
-        }
-        return totalRepaired;
-    }
-    public void ResetNightRepairProgress(RunState runState)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        runState.NightCemeteryRepairTimerProgress = 0f;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
-using System.Collections.Generic;
-public class Night1 : NightDefinition
-{
-    public override string Id => "night_1";
-    public override float DurationSeconds => 30f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(2f, Spawn("en1", 1)),
-            Wave(8f, Spawn("en1", 3)),
-            Wave(14f, Spawn("en1", 4))
-        };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Night/NightDefinition.cs">
-using System.Collections.Generic;
-using UnityEngine;
-public abstract class NightDefinition
-{
-    private IReadOnlyList<NightWaveEntry> cachedWaveEntries;
-    public abstract string Id { get; }
-    public abstract float DurationSeconds { get; }
-    public IReadOnlyList<NightWaveEntry> WaveEntries
-    {
-        get
-        {
-            cachedWaveEntries ??= BuildWaveEntries();
-            return cachedWaveEntries;
-        }
-    }
-    protected abstract IReadOnlyList<NightWaveEntry> BuildWaveEntries();
-    protected static NightWaveEntry Wave(float triggerTime, params NightWaveSpawnEntry[] spawns)
-    {
-        return new NightWaveEntry(triggerTime, spawns);
-    }
-    protected static NightWaveSpawnEntry Spawn(string enemyId, int count)
-    {
-        return new NightWaveSpawnEntry(enemyId, Mathf.Max(0, count));
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Night/NightWaveEntry.cs">
-using System.Collections.Generic;
-public class NightWaveEntry
-{
-    public NightWaveEntry(float triggerTime, IReadOnlyList<NightWaveSpawnEntry> spawns)
-    {
-        TriggerTime = triggerTime < 0f ? 0f : triggerTime;
-        Spawns = spawns ?? new List<NightWaveSpawnEntry>();
-    }
-    public float TriggerTime { get; }
-    public IReadOnlyList<NightWaveSpawnEntry> Spawns { get; }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Night/NightWaveSpawnEntry.cs">
-public class NightWaveSpawnEntry
-{
-    public NightWaveSpawnEntry(string enemyId, int count)
-    {
-        EnemyId = enemyId;
-        Count = count < 0 ? 0 : count;
-    }
-    public string EnemyId { get; }
-    public int Count { get; }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs">
-using UnityEngine;
-[DisallowMultipleComponent]
-public class NightPoiProgressView : MonoBehaviour
-{
-    [SerializeField] private NightPointOfInterest pointOfInterest;
-    [SerializeField] private WorldProgressBarPresenter progressBarPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    private void Awake()
-    {
-        EnsureReferences();
-        progressBarPresenter?.Bind(targetRenderer);
-        progressBarPresenter?.SetInactive();
-    }
-    private void OnDisable()
-    {
-        progressBarPresenter?.SetInactive();
-    }
-    private void Update()
-    {
-        EnsureReferences();
-        if (progressBarPresenter == null || pointOfInterest == null || G.main == null)
-        {
-            progressBarPresenter?.SetInactive();
-            return;
-        }
-        if (!G.main.TryGetNightPoiProgress(pointOfInterest.Id, pointOfInterest.Type, out var normalizedProgress))
-        {
-            progressBarPresenter.SetInactive();
-            return;
-        }
-        progressBarPresenter.Refresh(normalizedProgress, false, true);
-    }
-    public void Bind(NightPointOfInterest poi)
-    {
-        pointOfInterest = poi;
-        EnsureReferences();
-        progressBarPresenter?.Bind(targetRenderer);
-    }
-    private void EnsureReferences()
-    {
-        if (pointOfInterest == null)
-        {
-            pointOfInterest = GetComponentInParent<NightPointOfInterest>();
-        }
-        if (progressBarPresenter == null)
-        {
-            progressBarPresenter = GetComponent<WorldProgressBarPresenter>();
-        }
-        if (targetRenderer == null)
-        {
-            targetRenderer = pointOfInterest != null
-                ? pointOfInterest.GetComponent<SpriteRenderer>()
-                : GetComponentInParent<SpriteRenderer>();
-        }
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/WaveProgressView.cs">
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-public class WaveProgressView : MonoBehaviour
-{
-    [SerializeField] private TMP_Text nightTimerText;
-    [SerializeField] private TMP_Text nextWaveText;
-    [SerializeField] private Image nightProgressFillImage;
-    [SerializeField] private Image nextWaveProgressFillImage;
-    public void RefreshView()
-    {
-        if (G.main == null || G.main.RunState == null || !G.main.IsNightWaveActive)
-        {
-            SetInactive();
-            return;
-        }
-        var elapsedSeconds = Mathf.Max(0f, G.main.CurrentNightElapsedSeconds);
-        var durationSeconds = Mathf.Max(0f, G.main.CurrentNightDurationSeconds);
-        var clampedElapsedSeconds = durationSeconds > 0f
-            ? Mathf.Min(elapsedSeconds, durationSeconds)
-            : elapsedSeconds;
-        if (nightTimerText != null)
-        {
-            nightTimerText.text =
-                $"Night {FormatSeconds(clampedElapsedSeconds)} / {FormatSeconds(durationSeconds)}";
-        }
-        if (nightProgressFillImage != null)
-        {
-            nightProgressFillImage.fillAmount = durationSeconds <= 0f ? 0f : clampedElapsedSeconds / durationSeconds;
-            nightProgressFillImage.gameObject.SetActive(true);
-        }
-        if (!G.main.HasUpcomingNightWave)
-        {
-            if (nextWaveText != null)
-            {
-                nextWaveText.text = "Next wave: cleared";
-            }
-            if (nextWaveProgressFillImage != null)
-            {
-                nextWaveProgressFillImage.fillAmount = 1f;
-                nextWaveProgressFillImage.gameObject.SetActive(true);
-            }
-            return;
-        }
-        var nextWaveTriggerTime = Mathf.Max(0f, G.main.NextNightWaveTriggerTime);
-        var previousWaveTriggerTime = Mathf.Max(0f, G.main.PreviousNightWaveTriggerTime);
-        var currentWaveWindowDuration = Mathf.Max(0.01f, nextWaveTriggerTime - previousWaveTriggerTime);
-        var waveWindowElapsed = Mathf.Clamp(elapsedSeconds - previousWaveTriggerTime, 0f, currentWaveWindowDuration);
-        var secondsUntilWave = Mathf.Max(0f, nextWaveTriggerTime - elapsedSeconds);
-        if (nextWaveText != null)
-        {
-            nextWaveText.text = $"Next wave in {FormatSeconds(secondsUntilWave)}";
-        }
-        if (nextWaveProgressFillImage != null)
-        {
-            nextWaveProgressFillImage.fillAmount = waveWindowElapsed / currentWaveWindowDuration;
-            nextWaveProgressFillImage.gameObject.SetActive(true);
-        }
-    }
-    public void SetInactive()
-    {
-        if (nightTimerText != null)
-        {
-            nightTimerText.text = string.Empty;
-        }
-        if (nextWaveText != null)
-        {
-            nextWaveText.text = string.Empty;
-        }
-        if (nightProgressFillImage != null)
-        {
-            nightProgressFillImage.fillAmount = 0f;
-            nightProgressFillImage.gameObject.SetActive(false);
-        }
-        if (nextWaveProgressFillImage != null)
-        {
-            nextWaveProgressFillImage.fillAmount = 0f;
-            nextWaveProgressFillImage.gameObject.SetActive(false);
-        }
-    }
-    private static string FormatSeconds(float seconds)
-    {
-        var totalSeconds = Mathf.Max(0, Mathf.CeilToInt(seconds));
-        var minutes = totalSeconds / 60;
-        var remainingSeconds = totalSeconds % 60;
-        return $"{minutes:00}:{remainingSeconds:00}";
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/World/WorldProgressBarPresenter.cs">
-using UnityEngine;
-[DisallowMultipleComponent]
-public class WorldProgressBarPresenter : MonoBehaviour
-{
-    [SerializeField] private WorldProgressBarView progressBarView;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
-    [Min(0f)] [SerializeField] private float anchorHeightMultiplier = 0.55f;
-    [SerializeField] private bool anchorBelowTarget;
-    [SerializeField] private Vector3 manualWorldOffset;
-    [SerializeField] private bool matchInverseLossyScale = true;
-    private bool isBound;
-    private void Awake()
-    {
-        EnsureReferences();
-        progressBarView?.SetInactive();
-    }
-    private void LateUpdate()
-    {
-        if (!isBound)
-        {
-            return;
-        }
-        UpdateAnchorTransform();
-    }
-    public void Bind(SpriteRenderer ownerRenderer = null)
-    {
-        EnsureReferences();
-        if (ownerRenderer != null)
-        {
-            targetRenderer = ownerRenderer;
-        }
-        if (progressBarView == null || targetRenderer == null)
-        {
-            isBound = false;
-            progressBarView?.SetInactive();
-            return;
-        }
-        progressBarView.Bind(targetRenderer);
-        isBound = true;
-        UpdateAnchorTransform();
-    }
-    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
-    {
-        if (!isBound)
-        {
-            Bind(targetRenderer);
-        }
-        progressBarView?.Refresh(normalizedProgress, useCountdownFill, isVisible);
-    }
-    public void SetInactive()
-    {
-        progressBarView?.SetInactive();
-    }
-    private void EnsureReferences()
-    {
-        if (progressBarView == null)
-        {
-            progressBarView = GetComponent<WorldProgressBarView>();
-        }
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponentInParent<SpriteRenderer>();
-        }
-    }
-    private void UpdateAnchorTransform()
-    {
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        var spriteHeight = targetRenderer.bounds.size.y > 0f ? targetRenderer.bounds.size.y : 0.4f;
-        var verticalOffset = spriteHeight * Mathf.Max(0f, anchorHeightMultiplier) + Mathf.Max(0f, barVerticalPadding);
-        if (anchorBelowTarget)
-        {
-            verticalOffset *= -1f;
-        }
-        transform.position = targetRenderer.transform.position + Vector3.up * verticalOffset + manualWorldOffset;
-        transform.rotation = Quaternion.identity;
-        if (!matchInverseLossyScale)
-        {
-            return;
-        }
-        var lossyScale = targetRenderer.transform.lossyScale;
-        transform.localScale = new Vector3(
-            1f / Mathf.Max(0.0001f, lossyScale.x),
-            1f / Mathf.Max(0.0001f, lossyScale.y),
-            1f / Mathf.Max(0.0001f, lossyScale.z));
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/World/WorldProgressBarView.cs">
-using UnityEngine;
-[DisallowMultipleComponent]
-public class WorldProgressBarView : MonoBehaviour
-{
-    private static Sprite runtimeBarSprite;
-    [SerializeField] private SpriteRenderer backgroundRenderer;
-    [SerializeField] private SpriteRenderer fillRenderer;
-    [SerializeField] private Color backgroundColor = new(0f, 0f, 0f, 0.75f);
-    [SerializeField] private Color fillColor = new(0.95f, 0.88f, 0.35f, 1f);
-    [Min(0)] [SerializeField] private int sortingOffset = 10;
-    private Vector3 initialFillLocalScale;
-    private Vector3 initialFillLocalPosition;
-    private SpriteRenderer ownerRenderer;
-    private bool isBound;
-    private bool isInitialized;
-    private void Awake()
-    {
-        EnsureInitialized();
-        SetInactive();
-    }
-    private void LateUpdate()
-    {
-        if (!isBound || ownerRenderer == null)
-        {
-            return;
-        }
-        ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
-        ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
-    }
-    public void Bind(SpriteRenderer ownerRenderer)
-    {
-        EnsureInitialized();
-        this.ownerRenderer = ownerRenderer;
-        isBound = ownerRenderer != null;
-        if (backgroundRenderer != null)
-        {
-            backgroundRenderer.color = backgroundColor;
-            ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
-        }
-        if (fillRenderer != null)
-        {
-            fillRenderer.color = fillColor;
-            ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
-        }
-        SetInactive();
-    }
-    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
-    {
-        EnsureInitialized();
-        if (!isBound || fillRenderer == null)
-        {
-            SetInactive();
-            return;
-        }
-        if (!isVisible)
-        {
-            SetInactive();
-            return;
-        }
-        var clampedProgress = Mathf.Clamp01(normalizedProgress);
-        var fillNormalized = useCountdownFill ? 1f - clampedProgress : clampedProgress;
-        fillNormalized = Mathf.Clamp01(fillNormalized);
-        if (backgroundRenderer != null)
-        {
-            backgroundRenderer.enabled = true;
-        }
-        fillRenderer.enabled = fillNormalized > 0f;
-        if (!fillRenderer.enabled)
-        {
-            return;
-        }
-        var updatedScale = initialFillLocalScale;
-        updatedScale.x = initialFillLocalScale.x * fillNormalized;
-        fillRenderer.transform.localScale = updatedScale;
-        var initialLeftEdge = initialFillLocalPosition.x - (initialFillLocalScale.x * 0.5f);
-        var updatedPosition = initialFillLocalPosition;
-        updatedPosition.x = initialLeftEdge + (updatedScale.x * 0.5f);
-        fillRenderer.transform.localPosition = updatedPosition;
-    }
-    public void SetInactive()
-    {
-        EnsureInitialized();
-        if (backgroundRenderer != null)
-        {
-            backgroundRenderer.enabled = false;
-        }
-        if (fillRenderer != null)
-        {
-            fillRenderer.enabled = false;
-            fillRenderer.transform.localScale = initialFillLocalScale;
-            fillRenderer.transform.localPosition = initialFillLocalPosition;
-        }
-    }
-    private void EnsureInitialized()
-    {
-        if (isInitialized)
-        {
-            return;
-        }
-        EnsureBarSprite(backgroundRenderer);
-        EnsureBarSprite(fillRenderer);
-        if (fillRenderer != null)
-        {
-            initialFillLocalScale = fillRenderer.transform.localScale;
-            initialFillLocalPosition = fillRenderer.transform.localPosition;
-        }
-        isInitialized = true;
-    }
-    private void EnsureBarSprite(SpriteRenderer renderer)
-    {
-        if (renderer == null || renderer.sprite != null)
-        {
-            return;
-        }
-        renderer.sprite = GetRuntimeBarSprite();
-        renderer.flipX = false;
-        renderer.flipY = false;
-    }
-    private static void ApplySorting(SpriteRenderer renderer, SpriteRenderer ownerRenderer, int offset)
-    {
-        if (renderer == null || ownerRenderer == null)
-        {
-            return;
-        }
-        renderer.sortingLayerID = ownerRenderer.sortingLayerID;
-        renderer.sortingOrder = ownerRenderer.sortingOrder + offset;
-    }
-    private static Sprite GetRuntimeBarSprite()
-    {
-        if (runtimeBarSprite != null)
-        {
-            return runtimeBarSprite;
-        }
-        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
-        };
-        texture.SetPixel(0, 0, Color.white);
-        texture.Apply();
-        runtimeBarSprite = Sprite.Create(
-            texture,
-            new Rect(0f, 0f, 1f, 1f),
-            new Vector2(0.5f, 0.5f),
-            1f);
-        return runtimeBarSprite;
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
 using GameAnalyticsSDK;
 public static class AnalyticsSystem
@@ -1796,62 +1157,175 @@ public static class WebGLBuilder
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellRingResult.cs">
-public class BellRingResult
+<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 {
-    public bool IsSuccess;
-    public BellRingFailureReason FailureReason;
-    public float CooldownRemainingSeconds;
-    public BellDef BellDef;
-    public UnitDef UnitDef;
-    public UnitSpawnResult SpawnResult;
-    public static BellRingResult Success(BellDef bellDef, UnitDef unitDef)
+    [SerializeField] private string bellId;
+    [SerializeField] private WorldProgressBarPresenter cooldownProgressPresenter;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    private float cooldownRemainingSeconds;
+    private float cooldownDurationSeconds;
+    public string BellId => bellId;
+    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
+    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    private void Awake()
     {
-        return new BellRingResult
-        {
-            IsSuccess = true,
-            FailureReason = BellRingFailureReason.None,
-            BellDef = bellDef,
-            UnitDef = unitDef
-        };
+        EnsureReferences();
+        cooldownProgressPresenter?.Bind(targetRenderer);
+        cooldownProgressPresenter?.SetInactive();
     }
-    public static BellRingResult Failure(BellRingFailureReason failureReason)
+    private void Update()
     {
-        return new BellRingResult
+        if (cooldownRemainingSeconds <= 0f)
         {
-            IsSuccess = false,
-            FailureReason = failureReason,
-            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
-        };
+            cooldownProgressPresenter?.SetInactive();
+            return;
+        }
+        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
+        RefreshCooldownPresentation();
     }
-    public static BellRingResult Failure(BellRingFailureReason failureReason, float cooldownRemainingSeconds)
+    public bool TryGetWorldInteractionValidationError(out string validationError)
     {
-        return new BellRingResult
+        if (string.IsNullOrWhiteSpace(bellId))
         {
-            IsSuccess = false,
-            FailureReason = failureReason,
-            CooldownRemainingSeconds = cooldownRemainingSeconds,
-            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
-        };
+            validationError = "missing bell id";
+            return true;
+        }
+        if (CMS.Get<BellDef>(bellId) == null)
+        {
+            validationError = "missing BellDef";
+            return true;
+        }
+        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void StartCooldown(float cooldownSeconds)
+    {
+        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
+        cooldownRemainingSeconds = cooldownDurationSeconds;
+        RefreshCooldownPresentation();
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+        {
+            return;
+        }
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
+            return;
+        }
+        G.main.TryInteractWithBell(bellId);
+    }
+    private void RefreshCooldownPresentation()
+    {
+        if (cooldownProgressPresenter == null)
+        {
+            return;
+        }
+        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
+        {
+            cooldownProgressPresenter.SetInactive();
+            return;
+        }
+        var elapsedNormalized = 1f - (cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds));
+        cooldownProgressPresenter.Refresh(elapsedNormalized, true, true);
+    }
+    private void EnsureReferences()
+    {
+        if (cooldownProgressPresenter == null)
+        {
+            cooldownProgressPresenter = GetComponentInChildren<WorldProgressBarPresenter>();
+        }
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponent<SpriteRenderer>();
+        }
     }
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
+<file path="Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs">
 using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
-public class BellDef : ContentDef
+public class CemeteryStateSystem
 {
-    [SerializeField] private string displayName;
-    [SerializeField] private int faithCost;
-    [Min(0f)] [SerializeField] private float cooldownSeconds;
-    [SerializeField] private string linkedUnitId;
-    [SerializeField] private Sprite icon;
-    public string DisplayName => displayName;
-    public int FaithCost => faithCost;
-    public float CooldownSeconds => Mathf.Max(0f, cooldownSeconds);
-    public string LinkedUnitId => linkedUnitId;
-    public Sprite Icon => icon;
+    public bool ApplyBreakthroughDamage(RunState runState, int damageAmount)
+    {
+        if (runState == null || damageAmount <= 0)
+        {
+            return false;
+        }
+        var clampedMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        var nextState = Mathf.Clamp(runState.CemeteryState - damageAmount, 0, clampedMaxState);
+        if (nextState == runState.CemeteryState)
+        {
+            return false;
+        }
+        runState.CemeteryState = nextState;
+        return true;
+    }
+    public int ApplyNightRepair(RunState runState, float deltaTime)
+    {
+        if (runState == null || deltaTime <= 0f)
+        {
+            return 0;
+        }
+        if (runState.NightCemeteryRepairAmount <= 0 ||
+            runState.NightCemeteryRepairIntervalSeconds <= 0f ||
+            runState.CemeteryState >= runState.CemeteryMaxState)
+        {
+            return 0;
+        }
+        runState.NightCemeteryRepairTimerProgress += deltaTime;
+        var totalRepaired = 0;
+        while (runState.NightCemeteryRepairTimerProgress >= runState.NightCemeteryRepairIntervalSeconds)
+        {
+            runState.NightCemeteryRepairTimerProgress -= runState.NightCemeteryRepairIntervalSeconds;
+            var previousState = runState.CemeteryState;
+            runState.CemeteryState = Mathf.Clamp(
+                runState.CemeteryState + runState.NightCemeteryRepairAmount,
+                0,
+                Mathf.Max(0, runState.CemeteryMaxState));
+            var repairedAmount = runState.CemeteryState - previousState;
+            if (repairedAmount <= 0)
+            {
+                break;
+            }
+            totalRepaired += repairedAmount;
+            if (runState.CemeteryState >= runState.CemeteryMaxState)
+            {
+                runState.NightCemeteryRepairTimerProgress = 0f;
+                break;
+            }
+        }
+        return totalRepaired;
+    }
+    public void ResetNightRepairProgress(RunState runState)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        runState.NightCemeteryRepairTimerProgress = 0f;
+    }
 }
 </file>
 
@@ -1898,64 +1372,6 @@ public enum UpgradeEffectType
     UnlockBell = 3,
     BellFaithCostModifier = 4,
     UnitDamageModifier = 5
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs">
-using UnityEngine;
-public class FaithCollectionSystem
-{
-    public void StartNight(RunState runState)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        runState.Faith = Mathf.Max(0, runState.StartingNightFaith);
-        runState.FaithCollectionTimerProgress = 0f;
-    }
-    public void EndNight(RunState runState)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        runState.Faith = 0;
-        runState.FaithCollectionTimerProgress = 0f;
-    }
-    public int UpdateCollection(RunState runState, float deltaTime)
-    {
-        if (runState == null || runState.CurrentPhase != GamePhase.Night || deltaTime <= 0f)
-        {
-            return 0;
-        }
-        if (runState.Keeper == null ||
-            runState.Keeper.ActivityState == KeeperActivityState.Moving ||
-            runState.Keeper.InteractionState != KeeperInteractionState.FaithPoint)
-        {
-            return 0;
-        }
-        var payoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
-        var collectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
-        if (payoutAmount <= 0 || collectionIntervalSeconds <= 0f)
-        {
-            return 0;
-        }
-        runState.FaithCollectionTimerProgress += deltaTime;
-        if (runState.FaithCollectionTimerProgress < collectionIntervalSeconds)
-        {
-            return 0;
-        }
-        var completedPayoutCycles = Mathf.FloorToInt(runState.FaithCollectionTimerProgress / collectionIntervalSeconds);
-        if (completedPayoutCycles <= 0)
-        {
-            return 0;
-        }
-        var collectedFaith = completedPayoutCycles * payoutAmount;
-        runState.FaithCollectionTimerProgress -= completedPayoutCycles * collectionIntervalSeconds;
-        runState.Faith += collectedFaith;
-        return collectedFaith;
-    }
 }
 </file>
 
@@ -2049,155 +1465,6 @@ public class EnemySpawnResult
             IsSuccess = false,
             FailureReason = failureReason
         };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
-using System.Collections;
-using UnityEngine;
-[DisallowMultipleComponent]
-public class LaneCombatFeedbackView : MonoBehaviour
-{
-    private static readonly Color AllyHitFlashColor = new(1f, 0.45f, 0.45f, 1f);
-    private static readonly Color EnemyHitFlashColor = Color.white;
-    [SerializeField] private CombatHpBarView hpBarPrefab;
-    [SerializeField] private WorldProgressBarPresenter lifetimeProgressPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
-    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
-    [Min(0f)] [SerializeField] private float hitFlashDuration = 0.08f;
-    private CombatHpBarView hpBarInstance;
-    private Coroutine flashCoroutine;
-    private Color baseSpriteColor = Color.white;
-    private Color hitFlashColor = Color.white;
-    private float popupOffsetY;
-    private bool isBound;
-    private LaneUnit boundLaneUnit;
-    private void Awake()
-    {
-        EnsureTargetRenderer();
-    }
-    private void LateUpdate()
-    {
-        RefreshLifetimeProgressPresentation();
-    }
-    private void OnDisable()
-    {
-        Cleanup();
-    }
-    private void OnDestroy()
-    {
-        Cleanup();
-    }
-    public void Bind(int maxHp, bool isEnemy)
-    {
-        EnsureTargetRenderer();
-        baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
-        hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
-        boundLaneUnit = isEnemy ? null : GetComponent<LaneUnit>();
-        var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
-        popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
-        var barOffsetY = spriteHeight * 0.55f + barVerticalPadding;
-        EnsureHpBarInstance(barOffsetY);
-        hpBarInstance?.Bind(maxHp, isEnemy, targetRenderer);
-        hpBarInstance?.Refresh(maxHp);
-        lifetimeProgressPresenter?.Bind(targetRenderer);
-        isBound = true;
-        RefreshLifetimeProgressPresentation();
-    }
-    public void PlayDamageFeedback(int damage, int currentHp)
-    {
-        if (!isBound || damage <= 0)
-        {
-            return;
-        }
-        hpBarInstance?.Refresh(currentHp);
-        Popups.DamageAbove(transform, popupOffsetY, damage);
-        PlayHitFlash();
-    }
-    public void Cleanup()
-    {
-        isBound = false;
-        if (flashCoroutine != null)
-        {
-            StopCoroutine(flashCoroutine);
-            flashCoroutine = null;
-        }
-        if (targetRenderer != null)
-        {
-            targetRenderer.color = baseSpriteColor;
-        }
-        if (hpBarInstance != null)
-        {
-            Destroy(hpBarInstance.gameObject);
-            hpBarInstance = null;
-        }
-        lifetimeProgressPresenter?.SetInactive();
-        boundLaneUnit = null;
-    }
-    private void PlayHitFlash()
-    {
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        if (flashCoroutine != null)
-        {
-            StopCoroutine(flashCoroutine);
-        }
-        flashCoroutine = StartCoroutine(HitFlashRoutine());
-    }
-    private IEnumerator HitFlashRoutine()
-    {
-        targetRenderer.color = hitFlashColor;
-        yield return new WaitForSeconds(hitFlashDuration);
-        targetRenderer.color = baseSpriteColor;
-        flashCoroutine = null;
-    }
-    private void EnsureHpBarInstance(float barOffsetY)
-    {
-        if (hpBarInstance == null)
-        {
-            if (hpBarPrefab == null)
-            {
-                Debug.LogWarning("LaneCombatFeedbackView: hpBarPrefab is not assigned");
-                return;
-            }
-            hpBarInstance = Instantiate(hpBarPrefab, transform);
-        }
-        var hpBarTransform = hpBarInstance.transform;
-        hpBarTransform.localRotation = Quaternion.identity;
-        hpBarTransform.localScale = GetInverseLossyScale();
-        hpBarTransform.localPosition = transform.InverseTransformPoint(transform.position + Vector3.up * barOffsetY);
-    }
-    private void EnsureTargetRenderer()
-    {
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-    }
-    private Vector3 GetInverseLossyScale()
-    {
-        var lossyScale = transform.lossyScale;
-        return new Vector3(
-            1f / Mathf.Max(0.0001f, lossyScale.x),
-            1f / Mathf.Max(0.0001f, lossyScale.y),
-            1f / Mathf.Max(0.0001f, lossyScale.z));
-    }
-    private void RefreshLifetimeProgressPresentation()
-    {
-        if (lifetimeProgressPresenter == null)
-        {
-            return;
-        }
-        if (!isBound || boundLaneUnit == null || !boundLaneUnit.HasLimitedLifetime)
-        {
-            lifetimeProgressPresenter.SetInactive();
-            return;
-        }
-        lifetimeProgressPresenter.Refresh(boundLaneUnit.LifetimeProgressNormalized, true, true);
     }
 }
 </file>
@@ -2313,77 +1580,134 @@ public class UnitSpawnResult
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
+<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
+using System.Collections.Generic;
+public class Night1 : NightDefinition
 {
-    [SerializeField] private string id;
-    [SerializeField] private NightPoiType type;
-    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
-    [SerializeField] private NightPoiProgressView progressView;
-    public string Id => id;
-    public NightPoiType Type => type;
-    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
+    public override string Id => "night_1";
+    public override float DurationSeconds => 30f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(2f, Spawn("en1", 1)),
+            Wave(8f, Spawn("en1", 3)),
+            Wave(14f, Spawn("en1", 4))
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/NightDefinition.cs">
+using System.Collections.Generic;
+using UnityEngine;
+public abstract class NightDefinition
+{
+    private IReadOnlyList<NightWaveEntry> cachedWaveEntries;
+    public abstract string Id { get; }
+    public abstract float DurationSeconds { get; }
+    public IReadOnlyList<NightWaveEntry> WaveEntries
+    {
+        get
+        {
+            cachedWaveEntries ??= BuildWaveEntries();
+            return cachedWaveEntries;
+        }
+    }
+    protected abstract IReadOnlyList<NightWaveEntry> BuildWaveEntries();
+    protected static NightWaveEntry Wave(float triggerTime, params NightWaveSpawnEntry[] spawns)
+    {
+        return new NightWaveEntry(triggerTime, spawns);
+    }
+    protected static NightWaveSpawnEntry Spawn(string enemyId, int count)
+    {
+        return new NightWaveSpawnEntry(enemyId, Mathf.Max(0, count));
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/NightWaveEntry.cs">
+using System.Collections.Generic;
+public class NightWaveEntry
+{
+    public NightWaveEntry(float triggerTime, IReadOnlyList<NightWaveSpawnEntry> spawns)
+    {
+        TriggerTime = triggerTime < 0f ? 0f : triggerTime;
+        Spawns = spawns ?? new List<NightWaveSpawnEntry>();
+    }
+    public float TriggerTime { get; }
+    public IReadOnlyList<NightWaveSpawnEntry> Spawns { get; }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/NightWaveSpawnEntry.cs">
+public class NightWaveSpawnEntry
+{
+    public NightWaveSpawnEntry(string enemyId, int count)
+    {
+        EnemyId = enemyId;
+        Count = count < 0 ? 0 : count;
+    }
+    public string EnemyId { get; }
+    public int Count { get; }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class NightPoiProgressView : MonoBehaviour
+{
+    [SerializeField] private NightPointOfInterest pointOfInterest;
+    [SerializeField] private WorldProgressBarPresenter progressBarPresenter;
+    [SerializeField] private SpriteRenderer targetRenderer;
     private void Awake()
     {
-        if (progressView == null)
-        {
-            progressView = GetComponentInChildren<NightPoiProgressView>();
-        }
-        progressView?.Bind(this);
+        EnsureReferences();
+        progressBarPresenter?.Bind(targetRenderer);
+        progressBarPresenter?.SetInactive();
     }
-    public Vector2 GetWorldPosition()
+    private void OnDisable()
     {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
+        progressBarPresenter?.SetInactive();
     }
-    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
+    private void Update()
     {
-        var interactionRadiusValue = InteractionRadius;
-        if (interactionRadiusValue <= 0f)
+        EnsureReferences();
+        if (progressBarPresenter == null || pointOfInterest == null || G.main == null)
         {
-            return false;
-        }
-        return Vector2.Distance(GetWorldPosition(), keeperPosition) <= interactionRadiusValue;
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        if (InteractionRadius <= 0f)
-        {
-            validationError = "invalid interaction radius";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-        {
+            progressBarPresenter?.SetInactive();
             return;
         }
-        if (G.main == null)
+        if (!G.main.TryGetNightPoiProgress(pointOfInterest.Id, pointOfInterest.Type, out var normalizedProgress))
         {
-            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
+            progressBarPresenter.SetInactive();
             return;
         }
-        G.main.TryMoveKeeperToPoi(id);
+        progressBarPresenter.Refresh(normalizedProgress, false, true);
+    }
+    public void Bind(NightPointOfInterest poi)
+    {
+        pointOfInterest = poi;
+        EnsureReferences();
+        progressBarPresenter?.Bind(targetRenderer);
+    }
+    private void EnsureReferences()
+    {
+        if (pointOfInterest == null)
+        {
+            pointOfInterest = GetComponentInParent<NightPointOfInterest>();
+        }
+        if (progressBarPresenter == null)
+        {
+            progressBarPresenter = GetComponent<WorldProgressBarPresenter>();
+        }
+        if (targetRenderer == null)
+        {
+            targetRenderer = pointOfInterest != null
+                ? pointOfInterest.GetComponent<SpriteRenderer>()
+                : GetComponentInParent<SpriteRenderer>();
+        }
     }
 }
 </file>
@@ -2609,102 +1933,6 @@ public class WaveSpawnEntry
 {
     public string enemyId;
     public float spawnTime;
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Wave/WaveSystem.cs">
-using System.Collections.Generic;
-public class WaveSystem
-{
-    private readonly List<NightWaveEntry> activeEntries = new();
-    private float elapsedTime;
-    private float durationSeconds;
-    private int nextWaveIndex;
-    private bool isRunning;
-    public bool IsRunning => isRunning;
-    public bool AreAllSpawnsIssued => !isRunning || nextWaveIndex >= activeEntries.Count;
-    public float ElapsedTime => elapsedTime;
-    public float DurationSeconds => durationSeconds;
-    public bool HasUpcomingWave => isRunning && nextWaveIndex < activeEntries.Count;
-    public float NextWaveTriggerTime => HasUpcomingWave ? activeEntries[nextWaveIndex].TriggerTime : durationSeconds;
-    public float PreviousWaveTriggerTime => nextWaveIndex <= 0 ? 0f : activeEntries[nextWaveIndex - 1].TriggerTime;
-    public void StartWave(NightDefinition nightDefinition)
-    {
-        activeEntries.Clear();
-        elapsedTime = 0f;
-        durationSeconds = 0f;
-        nextWaveIndex = 0;
-        isRunning = nightDefinition != null;
-        if (nightDefinition == null)
-        {
-            return;
-        }
-        durationSeconds = nightDefinition.DurationSeconds;
-        var entries = nightDefinition.WaveEntries;
-        if (entries == null)
-        {
-            return;
-        }
-        for (var i = 0; i < entries.Count; i++)
-        {
-            var entry = entries[i];
-            if (entry == null)
-            {
-                continue;
-            }
-            if (durationSeconds > 0f && entry.TriggerTime > durationSeconds)
-            {
-                continue;
-            }
-            activeEntries.Add(entry);
-        }
-        activeEntries.Sort((a, b) => a.TriggerTime.CompareTo(b.TriggerTime));
-    }
-    public void StopWave()
-    {
-        isRunning = false;
-        elapsedTime = 0f;
-        durationSeconds = 0f;
-        nextWaveIndex = 0;
-        activeEntries.Clear();
-    }
-    public void CollectReadySpawns(float deltaTime, List<string> readyEnemyIds)
-    {
-        if (!isRunning || readyEnemyIds == null)
-        {
-            return;
-        }
-        elapsedTime += deltaTime;
-        while (nextWaveIndex < activeEntries.Count)
-        {
-            var nextEntry = activeEntries[nextWaveIndex];
-            if (nextEntry.TriggerTime > elapsedTime)
-            {
-                break;
-            }
-            AppendReadySpawns(nextEntry, readyEnemyIds);
-            nextWaveIndex++;
-        }
-    }
-    private static void AppendReadySpawns(NightWaveEntry waveEntry, List<string> readyEnemyIds)
-    {
-        if (waveEntry?.Spawns == null || readyEnemyIds == null)
-        {
-            return;
-        }
-        for (var i = 0; i < waveEntry.Spawns.Count; i++)
-        {
-            var spawnEntry = waveEntry.Spawns[i];
-            if (spawnEntry == null || string.IsNullOrWhiteSpace(spawnEntry.EnemyId) || spawnEntry.Count <= 0)
-            {
-                continue;
-            }
-            for (var spawnIndex = 0; spawnIndex < spawnEntry.Count; spawnIndex++)
-            {
-                readyEnemyIds.Add(spawnEntry.EnemyId);
-            }
-        }
-    }
 }
 </file>
 
@@ -3055,6 +2283,97 @@ public class PhaseTransitionView : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/UI/WaveProgressView.cs">
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+public class WaveProgressView : MonoBehaviour
+{
+    [SerializeField] private TMP_Text nightTimerText;
+    [SerializeField] private TMP_Text nextWaveText;
+    [SerializeField] private Image nightProgressFillImage;
+    [SerializeField] private Image nextWaveProgressFillImage;
+    public void RefreshView()
+    {
+        if (G.main == null || G.main.RunState == null || !G.main.IsNightWaveActive)
+        {
+            SetInactive();
+            return;
+        }
+        var elapsedSeconds = Mathf.Max(0f, G.main.CurrentNightElapsedSeconds);
+        var durationSeconds = Mathf.Max(0f, G.main.CurrentNightDurationSeconds);
+        var clampedElapsedSeconds = durationSeconds > 0f
+            ? Mathf.Min(elapsedSeconds, durationSeconds)
+            : elapsedSeconds;
+        if (nightTimerText != null)
+        {
+            nightTimerText.text =
+                $"Night {FormatSeconds(clampedElapsedSeconds)} / {FormatSeconds(durationSeconds)}";
+        }
+        if (nightProgressFillImage != null)
+        {
+            nightProgressFillImage.fillAmount = durationSeconds <= 0f ? 0f : clampedElapsedSeconds / durationSeconds;
+            nightProgressFillImage.gameObject.SetActive(true);
+        }
+        if (!G.main.HasUpcomingNightWave)
+        {
+            if (nextWaveText != null)
+            {
+                nextWaveText.text = "Next wave: cleared";
+            }
+            if (nextWaveProgressFillImage != null)
+            {
+                nextWaveProgressFillImage.fillAmount = 1f;
+                nextWaveProgressFillImage.gameObject.SetActive(true);
+            }
+            return;
+        }
+        var nextWaveTriggerTime = Mathf.Max(0f, G.main.NextNightWaveTriggerTime);
+        var previousWaveTriggerTime = Mathf.Max(0f, G.main.PreviousNightWaveTriggerTime);
+        var currentWaveWindowDuration = Mathf.Max(0.01f, nextWaveTriggerTime - previousWaveTriggerTime);
+        var waveWindowElapsed = Mathf.Clamp(elapsedSeconds - previousWaveTriggerTime, 0f, currentWaveWindowDuration);
+        var secondsUntilWave = Mathf.Max(0f, nextWaveTriggerTime - elapsedSeconds);
+        if (nextWaveText != null)
+        {
+            nextWaveText.text = $"Next wave in {FormatSeconds(secondsUntilWave)}";
+        }
+        if (nextWaveProgressFillImage != null)
+        {
+            nextWaveProgressFillImage.fillAmount = waveWindowElapsed / currentWaveWindowDuration;
+            nextWaveProgressFillImage.gameObject.SetActive(true);
+        }
+    }
+    public void SetInactive()
+    {
+        if (nightTimerText != null)
+        {
+            nightTimerText.text = string.Empty;
+        }
+        if (nextWaveText != null)
+        {
+            nextWaveText.text = string.Empty;
+        }
+        if (nightProgressFillImage != null)
+        {
+            nightProgressFillImage.fillAmount = 0f;
+            nightProgressFillImage.gameObject.SetActive(false);
+        }
+        if (nextWaveProgressFillImage != null)
+        {
+            nextWaveProgressFillImage.fillAmount = 0f;
+            nextWaveProgressFillImage.gameObject.SetActive(false);
+        }
+    }
+    private static string FormatSeconds(float seconds)
+    {
+        var totalSeconds = Mathf.Max(0, Mathf.CeilToInt(seconds));
+        var minutes = totalSeconds / 60;
+        var remainingSeconds = totalSeconds % 60;
+        return $"{minutes:00}:{remainingSeconds:00}";
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/UI/WinScreenView.cs">
 using System;
 using TMPro;
@@ -3126,6 +2445,250 @@ public class WinScreenView : MonoBehaviour
             $"Day reached: {runState.CurrentDay}\n" +
             $"Nights survived: {runState.CurrentNight}\n" +
             $"Days survived: {runState.CurrentDay}";
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/World/WorldProgressBarPresenter.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class WorldProgressBarPresenter : MonoBehaviour
+{
+    [SerializeField] private WorldProgressBarView progressBarView;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
+    [Min(0f)] [SerializeField] private float anchorHeightMultiplier = 0.55f;
+    [SerializeField] private bool anchorBelowTarget;
+    [SerializeField] private Vector3 manualWorldOffset;
+    [SerializeField] private bool matchInverseLossyScale = true;
+    private bool isBound;
+    private void Awake()
+    {
+        EnsureReferences();
+        progressBarView?.SetInactive();
+    }
+    private void LateUpdate()
+    {
+        if (!isBound)
+        {
+            return;
+        }
+        UpdateAnchorTransform();
+    }
+    public void Bind(SpriteRenderer ownerRenderer = null)
+    {
+        EnsureReferences();
+        if (ownerRenderer != null)
+        {
+            targetRenderer = ownerRenderer;
+        }
+        if (progressBarView == null || targetRenderer == null)
+        {
+            isBound = false;
+            progressBarView?.SetInactive();
+            return;
+        }
+        progressBarView.Bind(targetRenderer);
+        isBound = true;
+        UpdateAnchorTransform();
+    }
+    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
+    {
+        if (!isBound)
+        {
+            Bind(targetRenderer);
+        }
+        progressBarView?.Refresh(normalizedProgress, useCountdownFill, isVisible);
+    }
+    public void SetInactive()
+    {
+        progressBarView?.SetInactive();
+    }
+    private void EnsureReferences()
+    {
+        if (progressBarView == null)
+        {
+            progressBarView = GetComponent<WorldProgressBarView>();
+        }
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponentInParent<SpriteRenderer>();
+        }
+    }
+    private void UpdateAnchorTransform()
+    {
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        var spriteHeight = targetRenderer.bounds.size.y > 0f ? targetRenderer.bounds.size.y : 0.4f;
+        var verticalOffset = spriteHeight * Mathf.Max(0f, anchorHeightMultiplier) + Mathf.Max(0f, barVerticalPadding);
+        if (anchorBelowTarget)
+        {
+            verticalOffset *= -1f;
+        }
+        transform.position = targetRenderer.transform.position + Vector3.up * verticalOffset + manualWorldOffset;
+        transform.rotation = Quaternion.identity;
+        if (!matchInverseLossyScale)
+        {
+            return;
+        }
+        var lossyScale = targetRenderer.transform.lossyScale;
+        transform.localScale = new Vector3(
+            1f / Mathf.Max(0.0001f, lossyScale.x),
+            1f / Mathf.Max(0.0001f, lossyScale.y),
+            1f / Mathf.Max(0.0001f, lossyScale.z));
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/World/WorldProgressBarView.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class WorldProgressBarView : MonoBehaviour
+{
+    private static Sprite runtimeBarSprite;
+    [SerializeField] private SpriteRenderer backgroundRenderer;
+    [SerializeField] private SpriteRenderer fillRenderer;
+    [SerializeField] private Color backgroundColor = new(0f, 0f, 0f, 0.75f);
+    [SerializeField] private Color fillColor = new(0.95f, 0.88f, 0.35f, 1f);
+    [Min(0)] [SerializeField] private int sortingOffset = 10;
+    private Vector3 initialFillLocalScale;
+    private Vector3 initialFillLocalPosition;
+    private SpriteRenderer ownerRenderer;
+    private bool isBound;
+    private bool isInitialized;
+    private void Awake()
+    {
+        EnsureInitialized();
+        SetInactive();
+    }
+    private void LateUpdate()
+    {
+        if (!isBound || ownerRenderer == null)
+        {
+            return;
+        }
+        ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+        ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
+    }
+    public void Bind(SpriteRenderer ownerRenderer)
+    {
+        EnsureInitialized();
+        this.ownerRenderer = ownerRenderer;
+        isBound = ownerRenderer != null;
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.color = backgroundColor;
+            ApplySorting(backgroundRenderer, ownerRenderer, sortingOffset);
+        }
+        if (fillRenderer != null)
+        {
+            fillRenderer.color = fillColor;
+            ApplySorting(fillRenderer, ownerRenderer, sortingOffset + 1);
+        }
+        SetInactive();
+    }
+    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
+    {
+        EnsureInitialized();
+        if (!isBound || fillRenderer == null)
+        {
+            SetInactive();
+            return;
+        }
+        if (!isVisible)
+        {
+            SetInactive();
+            return;
+        }
+        var clampedProgress = Mathf.Clamp01(normalizedProgress);
+        var fillNormalized = useCountdownFill ? 1f - clampedProgress : clampedProgress;
+        fillNormalized = Mathf.Clamp01(fillNormalized);
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.enabled = true;
+        }
+        fillRenderer.enabled = fillNormalized > 0f;
+        if (!fillRenderer.enabled)
+        {
+            return;
+        }
+        var updatedScale = initialFillLocalScale;
+        updatedScale.x = initialFillLocalScale.x * fillNormalized;
+        fillRenderer.transform.localScale = updatedScale;
+        var initialLeftEdge = initialFillLocalPosition.x - (initialFillLocalScale.x * 0.5f);
+        var updatedPosition = initialFillLocalPosition;
+        updatedPosition.x = initialLeftEdge + (updatedScale.x * 0.5f);
+        fillRenderer.transform.localPosition = updatedPosition;
+    }
+    public void SetInactive()
+    {
+        EnsureInitialized();
+        if (backgroundRenderer != null)
+        {
+            backgroundRenderer.enabled = false;
+        }
+        if (fillRenderer != null)
+        {
+            fillRenderer.enabled = false;
+            fillRenderer.transform.localScale = initialFillLocalScale;
+            fillRenderer.transform.localPosition = initialFillLocalPosition;
+        }
+    }
+    private void EnsureInitialized()
+    {
+        if (isInitialized)
+        {
+            return;
+        }
+        EnsureBarSprite(backgroundRenderer);
+        EnsureBarSprite(fillRenderer);
+        if (fillRenderer != null)
+        {
+            initialFillLocalScale = fillRenderer.transform.localScale;
+            initialFillLocalPosition = fillRenderer.transform.localPosition;
+        }
+        isInitialized = true;
+    }
+    private void EnsureBarSprite(SpriteRenderer renderer)
+    {
+        if (renderer == null || renderer.sprite != null)
+        {
+            return;
+        }
+        renderer.sprite = GetRuntimeBarSprite();
+        renderer.flipX = false;
+        renderer.flipY = false;
+    }
+    private static void ApplySorting(SpriteRenderer renderer, SpriteRenderer ownerRenderer, int offset)
+    {
+        if (renderer == null || ownerRenderer == null)
+        {
+            return;
+        }
+        renderer.sortingLayerID = ownerRenderer.sortingLayerID;
+        renderer.sortingOrder = ownerRenderer.sortingOrder + offset;
+    }
+    private static Sprite GetRuntimeBarSprite()
+    {
+        if (runtimeBarSprite != null)
+        {
+            return runtimeBarSprite;
+        }
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply();
+        runtimeBarSprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, 1f, 1f),
+            new Vector2(0.5f, 0.5f),
+            1f);
+        return runtimeBarSprite;
     }
 }
 </file>
@@ -4134,16 +3697,44 @@ public class TextPopupInstance : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs">
-public enum BellRingFailureReason
+<file path="Assets/Game/Code/Gameplay/Bell/BellRingResult.cs">
+public class BellRingResult
 {
-    None,
-    WrongPhase,
-    NotAtBellPoint,
-    OnCooldown,
-    BellNotFound,
-    UnitNotFound,
-    NotEnoughFaith
+    public bool IsSuccess;
+    public BellRingFailureReason FailureReason;
+    public float CooldownRemainingSeconds;
+    public BellDef BellDef;
+    public UnitDef UnitDef;
+    public UnitSpawnResult SpawnResult;
+    public static BellRingResult Success(BellDef bellDef, UnitDef unitDef)
+    {
+        return new BellRingResult
+        {
+            IsSuccess = true,
+            FailureReason = BellRingFailureReason.None,
+            BellDef = bellDef,
+            UnitDef = unitDef
+        };
+    }
+    public static BellRingResult Failure(BellRingFailureReason failureReason)
+    {
+        return new BellRingResult
+        {
+            IsSuccess = false,
+            FailureReason = failureReason,
+            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
+        };
+    }
+    public static BellRingResult Failure(BellRingFailureReason failureReason, float cooldownRemainingSeconds)
+    {
+        return new BellRingResult
+        {
+            IsSuccess = false,
+            FailureReason = failureReason,
+            CooldownRemainingSeconds = cooldownRemainingSeconds,
+            SpawnResult = UnitSpawnResult.Failure(UnitSpawnFailureReason.NotRequested)
+        };
+    }
 }
 </file>
 
@@ -4185,6 +3776,24 @@ public class BellSystem
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
+public class BellDef : ContentDef
+{
+    [SerializeField] private string displayName;
+    [SerializeField] private int faithCost;
+    [Min(0f)] [SerializeField] private float cooldownSeconds;
+    [SerializeField] private string linkedUnitId;
+    [SerializeField] private Sprite icon;
+    public string DisplayName => displayName;
+    public int FaithCost => faithCost;
+    public float CooldownSeconds => Mathf.Max(0f, cooldownSeconds);
+    public string LinkedUnitId => linkedUnitId;
+    public Sprite Icon => icon;
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
 using UnityEngine;
 [CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
@@ -4202,6 +3811,64 @@ public class UnitDef : ContentDef
     public float MoveSpeed => moveSpeed;
     public float LifetimeSeconds => lifetimeSeconds;
     public GameObject ViewPrefab => viewPrefab;
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs">
+using UnityEngine;
+public class FaithCollectionSystem
+{
+    public void StartNight(RunState runState)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        runState.Faith = Mathf.Max(0, runState.StartingNightFaith);
+        runState.FaithCollectionTimerProgress = 0f;
+    }
+    public void EndNight(RunState runState)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        runState.Faith = 0;
+        runState.FaithCollectionTimerProgress = 0f;
+    }
+    public int UpdateCollection(RunState runState, float deltaTime)
+    {
+        if (runState == null || runState.CurrentPhase != GamePhase.Night || deltaTime <= 0f)
+        {
+            return 0;
+        }
+        if (runState.Keeper == null ||
+            runState.Keeper.ActivityState == KeeperActivityState.Moving ||
+            runState.Keeper.InteractionState != KeeperInteractionState.FaithPoint)
+        {
+            return 0;
+        }
+        var payoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
+        var collectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
+        if (payoutAmount <= 0 || collectionIntervalSeconds <= 0f)
+        {
+            return 0;
+        }
+        runState.FaithCollectionTimerProgress += deltaTime;
+        if (runState.FaithCollectionTimerProgress < collectionIntervalSeconds)
+        {
+            return 0;
+        }
+        var completedPayoutCycles = Mathf.FloorToInt(runState.FaithCollectionTimerProgress / collectionIntervalSeconds);
+        if (completedPayoutCycles <= 0)
+        {
+            return 0;
+        }
+        var collectedFaith = completedPayoutCycles * payoutAmount;
+        runState.FaithCollectionTimerProgress -= completedPayoutCycles * collectionIntervalSeconds;
+        runState.Faith += collectedFaith;
+        return collectedFaith;
+    }
 }
 </file>
 
@@ -4314,6 +3981,778 @@ public class CombatHpBarView : MonoBehaviour
             1f);
         return runtimeBarSprite;
     }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
+using System.Collections;
+using UnityEngine;
+[DisallowMultipleComponent]
+public class LaneCombatFeedbackView : MonoBehaviour
+{
+    private static readonly Color AllyHitFlashColor = new(1f, 0.45f, 0.45f, 1f);
+    private static readonly Color EnemyHitFlashColor = Color.white;
+    [SerializeField] private CombatHpBarView hpBarPrefab;
+    [SerializeField] private WorldProgressBarPresenter lifetimeProgressPresenter;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+    [Min(0f)] [SerializeField] private float hitFlashDuration = 0.08f;
+    private CombatHpBarView hpBarInstance;
+    private Coroutine flashCoroutine;
+    private Color baseSpriteColor = Color.white;
+    private Color hitFlashColor = Color.white;
+    private float popupOffsetY;
+    private bool isBound;
+    private LaneUnit boundLaneUnit;
+    private void Awake()
+    {
+        EnsureTargetRenderer();
+    }
+    private void LateUpdate()
+    {
+        RefreshLifetimeProgressPresentation();
+    }
+    private void OnDisable()
+    {
+        Cleanup();
+    }
+    private void OnDestroy()
+    {
+        Cleanup();
+    }
+    public void Bind(int maxHp, bool isEnemy)
+    {
+        EnsureTargetRenderer();
+        baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
+        hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
+        boundLaneUnit = isEnemy ? null : GetComponent<LaneUnit>();
+        var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
+        popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
+        var barOffsetY = spriteHeight * 0.55f + barVerticalPadding;
+        EnsureHpBarInstance(barOffsetY);
+        hpBarInstance?.Bind(maxHp, isEnemy, targetRenderer);
+        hpBarInstance?.Refresh(maxHp);
+        lifetimeProgressPresenter?.Bind(targetRenderer);
+        isBound = true;
+        RefreshLifetimeProgressPresentation();
+    }
+    public void PlayDamageFeedback(int damage, int currentHp)
+    {
+        if (!isBound || damage <= 0)
+        {
+            return;
+        }
+        hpBarInstance?.Refresh(currentHp);
+        Popups.DamageAbove(transform, popupOffsetY, damage);
+        PlayHitFlash();
+    }
+    public void Cleanup()
+    {
+        isBound = false;
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+            flashCoroutine = null;
+        }
+        if (targetRenderer != null)
+        {
+            targetRenderer.color = baseSpriteColor;
+        }
+        if (hpBarInstance != null)
+        {
+            Destroy(hpBarInstance.gameObject);
+            hpBarInstance = null;
+        }
+        lifetimeProgressPresenter?.SetInactive();
+        boundLaneUnit = null;
+    }
+    private void PlayHitFlash()
+    {
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+        }
+        flashCoroutine = StartCoroutine(HitFlashRoutine());
+    }
+    private IEnumerator HitFlashRoutine()
+    {
+        targetRenderer.color = hitFlashColor;
+        yield return new WaitForSeconds(hitFlashDuration);
+        targetRenderer.color = baseSpriteColor;
+        flashCoroutine = null;
+    }
+    private void EnsureHpBarInstance(float barOffsetY)
+    {
+        if (hpBarInstance == null)
+        {
+            if (hpBarPrefab == null)
+            {
+                Debug.LogWarning("LaneCombatFeedbackView: hpBarPrefab is not assigned");
+                return;
+            }
+            hpBarInstance = Instantiate(hpBarPrefab, transform);
+        }
+        var hpBarTransform = hpBarInstance.transform;
+        hpBarTransform.localRotation = Quaternion.identity;
+        hpBarTransform.localScale = GetInverseLossyScale();
+        hpBarTransform.localPosition = transform.InverseTransformPoint(transform.position + Vector3.up * barOffsetY);
+    }
+    private void EnsureTargetRenderer()
+    {
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+    }
+    private Vector3 GetInverseLossyScale()
+    {
+        var lossyScale = transform.lossyScale;
+        return new Vector3(
+            1f / Mathf.Max(0.0001f, lossyScale.x),
+            1f / Mathf.Max(0.0001f, lossyScale.y),
+            1f / Mathf.Max(0.0001f, lossyScale.z));
+    }
+    private void RefreshLifetimeProgressPresentation()
+    {
+        if (lifetimeProgressPresenter == null)
+        {
+            return;
+        }
+        if (!isBound || boundLaneUnit == null || !boundLaneUnit.HasLimitedLifetime)
+        {
+            lifetimeProgressPresenter.SetInactive();
+            return;
+        }
+        lifetimeProgressPresenter.Refresh(boundLaneUnit.LifetimeProgressNormalized, true, true);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
+using UnityEngine;
+public class SingleLaneEnemySpawner
+{
+    public EnemySpawnResult TrySpawnEnemy(EnemyDef enemyDef, SingleLaneHost laneHost)
+    {
+        if (laneHost == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
+        }
+        if (laneHost.EnemySpawnPoint == null || laneHost.EnemyForwardTarget == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
+        }
+        if (enemyDef == null || enemyDef.ViewPrefab == null)
+        {
+            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
+        }
+        var spawnPosition = laneHost.EnemySpawnPoint.position;
+        if (laneHost.EnemySpawnSpreadRadius > 0f)
+        {
+            var angle = Random.value * Mathf.PI * 2f;
+            var radius = Mathf.Sqrt(Random.value) * laneHost.EnemySpawnSpreadRadius;
+            var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
+            spawnPosition += offset;
+        }
+        var spawnedGameObject = Object.Instantiate(
+            enemyDef.ViewPrefab,
+            spawnPosition,
+            laneHost.EnemySpawnPoint.rotation);
+        var laneEnemy = spawnedGameObject.GetComponent<LaneEnemy>();
+        if (laneEnemy == null)
+        {
+            laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
+        }
+        var forwardTargetPosition = laneHost.EnemyForwardTarget.position;
+        var breakthroughPoint = laneHost.EnemyBreakthroughPoint;
+        if (breakthroughPoint != null)
+        {
+            var spawnX = laneHost.EnemySpawnPoint.position.x;
+            var targetX = forwardTargetPosition.x;
+            var breakthroughX = breakthroughPoint.position.x;
+            var movesLeft = breakthroughX < spawnX;
+            var targetStopsBeforeBreakthrough = movesLeft
+                ? targetX > breakthroughX
+                : targetX < breakthroughX;
+            if (targetStopsBeforeBreakthrough)
+            {
+                Debug.LogWarning(
+                    "EnemyForwardTarget stops before EnemyBreakthroughPoint. Falling back to breakthrough point.");
+                forwardTargetPosition = breakthroughPoint.position;
+            }
+        }
+        laneEnemy.Initialize(enemyDef, forwardTargetPosition);
+        return EnemySpawnResult.Success(laneEnemy);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string id;
+    [SerializeField] private NightPoiType type;
+    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private NightPoiProgressView progressView;
+    public string Id => id;
+    public NightPoiType Type => type;
+    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
+    private void Awake()
+    {
+        if (progressView == null)
+        {
+            progressView = GetComponentInChildren<NightPoiProgressView>();
+        }
+        progressView?.Bind(this);
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
+    {
+        var interactionRadiusValue = InteractionRadius;
+        if (interactionRadiusValue <= 0f)
+        {
+            return false;
+        }
+        return Vector2.Distance(GetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        if (InteractionRadius <= 0f)
+        {
+            validationError = "invalid interaction radius";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+        {
+            return;
+        }
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
+            return;
+        }
+        G.main.TryMoveKeeperToPoi(id);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardSystem.cs">
+public class DayRewardSystem
+{
+    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int goldReward)
+    {
+        return CreateReward(completedNightIndex, 0, goldReward);
+    }
+    public void ApplyReward(RunState runState, DayRewardData reward)
+    {
+        if (runState == null || reward == null)
+        {
+            return;
+        }
+        var faithReward = reward.FaithReward < 0 ? 0 : reward.FaithReward;
+        var goldReward = reward.GoldReward < 0 ? 0 : reward.GoldReward;
+        runState.Faith += faithReward;
+        runState.Gold += goldReward;
+        runState.LastDayReward = new DayRewardData
+        {
+            SourceNightIndex = reward.SourceNightIndex,
+            FaithReward = faithReward,
+            GoldReward = goldReward
+        };
+    }
+    private DayRewardData CreateReward(int sourceNightIndex, int faithReward, int goldReward)
+    {
+        return new DayRewardData
+        {
+            SourceNightIndex = sourceNightIndex,
+            FaithReward = faithReward,
+            GoldReward = goldReward
+        };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Runtime/GamePhase.cs">
+public enum GamePhase
+{
+    Day,
+    Night,
+    Transition,
+    Defeat,
+    Win
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Wave/WaveSystem.cs">
+using System.Collections.Generic;
+public class WaveSystem
+{
+    private readonly List<NightWaveEntry> activeEntries = new();
+    private float elapsedTime;
+    private float durationSeconds;
+    private int nextWaveIndex;
+    private bool isRunning;
+    public bool IsRunning => isRunning;
+    public bool AreAllSpawnsIssued => !isRunning || nextWaveIndex >= activeEntries.Count;
+    public float ElapsedTime => elapsedTime;
+    public float DurationSeconds => durationSeconds;
+    public bool HasUpcomingWave => isRunning && nextWaveIndex < activeEntries.Count;
+    public float NextWaveTriggerTime => HasUpcomingWave ? activeEntries[nextWaveIndex].TriggerTime : durationSeconds;
+    public float PreviousWaveTriggerTime => nextWaveIndex <= 0 ? 0f : activeEntries[nextWaveIndex - 1].TriggerTime;
+    public void StartWave(NightDefinition nightDefinition)
+    {
+        activeEntries.Clear();
+        elapsedTime = 0f;
+        durationSeconds = 0f;
+        nextWaveIndex = 0;
+        isRunning = nightDefinition != null;
+        if (nightDefinition == null)
+        {
+            return;
+        }
+        durationSeconds = nightDefinition.DurationSeconds;
+        var entries = nightDefinition.WaveEntries;
+        if (entries == null)
+        {
+            return;
+        }
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry == null)
+            {
+                continue;
+            }
+            if (durationSeconds > 0f && entry.TriggerTime > durationSeconds)
+            {
+                continue;
+            }
+            activeEntries.Add(entry);
+        }
+        activeEntries.Sort((a, b) => a.TriggerTime.CompareTo(b.TriggerTime));
+    }
+    public void StopWave()
+    {
+        isRunning = false;
+        elapsedTime = 0f;
+        durationSeconds = 0f;
+        nextWaveIndex = 0;
+        activeEntries.Clear();
+    }
+    public void CollectReadySpawns(float deltaTime, List<string> readyEnemyIds)
+    {
+        if (!isRunning || readyEnemyIds == null)
+        {
+            return;
+        }
+        elapsedTime += deltaTime;
+        while (nextWaveIndex < activeEntries.Count)
+        {
+            var nextEntry = activeEntries[nextWaveIndex];
+            if (nextEntry.TriggerTime > elapsedTime)
+            {
+                break;
+            }
+            AppendReadySpawns(nextEntry, readyEnemyIds);
+            nextWaveIndex++;
+        }
+    }
+    private static void AppendReadySpawns(NightWaveEntry waveEntry, List<string> readyEnemyIds)
+    {
+        if (waveEntry?.Spawns == null || readyEnemyIds == null)
+        {
+            return;
+        }
+        for (var i = 0; i < waveEntry.Spawns.Count; i++)
+        {
+            var spawnEntry = waveEntry.Spawns[i];
+            if (spawnEntry == null || string.IsNullOrWhiteSpace(spawnEntry.EnemyId) || spawnEntry.Count <= 0)
+            {
+                continue;
+            }
+            for (var spawnIndex = 0; spawnIndex < spawnEntry.Count; spawnIndex++)
+            {
+                readyEnemyIds.Add(spawnEntry.EnemyId);
+            }
+        }
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Service/ServiceMain.cs">
+using UnityEngine;
+public class ServiceMain : MonoBehaviour
+{
+    public static bool isInitialized { get; private set; }
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void GameEntryPoint()
+    {
+        if (isInitialized) return;
+        GameObject servicesGo = new GameObject("===Services===");
+        DontDestroyOnLoad(servicesGo);
+        servicesGo.AddComponent<ServiceMain>();
+        isInitialized = true;
+    }
+    private void Awake()
+    {
+        if (G.ServiceMain != null && G.ServiceMain != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        G.ServiceMain = this;
+        Debug.Log("=========================");
+        Debug.Log("Game EntryPoint");
+        G.audioSystem = gameObject.AddComponent<AudioSystem>();
+        AnalyticsSystem.Init();
+        CMS.Init();
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/DayScreenView.cs">
+using System;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+[DisallowMultipleComponent]
+public class DayScreenView : MonoBehaviour
+{
+    private const float UpgradeItemSpacing = 12f;
+    [SerializeField] private TMP_Text summaryText;
+    [SerializeField] private RectTransform upgradeItemsContainer;
+    [SerializeField] private DayUpgradeItemView upgradeItemTemplate;
+    [SerializeField] private Button startNightButton;
+    public event Action StartNightRequested;
+    public event Action<string> UpgradePurchaseRequested;
+    private bool isInitialized;
+    private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
+    private void Awake()
+    {
+        EnsureInitialized();
+    }
+    private void OnDestroy()
+    {
+        if (!isInitialized || startNightButton == null)
+        {
+            ClearUpgradeItems();
+            return;
+        }
+        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
+        isInitialized = false;
+        ClearUpgradeItems();
+    }
+    public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        EnsureInitialized();
+        gameObject.SetActive(true);
+        Refresh(runState, upgradeItems);
+    }
+    public void Hide()
+    {
+        gameObject.SetActive(false);
+    }
+    public void Refresh(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        if (summaryText != null)
+        {
+            summaryText.text = BuildSummary(runState);
+        }
+        if (startNightButton != null)
+        {
+            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
+        }
+        RebuildUpgradeItems(upgradeItems);
+    }
+    private void EnsureInitialized()
+    {
+        if (upgradeItemTemplate != null)
+        {
+            upgradeItemTemplate.gameObject.SetActive(false);
+        }
+        if (isInitialized || startNightButton == null)
+        {
+            return;
+        }
+        startNightButton.onClick.AddListener(HandleStartNightPressed);
+        isInitialized = true;
+    }
+    private void HandleStartNightPressed()
+    {
+        StartNightRequested?.Invoke();
+    }
+    private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
+    {
+        ClearUpgradeItems();
+        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
+        {
+            return;
+        }
+        var templateRect = upgradeItemTemplate.transform as RectTransform;
+        if (templateRect == null)
+        {
+            return;
+        }
+        var itemStep = templateRect.sizeDelta.y + UpgradeItemSpacing;
+        for (var i = 0; i < upgradeItems.Count; i++)
+        {
+            var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
+            var itemRect = itemView.transform as RectTransform;
+            if (itemRect != null)
+            {
+                itemRect.anchorMin = templateRect.anchorMin;
+                itemRect.anchorMax = templateRect.anchorMax;
+                itemRect.pivot = templateRect.pivot;
+                itemRect.sizeDelta = templateRect.sizeDelta;
+                itemRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, itemStep * i);
+            }
+            itemView.gameObject.name = $"UpgradeItem_{i}";
+            itemView.BuyRequested -= HandleUpgradeBuyRequested;
+            itemView.BuyRequested += HandleUpgradeBuyRequested;
+            itemView.Bind(upgradeItems[i]);
+            itemView.gameObject.SetActive(true);
+            spawnedUpgradeItems.Add(itemView);
+        }
+    }
+    private void ClearUpgradeItems()
+    {
+        for (var i = 0; i < spawnedUpgradeItems.Count; i++)
+        {
+            var itemView = spawnedUpgradeItems[i];
+            if (itemView == null)
+            {
+                continue;
+            }
+            itemView.BuyRequested -= HandleUpgradeBuyRequested;
+            itemView.gameObject.SetActive(false);
+            Destroy(itemView.gameObject);
+        }
+        spawnedUpgradeItems.Clear();
+    }
+    private void HandleUpgradeBuyRequested(string upgradeId)
+    {
+        UpgradePurchaseRequested?.Invoke(upgradeId);
+    }
+    private string BuildSummary(RunState runState)
+    {
+        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
+        {
+            return
+                $"Day {runState.CurrentDay}\n" +
+                "The cemetery is quiet.\n" +
+                $"Faith: {runState.Faith}\n" +
+                $"Gold: {runState.Gold}\n" +
+                $"Cemetery: {runState.CemeteryState}";
+        }
+        return
+            $"Day {runState.CurrentDay}\n" +
+            $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
+            $"Reward: {BuildRewardSummary(runState.LastDayReward)}\n" +
+            $"Faith: {runState.Faith}\n" +
+            $"Gold: {runState.Gold}\n" +
+            $"Cemetery: {runState.CemeteryState}";
+    }
+    private static string BuildRewardSummary(DayRewardData reward)
+    {
+        if (reward == null || !reward.HasAnyReward)
+        {
+            return "none";
+        }
+        if (reward.FaithReward > 0 && reward.GoldReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
+        }
+        if (reward.FaithReward > 0)
+        {
+            return $"+{reward.FaithReward} Faith";
+        }
+        return $"+{reward.GoldReward} Gold";
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/ScreenFader.cs">
+using System;
+using System.Collections;
+using DG.Tweening;
+using UnityEngine;
+using UnityEngine.UI;
+public class ScreenFader : MonoBehaviour
+{
+    [SerializeField] private Image fadeImage;
+    [SerializeField] private float fadeTime = 0.5f;
+    public float FadeTime => fadeTime;
+    private Sequence currentSequence;
+    private void OnValidate()
+    {
+        if (fadeImage == null) fadeImage = GetComponent<Image>();
+        else if (fadeImage != null)
+        {
+            Color panelColor = Color.black;
+            panelColor.a = 0f;
+            fadeImage.color = panelColor;
+        }
+    }
+    private void Awake()
+    {
+        if (G.ScreenFader != null && G.ScreenFader != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        DontDestroyOnLoad(gameObject);
+        G.ScreenFader = this;
+        fadeImage.gameObject.SetActive(false);
+    }
+    public void FadeIn(float time = 0f, Action onComplete = null)
+    {
+        if (time == 0) time = fadeTime;
+        KillCurrentSequence();
+        fadeImage.gameObject.SetActive(true);
+        currentSequence = DOTween.Sequence();
+        currentSequence.SetUpdate(true);
+        Color startColor = fadeImage.color;
+        startColor.a = 0f;
+        fadeImage.color = startColor;
+        currentSequence.Append(fadeImage.DOFade(1f, time).SetEase(Ease.InOutSine));
+        if (onComplete != null)
+        {
+            currentSequence.OnComplete(() => onComplete.Invoke());
+        }
+    }
+    public void FadeOut(float time = 0f, Action onComplete = null)
+    {
+        if (time == 0) time = fadeTime;
+        KillCurrentSequence();
+        fadeImage.gameObject.SetActive(true);
+        currentSequence = DOTween.Sequence();
+        currentSequence.SetUpdate(true);
+        Color startColor = fadeImage.color;
+        startColor.a = 1f;
+        fadeImage.color = startColor;
+        currentSequence.Append(fadeImage.DOFade(0f, time).SetEase(Ease.InOutSine));
+        if (onComplete != null)
+        {
+            currentSequence.OnComplete(() =>
+            {
+                fadeImage.gameObject.SetActive(false);
+                onComplete.Invoke();
+            });
+        }
+        else
+        {
+            currentSequence.OnComplete(() => { fadeImage.gameObject.SetActive(false); });
+        }
+    }
+    public void FadeOutCustom(Image screen, float time = 0f, Action onComplete = null)
+    {
+        if (time == 0) time = fadeTime;
+        KillCurrentSequence();
+        screen.gameObject.SetActive(true);
+        currentSequence = DOTween.Sequence();
+        currentSequence.SetUpdate(true);
+        Color startColor = screen.color;
+        startColor.a = 1f;
+        screen.color = startColor;
+        currentSequence.Append(screen.DOFade(0f, time).SetEase(Ease.InOutSine));
+        if (onComplete != null)
+        {
+            currentSequence.OnComplete(() =>
+            {
+                screen.gameObject.SetActive(false);
+                onComplete.Invoke();
+            });
+        }
+        else
+        {
+            currentSequence.OnComplete(() => { screen.gameObject.SetActive(false); });
+        }
+    }
+    public void TransitionFade(float time = 0f, Action action = null)
+    {
+        FadeIn(time, () =>
+        {
+            action?.Invoke();
+            FadeOut();
+        });
+    }
+    private void KillCurrentSequence()
+    {
+        if (currentSequence != null && currentSequence.IsActive())
+        {
+            currentSequence.Kill();
+            currentSequence = null;
+        }
+    }
+    public void StartLevelTransition()
+    {
+        if (currentSequence != null) return;
+        StartCoroutine(LevelTransition());
+    }
+    public IEnumerator LevelTransition()
+    {
+        G.ScreenFader.FadeIn(1f);
+        yield return new WaitForSeconds(0.5f);
+        G.audioSystem.Play(SoundId.SFX_LevelTransition);
+        yield return new WaitForSeconds(1f);
+        G.ScreenFader.FadeOut(1f);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/UI.cs">
+using UnityEngine;
+public class UI : MonoBehaviour
+{
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs">
+public enum BellRingFailureReason
+{
+    None,
+    WrongPhase,
+    NotAtBellPoint,
+    OnCooldown,
+    BellNotFound,
+    UnitNotFound,
+    NotEnoughFaith
 }
 </file>
 
@@ -4810,112 +5249,6 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
-using UnityEngine;
-public class SingleLaneEnemySpawner
-{
-    public EnemySpawnResult TrySpawnEnemy(EnemyDef enemyDef, SingleLaneHost laneHost)
-    {
-        if (laneHost == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
-        }
-        if (laneHost.EnemySpawnPoint == null || laneHost.EnemyForwardTarget == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
-        }
-        if (enemyDef == null || enemyDef.ViewPrefab == null)
-        {
-            return EnemySpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
-        }
-        var spawnPosition = laneHost.EnemySpawnPoint.position;
-        if (laneHost.EnemySpawnSpreadRadius > 0f)
-        {
-            var angle = Random.value * Mathf.PI * 2f;
-            var radius = Mathf.Sqrt(Random.value) * laneHost.EnemySpawnSpreadRadius;
-            var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
-            spawnPosition += offset;
-        }
-        var spawnedGameObject = Object.Instantiate(
-            enemyDef.ViewPrefab,
-            spawnPosition,
-            laneHost.EnemySpawnPoint.rotation);
-        var laneEnemy = spawnedGameObject.GetComponent<LaneEnemy>();
-        if (laneEnemy == null)
-        {
-            laneEnemy = spawnedGameObject.AddComponent<LaneEnemy>();
-        }
-        var forwardTargetPosition = laneHost.EnemyForwardTarget.position;
-        var breakthroughPoint = laneHost.EnemyBreakthroughPoint;
-        if (breakthroughPoint != null)
-        {
-            var spawnX = laneHost.EnemySpawnPoint.position.x;
-            var targetX = forwardTargetPosition.x;
-            var breakthroughX = breakthroughPoint.position.x;
-            var movesLeft = breakthroughX < spawnX;
-            var targetStopsBeforeBreakthrough = movesLeft
-                ? targetX > breakthroughX
-                : targetX < breakthroughX;
-            if (targetStopsBeforeBreakthrough)
-            {
-                Debug.LogWarning(
-                    "EnemyForwardTarget stops before EnemyBreakthroughPoint. Falling back to breakthrough point.");
-                forwardTargetPosition = breakthroughPoint.position;
-            }
-        }
-        laneEnemy.Initialize(enemyDef, forwardTargetPosition);
-        return EnemySpawnResult.Success(laneEnemy);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/DayRewardSystem.cs">
-public class DayRewardSystem
-{
-    public DayRewardData CreateCompletedNightReward(int completedNightIndex, int goldReward)
-    {
-        return CreateReward(completedNightIndex, 0, goldReward);
-    }
-    public void ApplyReward(RunState runState, DayRewardData reward)
-    {
-        if (runState == null || reward == null)
-        {
-            return;
-        }
-        var faithReward = reward.FaithReward < 0 ? 0 : reward.FaithReward;
-        var goldReward = reward.GoldReward < 0 ? 0 : reward.GoldReward;
-        runState.Faith += faithReward;
-        runState.Gold += goldReward;
-        runState.LastDayReward = new DayRewardData
-        {
-            SourceNightIndex = reward.SourceNightIndex,
-            FaithReward = faithReward,
-            GoldReward = goldReward
-        };
-    }
-    private DayRewardData CreateReward(int sourceNightIndex, int faithReward, int goldReward)
-    {
-        return new DayRewardData
-        {
-            SourceNightIndex = sourceNightIndex,
-            FaithReward = faithReward,
-            GoldReward = goldReward
-        };
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/GamePhase.cs">
-public enum GamePhase
-{
-    Day,
-    Night,
-    Transition,
-    Defeat,
-    Win
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
 using System.Collections.Generic;
 using UnityEngine;
@@ -4991,339 +5324,6 @@ public class UpgradeSystem
         runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
         runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
     }
-}
-</file>
-
-<file path="Assets/Game/Code/Service/ServiceMain.cs">
-using UnityEngine;
-public class ServiceMain : MonoBehaviour
-{
-    public static bool isInitialized { get; private set; }
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    static void GameEntryPoint()
-    {
-        if (isInitialized) return;
-        GameObject servicesGo = new GameObject("===Services===");
-        DontDestroyOnLoad(servicesGo);
-        servicesGo.AddComponent<ServiceMain>();
-        isInitialized = true;
-    }
-    private void Awake()
-    {
-        if (G.ServiceMain != null && G.ServiceMain != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        G.ServiceMain = this;
-        Debug.Log("=========================");
-        Debug.Log("Game EntryPoint");
-        G.audioSystem = gameObject.AddComponent<AudioSystem>();
-        AnalyticsSystem.Init();
-        CMS.Init();
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/DayScreenView.cs">
-using System;
-using System.Collections.Generic;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-[DisallowMultipleComponent]
-public class DayScreenView : MonoBehaviour
-{
-    private const float UpgradeItemSpacing = 12f;
-    [SerializeField] private TMP_Text summaryText;
-    [SerializeField] private RectTransform upgradeItemsContainer;
-    [SerializeField] private DayUpgradeItemView upgradeItemTemplate;
-    [SerializeField] private Button startNightButton;
-    public event Action StartNightRequested;
-    public event Action<string> UpgradePurchaseRequested;
-    private bool isInitialized;
-    private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
-    private void Awake()
-    {
-        EnsureInitialized();
-    }
-    private void OnDestroy()
-    {
-        if (!isInitialized || startNightButton == null)
-        {
-            ClearUpgradeItems();
-            return;
-        }
-        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
-        isInitialized = false;
-        ClearUpgradeItems();
-    }
-    public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
-    {
-        EnsureInitialized();
-        gameObject.SetActive(true);
-        Refresh(runState, upgradeItems);
-    }
-    public void Hide()
-    {
-        gameObject.SetActive(false);
-    }
-    public void Refresh(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
-    {
-        if (runState == null)
-        {
-            return;
-        }
-        if (summaryText != null)
-        {
-            summaryText.text = BuildSummary(runState);
-        }
-        if (startNightButton != null)
-        {
-            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
-        }
-        RebuildUpgradeItems(upgradeItems);
-    }
-    private void EnsureInitialized()
-    {
-        if (upgradeItemTemplate != null)
-        {
-            upgradeItemTemplate.gameObject.SetActive(false);
-        }
-        if (isInitialized || startNightButton == null)
-        {
-            return;
-        }
-        startNightButton.onClick.AddListener(HandleStartNightPressed);
-        isInitialized = true;
-    }
-    private void HandleStartNightPressed()
-    {
-        StartNightRequested?.Invoke();
-    }
-    private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
-    {
-        ClearUpgradeItems();
-        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
-        {
-            return;
-        }
-        var templateRect = upgradeItemTemplate.transform as RectTransform;
-        if (templateRect == null)
-        {
-            return;
-        }
-        var itemStep = templateRect.sizeDelta.y + UpgradeItemSpacing;
-        for (var i = 0; i < upgradeItems.Count; i++)
-        {
-            var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
-            var itemRect = itemView.transform as RectTransform;
-            if (itemRect != null)
-            {
-                itemRect.anchorMin = templateRect.anchorMin;
-                itemRect.anchorMax = templateRect.anchorMax;
-                itemRect.pivot = templateRect.pivot;
-                itemRect.sizeDelta = templateRect.sizeDelta;
-                itemRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, itemStep * i);
-            }
-            itemView.gameObject.name = $"UpgradeItem_{i}";
-            itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.BuyRequested += HandleUpgradeBuyRequested;
-            itemView.Bind(upgradeItems[i]);
-            itemView.gameObject.SetActive(true);
-            spawnedUpgradeItems.Add(itemView);
-        }
-    }
-    private void ClearUpgradeItems()
-    {
-        for (var i = 0; i < spawnedUpgradeItems.Count; i++)
-        {
-            var itemView = spawnedUpgradeItems[i];
-            if (itemView == null)
-            {
-                continue;
-            }
-            itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.gameObject.SetActive(false);
-            Destroy(itemView.gameObject);
-        }
-        spawnedUpgradeItems.Clear();
-    }
-    private void HandleUpgradeBuyRequested(string upgradeId)
-    {
-        UpgradePurchaseRequested?.Invoke(upgradeId);
-    }
-    private string BuildSummary(RunState runState)
-    {
-        if (runState.LastDayReward == null || runState.LastDayReward.SourceNightIndex <= 0)
-        {
-            return
-                $"Day {runState.CurrentDay}\n" +
-                "The cemetery is quiet.\n" +
-                $"Faith: {runState.Faith}\n" +
-                $"Gold: {runState.Gold}\n" +
-                $"Cemetery: {runState.CemeteryState}";
-        }
-        return
-            $"Day {runState.CurrentDay}\n" +
-            $"Night {runState.LastDayReward.SourceNightIndex} completed\n" +
-            $"Reward: {BuildRewardSummary(runState.LastDayReward)}\n" +
-            $"Faith: {runState.Faith}\n" +
-            $"Gold: {runState.Gold}\n" +
-            $"Cemetery: {runState.CemeteryState}";
-    }
-    private static string BuildRewardSummary(DayRewardData reward)
-    {
-        if (reward == null || !reward.HasAnyReward)
-        {
-            return "none";
-        }
-        if (reward.FaithReward > 0 && reward.GoldReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
-        }
-        if (reward.FaithReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith";
-        }
-        return $"+{reward.GoldReward} Gold";
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/ScreenFader.cs">
-using System;
-using System.Collections;
-using DG.Tweening;
-using UnityEngine;
-using UnityEngine.UI;
-public class ScreenFader : MonoBehaviour
-{
-    [SerializeField] private Image fadeImage;
-    [SerializeField] private float fadeTime = 0.5f;
-    public float FadeTime => fadeTime;
-    private Sequence currentSequence;
-    private void OnValidate()
-    {
-        if (fadeImage == null) fadeImage = GetComponent<Image>();
-        else if (fadeImage != null)
-        {
-            Color panelColor = Color.black;
-            panelColor.a = 0f;
-            fadeImage.color = panelColor;
-        }
-    }
-    private void Awake()
-    {
-        if (G.ScreenFader != null && G.ScreenFader != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        DontDestroyOnLoad(gameObject);
-        G.ScreenFader = this;
-        fadeImage.gameObject.SetActive(false);
-    }
-    public void FadeIn(float time = 0f, Action onComplete = null)
-    {
-        if (time == 0) time = fadeTime;
-        KillCurrentSequence();
-        fadeImage.gameObject.SetActive(true);
-        currentSequence = DOTween.Sequence();
-        currentSequence.SetUpdate(true);
-        Color startColor = fadeImage.color;
-        startColor.a = 0f;
-        fadeImage.color = startColor;
-        currentSequence.Append(fadeImage.DOFade(1f, time).SetEase(Ease.InOutSine));
-        if (onComplete != null)
-        {
-            currentSequence.OnComplete(() => onComplete.Invoke());
-        }
-    }
-    public void FadeOut(float time = 0f, Action onComplete = null)
-    {
-        if (time == 0) time = fadeTime;
-        KillCurrentSequence();
-        fadeImage.gameObject.SetActive(true);
-        currentSequence = DOTween.Sequence();
-        currentSequence.SetUpdate(true);
-        Color startColor = fadeImage.color;
-        startColor.a = 1f;
-        fadeImage.color = startColor;
-        currentSequence.Append(fadeImage.DOFade(0f, time).SetEase(Ease.InOutSine));
-        if (onComplete != null)
-        {
-            currentSequence.OnComplete(() =>
-            {
-                fadeImage.gameObject.SetActive(false);
-                onComplete.Invoke();
-            });
-        }
-        else
-        {
-            currentSequence.OnComplete(() => { fadeImage.gameObject.SetActive(false); });
-        }
-    }
-    public void FadeOutCustom(Image screen, float time = 0f, Action onComplete = null)
-    {
-        if (time == 0) time = fadeTime;
-        KillCurrentSequence();
-        screen.gameObject.SetActive(true);
-        currentSequence = DOTween.Sequence();
-        currentSequence.SetUpdate(true);
-        Color startColor = screen.color;
-        startColor.a = 1f;
-        screen.color = startColor;
-        currentSequence.Append(screen.DOFade(0f, time).SetEase(Ease.InOutSine));
-        if (onComplete != null)
-        {
-            currentSequence.OnComplete(() =>
-            {
-                screen.gameObject.SetActive(false);
-                onComplete.Invoke();
-            });
-        }
-        else
-        {
-            currentSequence.OnComplete(() => { screen.gameObject.SetActive(false); });
-        }
-    }
-    public void TransitionFade(float time = 0f, Action action = null)
-    {
-        FadeIn(time, () =>
-        {
-            action?.Invoke();
-            FadeOut();
-        });
-    }
-    private void KillCurrentSequence()
-    {
-        if (currentSequence != null && currentSequence.IsActive())
-        {
-            currentSequence.Kill();
-            currentSequence = null;
-        }
-    }
-    public void StartLevelTransition()
-    {
-        if (currentSequence != null) return;
-        StartCoroutine(LevelTransition());
-    }
-    public IEnumerator LevelTransition()
-    {
-        G.ScreenFader.FadeIn(1f);
-        yield return new WaitForSeconds(0.5f);
-        G.audioSystem.Play(SoundId.SFX_LevelTransition);
-        yield return new WaitForSeconds(1f);
-        G.ScreenFader.FadeOut(1f);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/UI.cs">
-using UnityEngine;
-public class UI : MonoBehaviour
-{
 }
 </file>
 

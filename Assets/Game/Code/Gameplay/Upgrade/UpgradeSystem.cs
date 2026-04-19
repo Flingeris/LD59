@@ -46,7 +46,10 @@ public class UpgradeSystem
     {
         return effectType == UpgradeEffectType.FaithIncomeBonus
             || effectType == UpgradeEffectType.CemeteryRepair
-            || effectType == UpgradeEffectType.CemeteryMaxStateBonus;
+            || effectType == UpgradeEffectType.CemeteryMaxStateBonus
+            || effectType == UpgradeEffectType.BellFaithCostModifier
+            || effectType == UpgradeEffectType.StartingNightFaithBonus
+            || effectType == UpgradeEffectType.KeeperMoveSpeedBonus;
     }
 
     private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
@@ -73,6 +76,22 @@ public class UpgradeSystem
                     0,
                     runState.CemeteryMaxState);
                 break;
+
+            case UpgradeEffectType.BellFaithCostModifier:
+                runState.BellFaithCostModifier -= effectValue;
+                break;
+
+            case UpgradeEffectType.StartingNightFaithBonus:
+                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectValue);
+                break;
+
+            case UpgradeEffectType.KeeperMoveSpeedBonus:
+                if (runState.Keeper != null)
+                {
+                    runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed + effectValue);
+                }
+
+                break;
         }
     }
 
@@ -85,5 +104,9 @@ public class UpgradeSystem
         runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
         runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
         runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
+        if (runState.Keeper != null)
+        {
+            runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed);
+        }
     }
 }

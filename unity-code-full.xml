@@ -125,7 +125,8 @@ Assets/Game/Code/UI/ScreenFader.cs
 Assets/Game/Code/UI/UI.cs
 Assets/Game/Code/UI/WaveProgressView.cs
 Assets/Game/Code/UI/WinScreenView.cs
-Assets/Game/Code/UI/World/WorldProgressBarPresenter.cs
+Assets/Game/Code/UI/World/WorldBarFillGrow.cs
+Assets/Game/Code/UI/World/WorldBarFillShrink.cs
 Assets/Game/Code/UI/World/WorldProgressBarView.cs
 </directory_structure>
 
@@ -1157,112 +1158,6 @@ public static class WebGLBuilder
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-public class BellWorldObject : MonoBehaviour, IPointerClickHandler
-{
-    [SerializeField] private string bellId;
-    [SerializeField] private WorldProgressBarPresenter cooldownProgressPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    private float cooldownRemainingSeconds;
-    private float cooldownDurationSeconds;
-    public string BellId => bellId;
-    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
-    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
-    private void Awake()
-    {
-        EnsureReferences();
-        cooldownProgressPresenter?.Bind(targetRenderer);
-        cooldownProgressPresenter?.SetInactive();
-    }
-    private void Update()
-    {
-        if (cooldownRemainingSeconds <= 0f)
-        {
-            cooldownProgressPresenter?.SetInactive();
-            return;
-        }
-        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
-        RefreshCooldownPresentation();
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        if (string.IsNullOrWhiteSpace(bellId))
-        {
-            validationError = "missing bell id";
-            return true;
-        }
-        if (CMS.Get<BellDef>(bellId) == null)
-        {
-            validationError = "missing BellDef";
-            return true;
-        }
-        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void StartCooldown(float cooldownSeconds)
-    {
-        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
-        cooldownRemainingSeconds = cooldownDurationSeconds;
-        RefreshCooldownPresentation();
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-        {
-            return;
-        }
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
-            return;
-        }
-        G.main.TryInteractWithBell(bellId);
-    }
-    private void RefreshCooldownPresentation()
-    {
-        if (cooldownProgressPresenter == null)
-        {
-            return;
-        }
-        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
-        {
-            cooldownProgressPresenter.SetInactive();
-            return;
-        }
-        var elapsedNormalized = 1f - (cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds));
-        cooldownProgressPresenter.Refresh(elapsedNormalized, true, true);
-    }
-    private void EnsureReferences()
-    {
-        if (cooldownProgressPresenter == null)
-        {
-            cooldownProgressPresenter = GetComponentInChildren<WorldProgressBarPresenter>();
-        }
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponent<SpriteRenderer>();
-        }
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs">
 using UnityEngine;
 public class CemeteryStateSystem
@@ -1580,24 +1475,6 @@ public class UnitSpawnResult
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
-using System.Collections.Generic;
-public class Night1 : NightDefinition
-{
-    public override string Id => "night_1";
-    public override float DurationSeconds => 30f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(2f, Spawn("en1", 1)),
-            Wave(8f, Spawn("en1", 3)),
-            Wave(14f, Spawn("en1", 4))
-        };
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Night/NightDefinition.cs">
 using System.Collections.Generic;
 using UnityEngine;
@@ -1650,65 +1527,6 @@ public class NightWaveSpawnEntry
     }
     public string EnemyId { get; }
     public int Count { get; }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs">
-using UnityEngine;
-[DisallowMultipleComponent]
-public class NightPoiProgressView : MonoBehaviour
-{
-    [SerializeField] private NightPointOfInterest pointOfInterest;
-    [SerializeField] private WorldProgressBarPresenter progressBarPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    private void Awake()
-    {
-        EnsureReferences();
-        progressBarPresenter?.Bind(targetRenderer);
-        progressBarPresenter?.SetInactive();
-    }
-    private void OnDisable()
-    {
-        progressBarPresenter?.SetInactive();
-    }
-    private void Update()
-    {
-        EnsureReferences();
-        if (progressBarPresenter == null || pointOfInterest == null || G.main == null)
-        {
-            progressBarPresenter?.SetInactive();
-            return;
-        }
-        if (!G.main.TryGetNightPoiProgress(pointOfInterest.Id, pointOfInterest.Type, out var normalizedProgress))
-        {
-            progressBarPresenter.SetInactive();
-            return;
-        }
-        progressBarPresenter.Refresh(normalizedProgress, false, true);
-    }
-    public void Bind(NightPointOfInterest poi)
-    {
-        pointOfInterest = poi;
-        EnsureReferences();
-        progressBarPresenter?.Bind(targetRenderer);
-    }
-    private void EnsureReferences()
-    {
-        if (pointOfInterest == null)
-        {
-            pointOfInterest = GetComponentInParent<NightPointOfInterest>();
-        }
-        if (progressBarPresenter == null)
-        {
-            progressBarPresenter = GetComponent<WorldProgressBarPresenter>();
-        }
-        if (targetRenderer == null)
-        {
-            targetRenderer = pointOfInterest != null
-                ? pointOfInterest.GetComponent<SpriteRenderer>()
-                : GetComponentInParent<SpriteRenderer>();
-        }
-    }
 }
 </file>
 
@@ -2449,95 +2267,60 @@ public class WinScreenView : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/UI/World/WorldProgressBarPresenter.cs">
+<file path="Assets/Game/Code/UI/World/WorldBarFillGrow.cs">
 using UnityEngine;
-[DisallowMultipleComponent]
-public class WorldProgressBarPresenter : MonoBehaviour
+public class WorldBarFillGrow : MonoBehaviour
 {
-    [SerializeField] private WorldProgressBarView progressBarView;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
-    [Min(0f)] [SerializeField] private float anchorHeightMultiplier = 0.55f;
-    [SerializeField] private bool anchorBelowTarget;
-    [SerializeField] private Vector3 manualWorldOffset;
-    [SerializeField] private bool matchInverseLossyScale = true;
-    private bool isBound;
+    [SerializeField] private Transform fill;
+    [SerializeField] private bool hideWhenZero = false;
+    private Vector3 initialScale;
     private void Awake()
     {
-        EnsureReferences();
-        progressBarView?.SetInactive();
+        if (fill == null)
+            fill = transform;
+        initialScale = fill.localScale;
     }
-    private void LateUpdate()
+    public void SetNormalized(float value)
     {
-        if (!isBound)
-        {
-            return;
-        }
-        UpdateAnchorTransform();
+        value = Mathf.Clamp01(value);
+        var scale = initialScale;
+        scale.x *= value;
+        fill.localScale = scale;
+        if (hideWhenZero)
+            fill.gameObject.SetActive(value > 0.001f);
     }
-    public void Bind(SpriteRenderer ownerRenderer = null)
+    public void SetVisible(bool visible)
     {
-        EnsureReferences();
-        if (ownerRenderer != null)
-        {
-            targetRenderer = ownerRenderer;
-        }
-        if (progressBarView == null || targetRenderer == null)
-        {
-            isBound = false;
-            progressBarView?.SetInactive();
-            return;
-        }
-        progressBarView.Bind(targetRenderer);
-        isBound = true;
-        UpdateAnchorTransform();
+        gameObject.SetActive(visible);
     }
-    public void Refresh(float normalizedProgress, bool useCountdownFill, bool isVisible)
+}
+</file>
+
+<file path="Assets/Game/Code/UI/World/WorldBarFillShrink.cs">
+using UnityEngine;
+public class WorldBarFillShrink : MonoBehaviour
+{
+    [SerializeField] private Transform fill;
+    [SerializeField] private bool hideWhenEmpty = false;
+    private Vector3 initialScale;
+    private void Awake()
     {
-        if (!isBound)
-        {
-            Bind(targetRenderer);
-        }
-        progressBarView?.Refresh(normalizedProgress, useCountdownFill, isVisible);
+        if (fill == null)
+            fill = transform;
+        initialScale = fill.localScale;
     }
-    public void SetInactive()
+    public void SetNormalized(float value)
     {
-        progressBarView?.SetInactive();
+        value = Mathf.Clamp01(value);
+        var scale = initialScale;
+        scale.x *= value;
+        fill.localScale = scale;
+        if (hideWhenEmpty)
+            fill.gameObject.SetActive(value > 0.001f);
     }
-    private void EnsureReferences()
+    public void SetVisible(bool visible)
     {
-        if (progressBarView == null)
-        {
-            progressBarView = GetComponent<WorldProgressBarView>();
-        }
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponentInParent<SpriteRenderer>();
-        }
-    }
-    private void UpdateAnchorTransform()
-    {
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        var spriteHeight = targetRenderer.bounds.size.y > 0f ? targetRenderer.bounds.size.y : 0.4f;
-        var verticalOffset = spriteHeight * Mathf.Max(0f, anchorHeightMultiplier) + Mathf.Max(0f, barVerticalPadding);
-        if (anchorBelowTarget)
-        {
-            verticalOffset *= -1f;
-        }
-        transform.position = targetRenderer.transform.position + Vector3.up * verticalOffset + manualWorldOffset;
-        transform.rotation = Quaternion.identity;
-        if (!matchInverseLossyScale)
-        {
-            return;
-        }
-        var lossyScale = targetRenderer.transform.lossyScale;
-        transform.localScale = new Vector3(
-            1f / Mathf.Max(0.0001f, lossyScale.x),
-            1f / Mathf.Max(0.0001f, lossyScale.y),
-            1f / Mathf.Max(0.0001f, lossyScale.z));
+        gameObject.SetActive(visible);
     }
 }
 </file>
@@ -3776,6 +3559,101 @@ public class BellSystem
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class BellWorldObject : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string bellId;
+    [SerializeField] private WorldBarFillShrink cooldownBar;
+    private float cooldownRemainingSeconds;
+    private float cooldownDurationSeconds;
+    public string BellId => bellId;
+    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
+    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    private void Awake()
+    {
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+    private void Update()
+    {
+        if (cooldownRemainingSeconds <= 0f)
+        {
+            cooldownBar?.SetVisible(false);
+            return;
+        }
+        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
+        RefreshCooldownPresentation();
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            validationError = "missing bell id";
+            return true;
+        }
+        if (CMS.Get<BellDef>(bellId) == null)
+        {
+            validationError = "missing BellDef";
+            return true;
+        }
+        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void StartCooldown(float cooldownSeconds)
+    {
+        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
+        cooldownRemainingSeconds = cooldownDurationSeconds;
+        RefreshCooldownPresentation();
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+            return;
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
+            return;
+        }
+        G.main.TryInteractWithBell(bellId);
+    }
+    private void RefreshCooldownPresentation()
+    {
+        if (cooldownBar == null)
+            return;
+        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
+        {
+            cooldownBar.SetVisible(false);
+            return;
+        }
+        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
+        cooldownBar.SetVisible(true);
+        cooldownBar.SetNormalized(remainingNormalized);
+    }
+    private void EnsureReferences()
+    {
+        if (cooldownBar == null)
+            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
 using UnityEngine;
 [CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
@@ -3984,155 +3862,6 @@ public class CombatHpBarView : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
-using System.Collections;
-using UnityEngine;
-[DisallowMultipleComponent]
-public class LaneCombatFeedbackView : MonoBehaviour
-{
-    private static readonly Color AllyHitFlashColor = new(1f, 0.45f, 0.45f, 1f);
-    private static readonly Color EnemyHitFlashColor = Color.white;
-    [SerializeField] private CombatHpBarView hpBarPrefab;
-    [SerializeField] private WorldProgressBarPresenter lifetimeProgressPresenter;
-    [SerializeField] private SpriteRenderer targetRenderer;
-    [Min(0f)] [SerializeField] private float barVerticalPadding = 0.08f;
-    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
-    [Min(0f)] [SerializeField] private float hitFlashDuration = 0.08f;
-    private CombatHpBarView hpBarInstance;
-    private Coroutine flashCoroutine;
-    private Color baseSpriteColor = Color.white;
-    private Color hitFlashColor = Color.white;
-    private float popupOffsetY;
-    private bool isBound;
-    private LaneUnit boundLaneUnit;
-    private void Awake()
-    {
-        EnsureTargetRenderer();
-    }
-    private void LateUpdate()
-    {
-        RefreshLifetimeProgressPresentation();
-    }
-    private void OnDisable()
-    {
-        Cleanup();
-    }
-    private void OnDestroy()
-    {
-        Cleanup();
-    }
-    public void Bind(int maxHp, bool isEnemy)
-    {
-        EnsureTargetRenderer();
-        baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
-        hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
-        boundLaneUnit = isEnemy ? null : GetComponent<LaneUnit>();
-        var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
-        popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
-        var barOffsetY = spriteHeight * 0.55f + barVerticalPadding;
-        EnsureHpBarInstance(barOffsetY);
-        hpBarInstance?.Bind(maxHp, isEnemy, targetRenderer);
-        hpBarInstance?.Refresh(maxHp);
-        lifetimeProgressPresenter?.Bind(targetRenderer);
-        isBound = true;
-        RefreshLifetimeProgressPresentation();
-    }
-    public void PlayDamageFeedback(int damage, int currentHp)
-    {
-        if (!isBound || damage <= 0)
-        {
-            return;
-        }
-        hpBarInstance?.Refresh(currentHp);
-        Popups.DamageAbove(transform, popupOffsetY, damage);
-        PlayHitFlash();
-    }
-    public void Cleanup()
-    {
-        isBound = false;
-        if (flashCoroutine != null)
-        {
-            StopCoroutine(flashCoroutine);
-            flashCoroutine = null;
-        }
-        if (targetRenderer != null)
-        {
-            targetRenderer.color = baseSpriteColor;
-        }
-        if (hpBarInstance != null)
-        {
-            Destroy(hpBarInstance.gameObject);
-            hpBarInstance = null;
-        }
-        lifetimeProgressPresenter?.SetInactive();
-        boundLaneUnit = null;
-    }
-    private void PlayHitFlash()
-    {
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        if (flashCoroutine != null)
-        {
-            StopCoroutine(flashCoroutine);
-        }
-        flashCoroutine = StartCoroutine(HitFlashRoutine());
-    }
-    private IEnumerator HitFlashRoutine()
-    {
-        targetRenderer.color = hitFlashColor;
-        yield return new WaitForSeconds(hitFlashDuration);
-        targetRenderer.color = baseSpriteColor;
-        flashCoroutine = null;
-    }
-    private void EnsureHpBarInstance(float barOffsetY)
-    {
-        if (hpBarInstance == null)
-        {
-            if (hpBarPrefab == null)
-            {
-                Debug.LogWarning("LaneCombatFeedbackView: hpBarPrefab is not assigned");
-                return;
-            }
-            hpBarInstance = Instantiate(hpBarPrefab, transform);
-        }
-        var hpBarTransform = hpBarInstance.transform;
-        hpBarTransform.localRotation = Quaternion.identity;
-        hpBarTransform.localScale = GetInverseLossyScale();
-        hpBarTransform.localPosition = transform.InverseTransformPoint(transform.position + Vector3.up * barOffsetY);
-    }
-    private void EnsureTargetRenderer()
-    {
-        if (targetRenderer == null)
-        {
-            targetRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-    }
-    private Vector3 GetInverseLossyScale()
-    {
-        var lossyScale = transform.lossyScale;
-        return new Vector3(
-            1f / Mathf.Max(0.0001f, lossyScale.x),
-            1f / Mathf.Max(0.0001f, lossyScale.y),
-            1f / Mathf.Max(0.0001f, lossyScale.z));
-    }
-    private void RefreshLifetimeProgressPresentation()
-    {
-        if (lifetimeProgressPresenter == null)
-        {
-            return;
-        }
-        if (!isBound || boundLaneUnit == null || !boundLaneUnit.HasLimitedLifetime)
-        {
-            lifetimeProgressPresenter.SetInactive();
-            return;
-        }
-        lifetimeProgressPresenter.Refresh(boundLaneUnit.LifetimeProgressNormalized, true, true);
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Lane/SingleLaneEnemySpawner.cs">
 using UnityEngine;
 public class SingleLaneEnemySpawner
@@ -4188,6 +3917,22 @@ public class SingleLaneEnemySpawner
         }
         laneEnemy.Initialize(enemyDef, forwardTargetPosition);
         return EnemySpawnResult.Success(laneEnemy);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
+using System.Collections.Generic;
+public class Night1 : NightDefinition
+{
+    public override string Id => "night_1";
+    public override float DurationSeconds => 30f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(2f, Spawn("en1", 1)),
+        };
     }
 }
 </file>
@@ -4263,6 +4008,53 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
             return;
         }
         G.main.TryMoveKeeperToPoi(id);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+public class NightPoiProgressView : MonoBehaviour
+{
+    [SerializeField] private NightPointOfInterest pointOfInterest;
+    [SerializeField] private WorldBarFillGrow progressBar;
+    private void Awake()
+    {
+        EnsureReferences();
+        progressBar?.SetVisible(false);
+    }
+    private void OnDisable()
+    {
+        progressBar?.SetVisible(false);
+    }
+    private void Update()
+    {
+        EnsureReferences();
+        if (progressBar == null || pointOfInterest == null || G.main == null)
+        {
+            progressBar?.SetVisible(false);
+            return;
+        }
+        if (!G.main.TryGetNightPoiProgress(pointOfInterest.Id, pointOfInterest.Type, out var normalizedProgress))
+        {
+            progressBar.SetVisible(false);
+            return;
+        }
+        progressBar.SetVisible(true);
+        progressBar.SetNormalized(normalizedProgress);
+    }
+    public void Bind(NightPointOfInterest poi)
+    {
+        pointOfInterest = poi;
+        EnsureReferences();
+    }
+    private void EnsureReferences()
+    {
+        if (pointOfInterest == null)
+            pointOfInterest = GetComponentInParent<NightPointOfInterest>();
+        if (progressBar == null)
+            progressBar = GetComponentInChildren<WorldBarFillGrow>();
     }
 }
 </file>
@@ -5323,6 +5115,139 @@ public class UpgradeSystem
         runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
         runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
         runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
+using System.Collections;
+using UnityEngine;
+[DisallowMultipleComponent]
+public class LaneCombatFeedbackView : MonoBehaviour
+{
+    private static readonly Color AllyHitFlashColor = new(1f, 0.45f, 0.45f, 1f);
+    private static readonly Color EnemyHitFlashColor = Color.white;
+    [Header("Bars")]
+    [SerializeField] private WorldBarFillShrink hpBar;
+    [SerializeField] private WorldBarFillShrink lifetimeBar;
+    [SerializeField] private SpriteRenderer targetRenderer;
+    [Header("Feedback")]
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+    [Min(0f)] [SerializeField] private float hitFlashDuration = 0.08f;
+    private Coroutine flashCoroutine;
+    private Color baseSpriteColor = Color.white;
+    private Color hitFlashColor = Color.white;
+    private float popupOffsetY;
+    private bool isBound;
+    private LaneUnit boundLaneUnit;
+    private int maxHp = 1;
+    private void Awake()
+    {
+        EnsureReferences();
+    }
+    private void LateUpdate()
+    {
+        RefreshLifetimeBar();
+    }
+    private void OnDisable()
+    {
+        Cleanup();
+    }
+    private void OnDestroy()
+    {
+        Cleanup();
+    }
+    public void Bind(int maxHpValue, bool isEnemy)
+    {
+        EnsureReferences();
+        maxHp = Mathf.Max(1, maxHpValue);
+        baseSpriteColor = targetRenderer != null ? targetRenderer.color : Color.white;
+        hitFlashColor = isEnemy ? EnemyHitFlashColor : AllyHitFlashColor;
+        boundLaneUnit = isEnemy ? null : GetComponent<LaneUnit>();
+        var spriteHeight = targetRenderer != null ? targetRenderer.bounds.size.y : 0.4f;
+        popupOffsetY = spriteHeight * 0.6f + popupVerticalPadding;
+        hpBar?.SetVisible(true);
+        hpBar?.SetNormalized(1f);
+        if (lifetimeBar != null)
+        {
+            if (boundLaneUnit != null && boundLaneUnit.HasLimitedLifetime)
+            {
+                lifetimeBar.SetVisible(true);
+                lifetimeBar.SetNormalized(1f - boundLaneUnit.LifetimeProgressNormalized);
+            }
+            else
+            {
+                lifetimeBar.SetVisible(false);
+            }
+        }
+        isBound = true;
+    }
+    public void PlayDamageFeedback(int damage, int currentHp)
+    {
+        if (!isBound || damage <= 0)
+            return;
+        var normalizedHp = Mathf.Clamp01((float)Mathf.Max(0, currentHp) / Mathf.Max(1, maxHp));
+        hpBar?.SetNormalized(normalizedHp);
+        Popups.DamageAbove(transform, popupOffsetY, damage);
+        PlayHitFlash();
+    }
+    public void Cleanup()
+    {
+        isBound = false;
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+            flashCoroutine = null;
+        }
+        if (targetRenderer != null)
+            targetRenderer.color = baseSpriteColor;
+        hpBar?.SetVisible(false);
+        lifetimeBar?.SetVisible(false);
+        boundLaneUnit = null;
+    }
+    private void RefreshLifetimeBar()
+    {
+        if (!isBound || lifetimeBar == null)
+            return;
+        if (boundLaneUnit == null || !boundLaneUnit.HasLimitedLifetime)
+        {
+            lifetimeBar.SetVisible(false);
+            return;
+        }
+        lifetimeBar.SetVisible(true);
+        lifetimeBar.SetNormalized(1f - boundLaneUnit.LifetimeProgressNormalized);
+    }
+    private void PlayHitFlash()
+    {
+        if (targetRenderer == null)
+            return;
+        if (flashCoroutine != null)
+            StopCoroutine(flashCoroutine);
+        flashCoroutine = StartCoroutine(HitFlashRoutine());
+    }
+    private IEnumerator HitFlashRoutine()
+    {
+        targetRenderer.color = hitFlashColor;
+        yield return new WaitForSeconds(hitFlashDuration);
+        targetRenderer.color = baseSpriteColor;
+        flashCoroutine = null;
+    }
+    private void EnsureReferences()
+    {
+        if (targetRenderer == null)
+            targetRenderer = GetComponentInChildren<SpriteRenderer>();
+        if (hpBar == null)
+        {
+            var hp = transform.Find("HpBar");
+            if (hp != null)
+                hpBar = hp.GetComponent<WorldBarFillShrink>();
+        }
+        if (lifetimeBar == null)
+        {
+            var lt = transform.Find("LifetimeBar");
+            if (lt != null)
+                lifetimeBar = lt.GetComponent<WorldBarFillShrink>();
+        }
     }
 }
 </file>

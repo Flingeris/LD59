@@ -6,6 +6,7 @@ public class RunState
     public int Faith;
     public int Gold;
     public int StartingNightFaith;
+    public int BellFaithCostModifier;
     public int FaithCollectionPayoutAmount;
     public float FaithCollectionIntervalSeconds;
     public float FaithCollectionTimerProgress;
@@ -42,6 +43,7 @@ public class RunState
             Faith = 0,
             Gold = 0,
             StartingNightFaith = clampedStartingNightFaith,
+            BellFaithCostModifier = 0,
             FaithCollectionPayoutAmount = clampedFaithCollectionPayoutAmount,
             FaithCollectionIntervalSeconds = clampedFaithCollectionIntervalSeconds,
             FaithCollectionTimerProgress = 0f,

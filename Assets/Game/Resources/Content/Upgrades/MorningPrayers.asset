@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDef
   id: upgrade_morning_prayers
   displayName: Morning Prayers
-  price: 15
-  effectType: 0
+  price: 5
+  effectType: 6
   effectValue: 5

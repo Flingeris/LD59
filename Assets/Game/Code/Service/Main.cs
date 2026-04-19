@@ -28,14 +28,12 @@ public class Main : MonoBehaviour
     [Min(0.01f)] [SerializeField] private float initialFaithCollectionIntervalSeconds = 3f;
     [Min(0)] [SerializeField] private int initialNightCemeteryRepairAmount = 1;
     [Min(0.01f)] [SerializeField] private float initialNightCemeteryRepairIntervalSeconds = 1f;
-    [Min(0)] [SerializeField] private int completedNightGoldReward = 10;
 
     [FormerlySerializedAs("targetSurvivedNights")]
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
 
     private BellSystem bellSystem;
     private CemeteryStateSystem cemeteryStateSystem;
-    private DayRewardSystem dayRewardSystem;
     private FaithCollectionSystem faithCollectionSystem;
     private UpgradeSystem upgradeSystem;
     private SingleLaneUnitSpawner unitSpawner;
@@ -74,7 +72,6 @@ public class Main : MonoBehaviour
             initialNightCemeteryRepairIntervalSeconds);
         bellSystem = new BellSystem();
         cemeteryStateSystem = new CemeteryStateSystem();
-        dayRewardSystem = new DayRewardSystem();
         faithCollectionSystem = new FaithCollectionSystem();
         upgradeSystem = new UpgradeSystem();
         unitSpawner = new SingleLaneUnitSpawner();
@@ -88,6 +85,7 @@ public class Main : MonoBehaviour
         {
             laneEncounterCoordinator.OnEnemyBreakthrough = HandleEnemyBreakthrough;
             laneEncounterCoordinator.OnEnemyCemeteryAttack = HandleEnemyCemeteryAttack;
+            laneEncounterCoordinator.OnEnemyKilled = HandleEnemyKilled;
         }
     }
 
@@ -144,6 +142,7 @@ public class Main : MonoBehaviour
         faithCollectionSystem.EndNight(RunState);
         cemeteryStateSystem.ResetNightRepairProgress(RunState);
         waveSystem.StopWave();
+        ClearLaneCombatants();
         StopKeeperMovement();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Day);
@@ -386,6 +385,35 @@ public class Main : MonoBehaviour
             $"Enemy cemetery attack: '{laneEnemy.EnemyDef.Id}' dealt {cemeteryDamage} cemetery damage");
     }
 
+    private void HandleEnemyKilled(LaneEnemy laneEnemy)
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+
+        if (laneEnemy == null)
+        {
+            Debug.LogWarning("Enemy kill reward failed: laneEnemy is missing");
+            return;
+        }
+
+        if (laneEnemy.EnemyDef == null)
+        {
+            Debug.LogWarning("Enemy kill reward failed: EnemyDef is missing");
+            return;
+        }
+
+        var goldReward = Mathf.Max(0, laneEnemy.EnemyDef.GoldReward);
+        if (goldReward <= 0)
+        {
+            return;
+        }
+
+        AddGold(goldReward);
+        Debug.Log($"Enemy killed: '{laneEnemy.EnemyDef.Id}' awarded {goldReward} gold");
+    }
+
     public BellRingResult TryRingBell(string bellId)
     {
         ValidateLanePrototypeSetup();
@@ -612,7 +640,7 @@ public class Main : MonoBehaviour
 
     private void CompleteNight()
     {
-        ApplyCompletedNightReward();
+        RecordCompletedNightSummary();
         Debug.Log("Night completed");
         activeNightDefinition = null;
         if (TryEnterWin())
@@ -652,32 +680,27 @@ public class Main : MonoBehaviour
         keeperActor.SetWorldPosition(RunState.Keeper.Position);
     }
 
-    private void ApplyCompletedNightReward()
+    private void RecordCompletedNightSummary()
     {
-        ApplyDayReward(
-            dayRewardSystem.CreateCompletedNightReward(
-                RunState.CurrentNight,
-                completedNightGoldReward),
-            $"Completed night {RunState.CurrentNight} reward");
+        if (RunState == null)
+        {
+            return;
+        }
+
+        RunState.LastDayReward = new DayRewardData
+        {
+            SourceNightIndex = RunState.CurrentNight
+        };
     }
 
-    private void ApplyDayReward(DayRewardData reward, string rewardSource)
+    private void ClearLaneCombatants()
     {
-        if (reward == null)
+        if (laneEncounterCoordinator == null)
         {
             return;
         }
 
-        dayRewardSystem.ApplyReward(RunState, reward);
-
-        if (!RunState.LastDayReward.HasAnyReward)
-        {
-            return;
-        }
-
-        Debug.Log($"{rewardSource}: {BuildRewardSummary(RunState.LastDayReward)}");
-
-        RefreshPresentation();
+        laneEncounterCoordinator.ClearCombatants();
     }
 
     private void UpdateNightFaithCollection()
@@ -1155,28 +1178,11 @@ public class Main : MonoBehaviour
             UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith per payout at Faith Point",
             UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max state",
+            UpgradeEffectType.BellFaithCostModifier => $"-{effectValue} Faith cost for bell use",
+            UpgradeEffectType.StartingNightFaithBonus => $"+{effectValue} starting Faith each night",
+            UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValue} keeper move speed",
             _ => string.Empty
         };
-    }
-
-    private static string BuildRewardSummary(DayRewardData reward)
-    {
-        if (reward == null || !reward.HasAnyReward)
-        {
-            return "no reward";
-        }
-
-        if (reward.FaithReward > 0 && reward.GoldReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
-        }
-
-        if (reward.FaithReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith";
-        }
-
-        return $"+{reward.GoldReward} Gold";
     }
 
     private void UpdateLoseCondition()

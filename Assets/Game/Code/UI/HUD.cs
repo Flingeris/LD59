@@ -81,6 +81,8 @@ public class HUD : MonoBehaviour
         missingMainWarningShown = false;
 
         var runState = G.main.RunState;
+        var showRuntimeHud = runState.CurrentPhase == GamePhase.Night;
+        SetRuntimeHudVisible(showRuntimeHud);
         RefreshBellButtonInteractivity(runState);
 
         if (faithText != null)
@@ -386,6 +388,33 @@ public class HUD : MonoBehaviour
     private void HandleWinScreenRestartRequested()
     {
         WinScreenRestartRequested?.Invoke();
+    }
+
+    private void SetRuntimeHudVisible(bool visible)
+    {
+        SetViewVisible(faithText, visible);
+        SetViewVisible(goldText, visible);
+        SetViewVisible(cemeteryStateText, visible);
+        SetViewVisible(phaseText, visible);
+        SetViewVisible(bellFeedbackText, visible);
+
+        if (waveProgressView != null && waveProgressView.gameObject.activeSelf != visible)
+        {
+            waveProgressView.gameObject.SetActive(visible);
+        }
+    }
+
+    private static void SetViewVisible(Component component, bool visible)
+    {
+        if (component == null)
+        {
+            return;
+        }
+
+        if (component.gameObject.activeSelf != visible)
+        {
+            component.gameObject.SetActive(visible);
+        }
     }
 
 }

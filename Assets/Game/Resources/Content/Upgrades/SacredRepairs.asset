@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDef
   id: upgrade_sacred_repairs
   displayName: Sacred Repairs
-  price: 10
+  price: 5
   effectType: 1
-  effectValue: 20
+  effectValue: 5

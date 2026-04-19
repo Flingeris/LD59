@@ -10,10 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ad79aa002af54cf19021adfe5ea251b4, type: 3}
-  m_Name: VigilHymn
+  m_Name: GraveOfferings
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDef
-  id: upgrade_vigil_hymn
-  displayName: Vigil Hymn
+  id: upgrade_grave_offerings
+  displayName: Grave Offerings
   price: 10
-  effectType: 4
+  effectType: 0
   effectValue: 2

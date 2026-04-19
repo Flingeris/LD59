@@ -24,6 +24,14 @@ public class DayUpgradeItemView : MonoBehaviour
 
     private bool isInitialized;
     private string currentUpgradeId;
+    private RectTransform rootRect;
+    private RectTransform nameRect;
+    private RectTransform priceRect;
+    private RectTransform effectRect;
+    private RectTransform buyButtonRect;
+    private Image backgroundImage;
+    private Image buyButtonImage;
+    private TMP_Text buyButtonText;
 
     private void Awake()
     {
@@ -63,14 +71,19 @@ public class DayUpgradeItemView : MonoBehaviour
 
         if (buyButton != null)
         {
-            buyButton.interactable = itemData != null
+            var canBuy = itemData != null
                 && itemData.CanBuy
                 && !string.IsNullOrWhiteSpace(itemData.UpgradeId);
+            buyButton.interactable = canBuy;
+            StyleForState(canBuy);
         }
     }
 
     private void EnsureInitialized()
     {
+        ResolveRuntimeReferences();
+        ApplyRuntimeLayout();
+
         if (isInitialized || buyButton == null)
         {
             return;
@@ -88,5 +101,147 @@ public class DayUpgradeItemView : MonoBehaviour
         }
 
         BuyRequested?.Invoke(currentUpgradeId);
+    }
+
+    private void ResolveRuntimeReferences()
+    {
+        rootRect ??= transform as RectTransform;
+        nameRect ??= nameText != null ? nameText.rectTransform : null;
+        priceRect ??= priceText != null ? priceText.rectTransform : null;
+        effectRect ??= effectText != null ? effectText.rectTransform : null;
+        buyButtonRect ??= buyButton != null ? buyButton.transform as RectTransform : null;
+        backgroundImage ??= GetComponent<Image>();
+        buyButtonImage ??= buyButton != null ? buyButton.targetGraphic as Image : null;
+        buyButtonText ??= buyButton != null ? buyButton.GetComponentInChildren<TMP_Text>(true) : null;
+
+        if (backgroundImage == null)
+        {
+            backgroundImage = gameObject.AddComponent<Image>();
+        }
+
+        if (backgroundImage.sprite == null && buyButtonImage != null)
+        {
+            backgroundImage.sprite = buyButtonImage.sprite;
+        }
+
+        backgroundImage.type = Image.Type.Sliced;
+        backgroundImage.raycastTarget = false;
+    }
+
+    private void ApplyRuntimeLayout()
+    {
+        if (rootRect != null)
+        {
+            rootRect.sizeDelta = new Vector2(rootRect.sizeDelta.x, 78f);
+        }
+
+        if (nameRect != null)
+        {
+            nameRect.anchorMin = new Vector2(0f, 1f);
+            nameRect.anchorMax = new Vector2(1f, 1f);
+            nameRect.offsetMin = new Vector2(18f, -38f);
+            nameRect.offsetMax = new Vector2(-174f, -12f);
+        }
+
+        if (effectRect != null)
+        {
+            effectRect.anchorMin = new Vector2(0f, 0f);
+            effectRect.anchorMax = new Vector2(1f, 1f);
+            effectRect.offsetMin = new Vector2(18f, 14f);
+            effectRect.offsetMax = new Vector2(-174f, -40f);
+        }
+
+        if (priceRect != null)
+        {
+            priceRect.anchorMin = new Vector2(1f, 1f);
+            priceRect.anchorMax = new Vector2(1f, 1f);
+            priceRect.pivot = new Vector2(1f, 1f);
+            priceRect.anchoredPosition = new Vector2(-150f, -14f);
+            priceRect.sizeDelta = new Vector2(124f, 22f);
+        }
+
+        if (buyButtonRect != null)
+        {
+            buyButtonRect.anchorMin = new Vector2(1f, 0f);
+            buyButtonRect.anchorMax = new Vector2(1f, 0f);
+            buyButtonRect.pivot = new Vector2(1f, 0f);
+            buyButtonRect.anchoredPosition = new Vector2(-16f, 16f);
+            buyButtonRect.sizeDelta = new Vector2(118f, 38f);
+        }
+
+        if (nameText != null)
+        {
+            nameText.alignment = TextAlignmentOptions.TopLeft;
+            nameText.enableAutoSizing = true;
+            nameText.fontSizeMin = 16f;
+            nameText.fontSizeMax = 26f;
+            nameText.fontStyle = FontStyles.Bold;
+            nameText.color = new Color(0.96f, 0.94f, 0.9f, 1f);
+        }
+
+        if (effectText != null)
+        {
+            effectText.alignment = TextAlignmentOptions.TopLeft;
+            effectText.enableAutoSizing = true;
+            effectText.fontSizeMin = 13f;
+            effectText.fontSizeMax = 20f;
+            effectText.color = new Color(0.78f, 0.81f, 0.86f, 1f);
+        }
+
+        if (priceText != null)
+        {
+            priceText.alignment = TextAlignmentOptions.TopRight;
+            priceText.enableAutoSizing = true;
+            priceText.fontSizeMin = 13f;
+            priceText.fontSizeMax = 20f;
+            priceText.fontStyle = FontStyles.Bold;
+        }
+
+        if (buyButtonText != null)
+        {
+            buyButtonText.alignment = TextAlignmentOptions.Center;
+            buyButtonText.enableAutoSizing = true;
+            buyButtonText.fontSizeMin = 13f;
+            buyButtonText.fontSizeMax = 20f;
+            buyButtonText.fontStyle = FontStyles.Bold;
+        }
+
+        if (buyButtonImage != null && buyButtonImage.sprite == null)
+        {
+            buyButtonImage.sprite = backgroundImage != null ? backgroundImage.sprite : null;
+        }
+    }
+
+    private void StyleForState(bool canBuy)
+    {
+        if (backgroundImage != null)
+        {
+            backgroundImage.color = canBuy
+                ? new Color(0.17f, 0.2f, 0.25f, 0.92f)
+                : new Color(0.12f, 0.14f, 0.18f, 0.88f);
+        }
+
+        if (priceText != null)
+        {
+            priceText.color = canBuy
+                ? new Color(0.98f, 0.83f, 0.45f, 1f)
+                : new Color(0.72f, 0.65f, 0.5f, 1f);
+        }
+
+        if (buyButtonImage != null)
+        {
+            buyButtonImage.color = canBuy
+                ? new Color(0.9f, 0.86f, 0.74f, 1f)
+                : new Color(0.42f, 0.42f, 0.44f, 0.85f);
+            buyButtonImage.type = Image.Type.Sliced;
+        }
+
+        if (buyButtonText != null)
+        {
+            buyButtonText.text = canBuy ? "Buy" : "Locked";
+            buyButtonText.color = canBuy
+                ? new Color(0.12f, 0.12f, 0.14f, 1f)
+                : new Color(0.2f, 0.2f, 0.22f, 0.85f);
+        }
     }
 }

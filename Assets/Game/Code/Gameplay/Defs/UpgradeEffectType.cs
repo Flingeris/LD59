@@ -5,5 +5,7 @@ public enum UpgradeEffectType
     CemeteryMaxStateBonus = 2,
     UnlockBell = 3,
     BellFaithCostModifier = 4,
-    UnitDamageModifier = 5
+    UnitDamageModifier = 5,
+    StartingNightFaithBonus = 6,
+    KeeperMoveSpeedBonus = 7
 }

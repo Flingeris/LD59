@@ -9,6 +9,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 
     public Action<LaneEnemy> OnEnemyBreakthrough;
     public Action<LaneEnemy> OnEnemyCemeteryAttack;
+    public Action<LaneEnemy> OnEnemyKilled;
     public bool HasActiveEnemyPressure => enemies.Count > 0;
 
     private readonly List<LaneUnit> playerUnits = new();
@@ -51,6 +52,22 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         enemies.Add(laneEnemy);
         laneEnemy.CemeteryAttackTriggered -= HandleEnemyCemeteryAttackTriggered;
         laneEnemy.CemeteryAttackTriggered += HandleEnemyCemeteryAttackTriggered;
+    }
+
+    public void ClearCombatants()
+    {
+        for (var i = enemies.Count - 1; i >= 0; i--)
+        {
+            RemoveEnemyAt(i);
+        }
+
+        for (var i = playerUnits.Count - 1; i >= 0; i--)
+        {
+            RemovePlayerUnitAt(i);
+        }
+
+        assignedHomeSlots.Clear();
+        assignedHomePositions.Clear();
     }
 
     private void CleanupDestroyed()
@@ -205,7 +222,8 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 
             if (enemy.IsDead())
             {
-                RemoveEnemyAt(i, false);
+                OnEnemyKilled?.Invoke(enemy);
+                RemoveEnemyAt(i);
             }
         }
 
@@ -219,9 +237,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 
             if (unit.IsDead())
             {
-                assignedHomePositions.Remove(unit);
-                ReleaseAssignedSlot(unit);
-                Destroy(unit.gameObject);
+                RemovePlayerUnitAt(i);
             }
         }
     }
@@ -421,7 +437,7 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
         return closestUnit;
     }
 
-    private void RemoveEnemyAt(int index, bool notifyBreakthrough)
+    private void RemoveEnemyAt(int index)
     {
         var enemy = enemies[index];
         enemies.RemoveAt(index);
@@ -431,11 +447,20 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             enemy.ClearTargetUnit();
             Destroy(enemy.gameObject);
         }
+    }
 
-        if (notifyBreakthrough && enemy != null)
+    private void RemovePlayerUnitAt(int index)
+    {
+        var unit = playerUnits[index];
+        playerUnits.RemoveAt(index);
+
+        if (unit == null)
         {
-            OnEnemyBreakthrough?.Invoke(enemy);
+            return;
         }
+
+        ReleaseAssignedSlot(unit);
+        Destroy(unit.gameObject);
     }
 
     private void HandleEnemyCemeteryAttackTriggered(LaneEnemy laneEnemy)

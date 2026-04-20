@@ -21,10 +21,13 @@ public class Main : MonoBehaviour
     [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
     [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
+
     [FormerlySerializedAs("dayFaithReward")]
     [Min(0)] [SerializeField] private int startingNightFaith = 10;
+
     [FormerlySerializedAs("initialFaithCollectionPerSecond")]
     [Min(0f)] [SerializeField] private float initialFaithCollectionPayoutAmount = 3f;
+
     [Min(0.01f)] [SerializeField] private float initialFaithCollectionIntervalSeconds = 3f;
     [Min(0)] [SerializeField] private int initialNightCemeteryRepairAmount = 1;
     [Min(0.01f)] [SerializeField] private float initialNightCemeteryRepairIntervalSeconds = 1f;
@@ -51,7 +54,10 @@ public class Main : MonoBehaviour
     private readonly List<string> readyWaveSpawnEnemyIds = new();
 
     public RunState RunState { get; private set; }
-    public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night && waveSystem != null && waveSystem.IsRunning;
+
+    public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night &&
+                                     waveSystem != null && waveSystem.IsRunning;
+
     public float CurrentNightElapsedSeconds => waveSystem != null ? waveSystem.ElapsedTime : 0f;
     public float CurrentNightDurationSeconds => waveSystem != null ? waveSystem.DurationSeconds : 0f;
     public bool HasUpcomingNightWave => waveSystem != null && waveSystem.HasUpcomingWave;
@@ -310,7 +316,7 @@ public class Main : MonoBehaviour
         if (bellWorldObject == null)
         {
             var missingBellResult = BellRingResult.Failure(BellRingFailureReason.BellNotFound);
-            PublishBellFeedback(missingBellResult);
+            PublishBellFeedback(null, missingBellResult);
             return false;
         }
 
@@ -330,7 +336,7 @@ public class Main : MonoBehaviour
             var cooldownResult = BellRingResult.Failure(
                 BellRingFailureReason.OnCooldown,
                 bellWorldObject.CooldownRemainingSeconds);
-            PublishBellFeedback(cooldownResult);
+            PublishBellFeedback(bellWorldObject, cooldownResult);
             return false;
         }
 
@@ -342,9 +348,10 @@ public class Main : MonoBehaviour
             bellResult.BellDef != null)
         {
             bellWorldObject.StartCooldown(bellResult.BellDef.CooldownSeconds);
+            PublishBellFaithSpendEffect(bellWorldObject, bellResult);
         }
 
-        PublishBellFeedback(bellResult);
+        PublishBellFeedback(bellWorldObject, bellResult);
         return bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess;
     }
 
@@ -448,36 +455,62 @@ public class Main : MonoBehaviour
                RunState.Keeper.InteractionState == KeeperInteractionState.Bells;
     }
 
-    private void PublishBellFeedback(BellRingResult bellResult)
+    private void PublishBellFeedback(BellWorldObject bellWorldObject, BellRingResult bellResult)
     {
-        if (G.HUD == null || bellResult == null)
+        if (bellWorldObject == null || bellResult == null)
         {
             return;
         }
 
-        if (bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess)
+        var popupText = BuildBellFeedbackText(bellResult);
+        if (string.IsNullOrWhiteSpace(popupText))
         {
-            G.HUD.ShowBellFeedback($"Bell: {bellResult.BellDef.DisplayName}");
             return;
         }
 
-        if (!bellResult.IsSuccess)
-        {
-            if (bellResult.FailureReason == BellRingFailureReason.OnCooldown)
-            {
-                G.HUD.ShowBellFeedback(
-                    $"Bell cooldown: {bellResult.CooldownRemainingSeconds:0.0}s");
-                return;
-            }
+        bellWorldObject.ShowFeedbackPopup(popupText, GetBellFeedbackColor(bellResult));
+    }
 
-            G.HUD.ShowBellFeedback($"Bell failed: {bellResult.FailureReason}");
+    private void PublishBellFaithSpendEffect(BellWorldObject bellWorldObject, BellRingResult bellResult)
+    {
+        if (bellWorldObject == null || bellResult == null || bellResult.BellDef == null || G.HUD == null ||
+            RunState == null)
+        {
             return;
         }
 
-        if (bellResult.SpawnResult != null && !bellResult.SpawnResult.IsSuccess)
+        var faithSpent = Mathf.Max(0, bellResult.BellDef.FaithCost + RunState.BellFaithCostModifier);
+        if (faithSpent <= 0)
         {
-            G.HUD.ShowBellFeedback($"Spawn failed: {bellResult.SpawnResult.FailureReason}");
+            return;
         }
+
+        G.HUD.PlayFaithSpendEffect(bellWorldObject.transform.position, faithSpent);
+    }
+
+    private static string BuildBellFeedbackText(BellRingResult bellResult)
+    {
+        if (bellResult == null)
+        {
+            return string.Empty;
+        }
+
+        return bellResult.FailureReason switch
+        {
+            BellRingFailureReason.OnCooldown => $"Recharging {bellResult.CooldownRemainingSeconds:0.0}s",
+            BellRingFailureReason.NotEnoughFaith => "Need more faith",
+            _ => string.Empty
+        };
+    }
+
+    private static Color GetBellFeedbackColor(BellRingResult bellResult)
+    {
+        if (bellResult != null && bellResult.FailureReason == BellRingFailureReason.OnCooldown)
+        {
+            return new Color(1f, 0.72f, 0.38f);
+        }
+
+        return new Color(1f, 0.45f, 0.45f);
     }
 
     private void ProcessPendingBellInteraction()
@@ -711,7 +744,13 @@ public class Main : MonoBehaviour
             return;
         }
 
-        faithCollectionSystem.UpdateCollection(RunState, Time.deltaTime);
+        var collectedFaith = faithCollectionSystem.UpdateCollection(RunState, Time.deltaTime);
+        if (collectedFaith <= 0)
+        {
+            return;
+        }
+
+        PublishFaithPickupFeedback(collectedFaith);
     }
 
     private void UpdateNightCemeteryRepair()
@@ -733,6 +772,26 @@ public class Main : MonoBehaviour
         }
 
         RefreshPresentation();
+    }
+
+    private void PublishFaithPickupFeedback(int collectedFaith)
+    {
+        if (collectedFaith <= 0 || G.HUD == null || RunState?.Keeper == null)
+        {
+            return;
+        }
+
+        var worldPosition = new Vector3(RunState.Keeper.Position.x, RunState.Keeper.Position.y, 0f);
+        if (!string.IsNullOrWhiteSpace(RunState.Keeper.CurrentPoiId) &&
+            TryResolveNightPoiById(RunState.Keeper.CurrentPoiId, out var poi) &&
+            poi != null &&
+            poi.Type == NightPoiType.FaithPoint)
+        {
+            var poiPosition = poi.GetWorldPosition();
+            worldPosition = new Vector3(poiPosition.x, poiPosition.y, 0f);
+        }
+
+        G.HUD.PlayFaithPickupEffect(worldPosition, collectedFaith);
     }
 
     private bool TryGetFaithPoiProgress(string poiId, out float normalizedProgress)
@@ -1326,6 +1385,11 @@ public class Main : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.U))
         {
             TryPurchaseUpgrade(GetDebugUpgradeId());
+        }
+
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            SceneManager.LoadScene("Main");
         }
     }
 

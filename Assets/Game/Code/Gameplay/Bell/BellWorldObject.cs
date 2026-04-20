@@ -5,9 +5,11 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 {
     [SerializeField] private string bellId;
     [SerializeField] private WorldBarFillShrink cooldownBar;
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
 
     private float cooldownRemainingSeconds;
     private float cooldownDurationSeconds;
+    private SpriteRenderer spriteRenderer;
 
     public string BellId => bellId;
     public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
@@ -33,6 +35,8 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 
     public bool TryGetWorldInteractionValidationError(out string validationError)
     {
+        EnsureReferences();
+
         if (string.IsNullOrWhiteSpace(bellId))
         {
             validationError = "missing bell id";
@@ -45,7 +49,7 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
             return true;
         }
 
-        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        if (spriteRenderer == null)
         {
             validationError = "missing SpriteRenderer";
             return true;
@@ -65,6 +69,17 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 
         validationError = string.Empty;
         return false;
+    }
+
+    public void ShowFeedbackPopup(string message, Color color)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        EnsureReferences();
+        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
     }
 
     public void StartCooldown(float cooldownSeconds)
@@ -106,7 +121,16 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 
     private void EnsureReferences()
     {
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+
         if (cooldownBar == null)
             cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
+    }
+
+    private float GetPopupOffsetY()
+    {
+        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
+        return spriteHeight * 0.6f + popupVerticalPadding;
     }
 }

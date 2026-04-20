@@ -85,6 +85,7 @@ MeshRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
+  m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
 --- !u!114 &4767573453592129617
 MonoBehaviour:
@@ -108,7 +109,7 @@ MonoBehaviour:
       m_Calls: []
   m_text: 1
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 41d2bf8dbc2c8384c9dae64d99594acd, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 5b8f11a53988bb4478657f72b3d7baa1, type: 2}
   m_sharedMaterial: {fileID: 5268616403407408615, guid: 41d2bf8dbc2c8384c9dae64d99594acd, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
@@ -133,8 +134,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 5
-  m_fontSizeBase: 5
+  m_fontSize: 4
+  m_fontSizeBase: 4
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 1
@@ -144,6 +145,7 @@ MonoBehaviour:
   m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
+  m_characterHorizontalScale: 1
   m_wordSpacing: 0
   m_lineSpacing: 0
   m_lineSpacingMax: 0
@@ -177,7 +179,7 @@ MonoBehaviour:
   _SortingLayer: 0
   _SortingLayerID: 0
   _SortingOrder: 0
-  m_hasFontAssetChanged: 0
+  m_hasFontAssetChanged: 1
   m_renderer: {fileID: 4744802598649254109}
   m_maskType: 0
 --- !u!114 &6613572649675342548
@@ -198,3 +200,4 @@ MonoBehaviour:
   startScale: 0.9
   endScale: 1.1
   fadeDelayNormalized: 0.3
+  sortingOrder: 20

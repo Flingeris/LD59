@@ -80,6 +80,8 @@ Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs
 Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs
 Assets/Game/Code/Gameplay/Environment/CloudLoopController.cs
 Assets/Game/Code/Gameplay/Environment/LoopingCloud.cs
+Assets/Game/Code/Gameplay/Environment/NightAtmosphereVolumeController.cs
+Assets/Game/Code/Gameplay/Environment/WorldYSortSpriteGroup.cs
 Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs
 Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs
 Assets/Game/Code/Gameplay/Keeper/KeeperMovementSystem.cs
@@ -136,340 +138,154 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 <files>
 This section contains the contents of the repository's files.
 
-<file path="Assets/Game/Code/DefaultSystems/VFX/FloatAnimation.cs">
-using DG.Tweening;
+<file path="Assets/Game/Code/Gameplay/Environment/NightAtmosphereVolumeController.cs">
 using UnityEngine;
-public class FloatUpDownAnimation : MonoBehaviour
-{
-    [Header("Move Y")]
-    [SerializeField] private float moveYAmplitude = 0.15f;
-    [SerializeField] private float moveYDuration = 0.8f;
-    [Header("Settings")]
-    [SerializeField] private bool playOnStart = true;
-    [SerializeField] private float maxRandomStartDelay = 0.5f;
-    [SerializeField] private bool ignoreTimeScale = true;
-    private Sequence _sequence;
-    private Vector3 _startLocalPosition;
-    private void Awake()
-    {
-        _startLocalPosition = transform.localPosition;
-    }
-    private void Start()
-    {
-        if (playOnStart)
-            Play();
-    }
-    public void Play()
-    {
-        Stop();
-        transform.localPosition = _startLocalPosition;
-        _sequence = DOTween.Sequence();
-        _sequence.Append(
-            transform
-                .DOLocalMoveY(_startLocalPosition.y + moveYAmplitude, moveYDuration)
-                .SetEase(Ease.InOutSine)
-        );
-        _sequence
-            .SetLoops(-1, LoopType.Yoyo)
-            .SetUpdate(ignoreTimeScale);
-        float delay = Random.Range(0f, maxRandomStartDelay);
-        _sequence.SetDelay(delay);
-    }
-    public void Stop()
-    {
-        if (_sequence != null && _sequence.IsActive())
-            _sequence.Kill();
-        transform.localPosition = _startLocalPosition;
-    }
-    private void OnDisable()
-    {
-        Stop();
-    }
-    private void OnDestroy()
-    {
-        Stop();
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Environment/CloudLoopController.cs">
-using System.Collections.Generic;
-using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+[ExecuteAlways]
 [DisallowMultipleComponent]
-public class CloudLoopController : MonoBehaviour
+public class NightAtmosphereVolumeController : MonoBehaviour
 {
-    private static readonly Color ActiveBoundsFillColor = new(0.35f, 0.75f, 1f, 0.08f);
-    private static readonly Color ActiveBoundsLineColor = new(0.35f, 0.75f, 1f, 0.95f);
-    private static readonly Color RecycleBoundsFillColor = new(1f, 0.75f, 0.2f, 0.05f);
-    private static readonly Color RecycleBoundsLineColor = new(1f, 0.75f, 0.2f, 0.9f);
-    private static readonly Color DirectionLineColor = new(0.65f, 1f, 0.55f, 0.95f);
-    [SerializeField] private LoopingCloud cloudPrefab;
-    [SerializeField] private Sprite[] cloudSprites;
-    [Min(1)] [SerializeField] private int cloudCount = 4;
-    [SerializeField] private Vector2 horizontalBounds = new(-12f, 12f);
-    [SerializeField] private Vector2 verticalBounds = new(3f, 6f);
-    [SerializeField] private Vector2 speedRange = new(0.2f, 0.45f);
-    [Min(0f)] [SerializeField] private float recyclePadding = 2f;
-    [SerializeField] private bool moveLeftToRight = true;
-    [SerializeField] private bool randomizeSpriteOnRecycle = true;
-    [SerializeField] private bool randomizeSpeedOnRecycle = true;
-    private readonly List<LoopingCloud> spawnedClouds = new();
-    private bool missingSetupWarningShown;
-    private void Start()
+    [SerializeField] private Camera targetCamera;
+    [Header("Bloom")]
+    [SerializeField] private bool bloomEnabled = true;
+    [Min(0f)] [SerializeField] private float bloomThreshold = 1.1f;
+    [Min(0f)] [SerializeField] private float bloomIntensity = 0.12f;
+    [Range(0f, 1f)] [SerializeField] private float bloomScatter = 0.35f;
+    [Header("Color Adjustments")]
+    [SerializeField] private float postExposure = -0.05f;
+    [Range(-100f, 100f)] [SerializeField] private float contrast = 6f;
+    [ColorUsage(false, true)] [SerializeField] private Color colorFilter = new(0.93f, 0.96f, 1f, 1f);
+    [Header("Vignette")]
+    [SerializeField] private bool vignetteEnabled = true;
+    [Range(0f, 1f)] [SerializeField] private float vignetteIntensity = 0.18f;
+    [Range(0.01f, 1f)] [SerializeField] private float vignetteSmoothness = 0.35f;
+    private Volume volume;
+    private void Reset()
     {
-        SpawnInitialClouds();
+        RefreshAtmosphere();
     }
-    private void OnDrawGizmosSelected()
+    private void OnEnable()
     {
-        var minX = GetMinX();
-        var maxX = GetMaxX();
-        var minY = GetMinY();
-        var maxY = GetMaxY();
-        var activeWidth = Mathf.Max(0.01f, maxX - minX);
-        var activeHeight = Mathf.Max(0.01f, maxY - minY);
-        var recycleWidth = activeWidth + Mathf.Max(0f, recyclePadding) * 2f;
-        var boundsCenter = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
-        var previousMatrix = Gizmos.matrix;
-        var previousColor = Gizmos.color;
-        Gizmos.matrix = transform.localToWorldMatrix;
-        Gizmos.color = ActiveBoundsFillColor;
-        Gizmos.DrawCube(boundsCenter, new Vector3(activeWidth, activeHeight, 0.01f));
-        Gizmos.color = ActiveBoundsLineColor;
-        Gizmos.DrawWireCube(boundsCenter, new Vector3(activeWidth, activeHeight, 0.01f));
-        Gizmos.color = RecycleBoundsFillColor;
-        Gizmos.DrawCube(boundsCenter, new Vector3(recycleWidth, activeHeight, 0.01f));
-        Gizmos.color = RecycleBoundsLineColor;
-        Gizmos.DrawWireCube(boundsCenter, new Vector3(recycleWidth, activeHeight, 0.01f));
-        DrawDirectionGizmo(minX, maxX, maxY);
-        Gizmos.matrix = previousMatrix;
-        Gizmos.color = previousColor;
+        RefreshAtmosphere();
     }
-    public void RecycleCloud(LoopingCloud cloud)
+    private void OnValidate()
     {
-        if (cloud == null)
+        RefreshAtmosphere();
+    }
+    private void RefreshAtmosphere()
+    {
+        EnsureCameraPostProcessing();
+        var targetVolume = GetOrCreateVolume();
+        if (targetVolume == null)
         {
             return;
         }
-        ConfigureCloud(cloud, false);
-    }
-    private void SpawnInitialClouds()
-    {
-        if (spawnedClouds.Count > 0)
+        targetVolume.isGlobal = true;
+        targetVolume.priority = 0f;
+        targetVolume.blendDistance = 0f;
+        targetVolume.weight = 1f;
+        var profile = targetVolume.profile;
+        if (profile == null)
         {
             return;
         }
-        if (!HasValidSetup())
+        ConfigureBloom(profile);
+        ConfigureColorAdjustments(profile);
+        ConfigureVignette(profile);
+    }
+    private void EnsureCameraPostProcessing()
+    {
+        var cameraToConfigure = ResolveTargetCamera();
+        if (cameraToConfigure == null)
         {
             return;
         }
-        for (var i = 0; i < cloudCount; i++)
+        var cameraData = cameraToConfigure.GetUniversalAdditionalCameraData();
+        if (!cameraData.renderPostProcessing)
         {
-            var cloud = Instantiate(cloudPrefab, transform);
-            cloud.name = $"{cloudPrefab.name}_{i + 1}";
-            spawnedClouds.Add(cloud);
-            ConfigureCloud(cloud, true);
+            cameraData.renderPostProcessing = true;
         }
     }
-    private void ConfigureCloud(LoopingCloud cloud, bool isInitialSpawn)
+    private Camera ResolveTargetCamera()
     {
-        if (cloud == null)
+        if (targetCamera != null)
         {
-            return;
+            return targetCamera;
         }
-        var sprite = isInitialSpawn || randomizeSpriteOnRecycle
-            ? GetRandomSprite()
-            : cloud.CurrentSprite;
-        var speed = isInitialSpawn || randomizeSpeedOnRecycle
-            ? GetRandomSpeed()
-            : cloud.CurrentSpeed;
-        var localX = isInitialSpawn
-            ? Random.Range(GetMinX() - recyclePadding, GetMaxX() + recyclePadding)
-            : GetRecycleSpawnX();
-        var localY = Random.Range(GetMinY(), GetMaxY());
-        cloud.Configure(
-            this,
-            sprite,
-            new Vector2(localX, localY),
-            speed,
-            moveLeftToRight ? 1f : -1f,
-            GetMinX(),
-            GetMaxX(),
-            recyclePadding);
-    }
-    private bool HasValidSetup()
-    {
-        if (cloudPrefab != null && HasAtLeastOneSprite())
+        targetCamera = Camera.main;
+        if (targetCamera == null)
         {
-            missingSetupWarningShown = false;
-            return true;
+            targetCamera = FindFirstObjectByType<Camera>();
         }
-        if (!missingSetupWarningShown)
+        return targetCamera;
+    }
+    private Volume GetOrCreateVolume()
+    {
+        if (volume == null && !TryGetComponent(out volume))
         {
-            Debug.LogWarning("CloudLoopController setup incomplete: assign a cloud prefab and at least one sprite.");
-            missingSetupWarningShown = true;
+            volume = gameObject.AddComponent<Volume>();
         }
-        return false;
+        return volume;
     }
-    private bool HasAtLeastOneSprite()
+    private void ConfigureBloom(VolumeProfile profile)
     {
-        if (cloudSprites == null || cloudSprites.Length <= 0)
+        var bloom = GetOrAddComponent<Bloom>(profile);
+        bloom.active = bloomEnabled;
+        bloom.threshold.overrideState = true;
+        bloom.threshold.value = Mathf.Max(0f, bloomThreshold);
+        bloom.intensity.overrideState = true;
+        bloom.intensity.value = Mathf.Max(0f, bloomIntensity);
+        bloom.scatter.overrideState = true;
+        bloom.scatter.value = Mathf.Clamp01(bloomScatter);
+        bloom.highQualityFiltering.overrideState = true;
+        bloom.highQualityFiltering.value = false;
+        bloom.filter.overrideState = true;
+        bloom.filter.value = BloomFilterMode.Gaussian;
+        bloom.maxIterations.overrideState = true;
+        bloom.maxIterations.value = 4;
+        bloom.tint.overrideState = true;
+        bloom.tint.value = Color.white;
+        bloom.dirtIntensity.overrideState = true;
+        bloom.dirtIntensity.value = 0f;
+    }
+    private void ConfigureColorAdjustments(VolumeProfile profile)
+    {
+        var adjustments = GetOrAddComponent<ColorAdjustments>(profile);
+        adjustments.active = true;
+        adjustments.postExposure.overrideState = true;
+        adjustments.postExposure.value = postExposure;
+        adjustments.contrast.overrideState = true;
+        adjustments.contrast.value = Mathf.Clamp(contrast, -100f, 100f);
+        adjustments.colorFilter.overrideState = true;
+        adjustments.colorFilter.value = colorFilter;
+        adjustments.hueShift.overrideState = true;
+        adjustments.hueShift.value = 0f;
+        adjustments.saturation.overrideState = true;
+        adjustments.saturation.value = 0f;
+    }
+    private void ConfigureVignette(VolumeProfile profile)
+    {
+        var vignette = GetOrAddComponent<Vignette>(profile);
+        vignette.active = vignetteEnabled;
+        vignette.color.overrideState = true;
+        vignette.color.value = Color.black;
+        vignette.center.overrideState = true;
+        vignette.center.value = new Vector2(0.5f, 0.5f);
+        vignette.intensity.overrideState = true;
+        vignette.intensity.value = Mathf.Clamp01(vignetteIntensity);
+        vignette.smoothness.overrideState = true;
+        vignette.smoothness.value = Mathf.Clamp(vignetteSmoothness, 0.01f, 1f);
+        vignette.rounded.overrideState = true;
+        vignette.rounded.value = false;
+    }
+    private static T GetOrAddComponent<T>(VolumeProfile profile) where T : VolumeComponent
+    {
+        if (profile.TryGet<T>(out var component) && component != null)
         {
-            return false;
+            return component;
         }
-        for (var i = 0; i < cloudSprites.Length; i++)
-        {
-            if (cloudSprites[i] != null)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    private Sprite GetRandomSprite()
-    {
-        if (cloudSprites == null || cloudSprites.Length <= 0)
-        {
-            return null;
-        }
-        for (var attempt = 0; attempt < cloudSprites.Length; attempt++)
-        {
-            var sprite = cloudSprites[Random.Range(0, cloudSprites.Length)];
-            if (sprite != null)
-            {
-                return sprite;
-            }
-        }
-        for (var i = 0; i < cloudSprites.Length; i++)
-        {
-            if (cloudSprites[i] != null)
-            {
-                return cloudSprites[i];
-            }
-        }
-        return null;
-    }
-    private float GetRandomSpeed()
-    {
-        return Random.Range(GetMinSpeed(), GetMaxSpeed());
-    }
-    private float GetRecycleSpawnX()
-    {
-        return moveLeftToRight
-            ? GetMinX() - recyclePadding
-            : GetMaxX() + recyclePadding;
-    }
-    private float GetMinX()
-    {
-        return Mathf.Min(horizontalBounds.x, horizontalBounds.y);
-    }
-    private float GetMaxX()
-    {
-        return Mathf.Max(horizontalBounds.x, horizontalBounds.y);
-    }
-    private float GetMinY()
-    {
-        return Mathf.Min(verticalBounds.x, verticalBounds.y);
-    }
-    private float GetMaxY()
-    {
-        return Mathf.Max(verticalBounds.x, verticalBounds.y);
-    }
-    private float GetMinSpeed()
-    {
-        return Mathf.Max(0f, Mathf.Min(speedRange.x, speedRange.y));
-    }
-    private float GetMaxSpeed()
-    {
-        return Mathf.Max(GetMinSpeed(), Mathf.Max(speedRange.x, speedRange.y));
-    }
-    private void DrawDirectionGizmo(float minX, float maxX, float maxY)
-    {
-        Gizmos.color = DirectionLineColor;
-        var directionY = maxY + 0.5f;
-        var arrowStart = moveLeftToRight
-            ? new Vector3(minX - recyclePadding, directionY, 0f)
-            : new Vector3(maxX + recyclePadding, directionY, 0f);
-        var arrowEnd = moveLeftToRight
-            ? new Vector3(maxX + recyclePadding, directionY, 0f)
-            : new Vector3(minX - recyclePadding, directionY, 0f);
-        Gizmos.DrawLine(arrowStart, arrowEnd);
-        DrawArrowHead(arrowEnd, moveLeftToRight ? 1f : -1f);
-    }
-    private void DrawArrowHead(Vector3 tipPosition, float directionSign)
-    {
-        const float arrowHeadLength = 0.45f;
-        const float arrowHeadSpread = 0.18f;
-        var backwardX = tipPosition.x - directionSign * arrowHeadLength;
-        var upper = new Vector3(backwardX, tipPosition.y + arrowHeadSpread, tipPosition.z);
-        var lower = new Vector3(backwardX, tipPosition.y - arrowHeadSpread, tipPosition.z);
-        Gizmos.DrawLine(tipPosition, upper);
-        Gizmos.DrawLine(tipPosition, lower);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Environment/LoopingCloud.cs">
-using UnityEngine;
-[DisallowMultipleComponent]
-[RequireComponent(typeof(SpriteRenderer))]
-public class LoopingCloud : MonoBehaviour
-{
-    private SpriteRenderer spriteRenderer;
-    private CloudLoopController owner;
-    private float speed;
-    private float directionSign;
-    private float minX;
-    private float maxX;
-    private float recyclePadding;
-    public Sprite CurrentSprite => spriteRenderer != null ? spriteRenderer.sprite : null;
-    public float CurrentSpeed => speed;
-    private void Awake()
-    {
-        spriteRenderer = GetComponent<SpriteRenderer>();
-    }
-    private void Update()
-    {
-        if (speed <= 0f)
-        {
-            return;
-        }
-        var localPosition = transform.localPosition;
-        localPosition.x += directionSign * speed * Time.deltaTime;
-        transform.localPosition = localPosition;
-        if (ShouldRecycle(localPosition.x))
-        {
-            owner?.RecycleCloud(this);
-        }
-    }
-    public void Configure(
-        CloudLoopController cloudOwner,
-        Sprite sprite,
-        Vector2 localPosition,
-        float moveSpeed,
-        float horizontalDirection,
-        float minLocalX,
-        float maxLocalX,
-        float recycleOffset)
-    {
-        owner = cloudOwner;
-        speed = Mathf.Max(0f, moveSpeed);
-        directionSign = Mathf.Approximately(horizontalDirection, 0f) ? 1f : Mathf.Sign(horizontalDirection);
-        minX = Mathf.Min(minLocalX, maxLocalX);
-        maxX = Mathf.Max(minLocalX, maxLocalX);
-        recyclePadding = Mathf.Max(0f, recycleOffset);
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponent<SpriteRenderer>();
-        }
-        spriteRenderer.sprite = sprite;
-        var currentPosition = transform.localPosition;
-        transform.localPosition = new Vector3(localPosition.x, localPosition.y, currentPosition.z);
-    }
-    private bool ShouldRecycle(float localX)
-    {
-        return directionSign > 0f
-            ? localX > maxX + recyclePadding
-            : localX < minX - recyclePadding;
+        return profile.Add<T>(true);
     }
 }
 </file>
@@ -1453,6 +1269,62 @@ public static class GameUtils
 }
 </file>
 
+<file path="Assets/Game/Code/DefaultSystems/VFX/FloatAnimation.cs">
+using DG.Tweening;
+using UnityEngine;
+public class FloatUpDownAnimation : MonoBehaviour
+{
+    [Header("Move Y")]
+    [SerializeField] private float moveYAmplitude = 0.15f;
+    [SerializeField] private float moveYDuration = 0.8f;
+    [Header("Settings")]
+    [SerializeField] private bool playOnStart = true;
+    [SerializeField] private float maxRandomStartDelay = 0.5f;
+    [SerializeField] private bool ignoreTimeScale = true;
+    private Sequence _sequence;
+    private Vector3 _startLocalPosition;
+    private void Awake()
+    {
+        _startLocalPosition = transform.localPosition;
+    }
+    private void Start()
+    {
+        if (playOnStart)
+            Play();
+    }
+    public void Play()
+    {
+        Stop();
+        transform.localPosition = _startLocalPosition;
+        _sequence = DOTween.Sequence();
+        _sequence.Append(
+            transform
+                .DOLocalMoveY(_startLocalPosition.y + moveYAmplitude, moveYDuration)
+                .SetEase(Ease.InOutSine)
+        );
+        _sequence
+            .SetLoops(-1, LoopType.Yoyo)
+            .SetUpdate(ignoreTimeScale);
+        float delay = Random.Range(0f, maxRandomStartDelay);
+        _sequence.SetDelay(delay);
+    }
+    public void Stop()
+    {
+        if (_sequence != null && _sequence.IsActive())
+            _sequence.Kill();
+        transform.localPosition = _startLocalPosition;
+    }
+    private void OnDisable()
+    {
+        Stop();
+    }
+    private void OnDestroy()
+    {
+        Stop();
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/DefaultSystems/VFX/TextPopup/TextPopupService.cs">
 using UnityEngine;
 public class TextPopupService : MonoBehaviour
@@ -1581,38 +1453,344 @@ public class UpgradeDef : ContentDef
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
+<file path="Assets/Game/Code/Gameplay/Environment/CloudLoopController.cs">
+using System.Collections.Generic;
 using UnityEngine;
-public class KeeperActor : MonoBehaviour
+[DisallowMultipleComponent]
+public class CloudLoopController : MonoBehaviour
 {
-    private const float FacingThreshold = 0.001f;
+    private static readonly Color ActiveBoundsFillColor = new(0.35f, 0.75f, 1f, 0.08f);
+    private static readonly Color ActiveBoundsLineColor = new(0.35f, 0.75f, 1f, 0.95f);
+    private static readonly Color RecycleBoundsFillColor = new(1f, 0.75f, 0.2f, 0.05f);
+    private static readonly Color RecycleBoundsLineColor = new(1f, 0.75f, 0.2f, 0.9f);
+    private static readonly Color DirectionLineColor = new(0.65f, 1f, 0.55f, 0.95f);
+    [SerializeField] private LoopingCloud cloudPrefab;
+    [SerializeField] private Sprite[] cloudSprites;
+    [Min(1)] [SerializeField] private int cloudCount = 4;
+    [SerializeField] private Vector2 horizontalBounds = new(-12f, 12f);
+    [SerializeField] private Vector2 verticalBounds = new(3f, 6f);
+    [SerializeField] private Vector2 speedRange = new(0.2f, 0.45f);
+    [Min(0f)] [SerializeField] private float recyclePadding = 2f;
+    [SerializeField] private bool moveLeftToRight = true;
+    [SerializeField] private bool randomizeSpriteOnRecycle = true;
+    [SerializeField] private bool randomizeSpeedOnRecycle = true;
+    private readonly List<LoopingCloud> spawnedClouds = new();
+    private bool missingSetupWarningShown;
+    private void Start()
+    {
+        SpawnInitialClouds();
+    }
+    private void OnDrawGizmosSelected()
+    {
+        var minX = GetMinX();
+        var maxX = GetMaxX();
+        var minY = GetMinY();
+        var maxY = GetMaxY();
+        var activeWidth = Mathf.Max(0.01f, maxX - minX);
+        var activeHeight = Mathf.Max(0.01f, maxY - minY);
+        var recycleWidth = activeWidth + Mathf.Max(0f, recyclePadding) * 2f;
+        var boundsCenter = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+        var previousMatrix = Gizmos.matrix;
+        var previousColor = Gizmos.color;
+        Gizmos.matrix = transform.localToWorldMatrix;
+        Gizmos.color = ActiveBoundsFillColor;
+        Gizmos.DrawCube(boundsCenter, new Vector3(activeWidth, activeHeight, 0.01f));
+        Gizmos.color = ActiveBoundsLineColor;
+        Gizmos.DrawWireCube(boundsCenter, new Vector3(activeWidth, activeHeight, 0.01f));
+        Gizmos.color = RecycleBoundsFillColor;
+        Gizmos.DrawCube(boundsCenter, new Vector3(recycleWidth, activeHeight, 0.01f));
+        Gizmos.color = RecycleBoundsLineColor;
+        Gizmos.DrawWireCube(boundsCenter, new Vector3(recycleWidth, activeHeight, 0.01f));
+        DrawDirectionGizmo(minX, maxX, maxY);
+        Gizmos.matrix = previousMatrix;
+        Gizmos.color = previousColor;
+    }
+    public void RecycleCloud(LoopingCloud cloud)
+    {
+        if (cloud == null)
+        {
+            return;
+        }
+        ConfigureCloud(cloud, false);
+    }
+    private void SpawnInitialClouds()
+    {
+        if (spawnedClouds.Count > 0)
+        {
+            return;
+        }
+        if (!HasValidSetup())
+        {
+            return;
+        }
+        for (var i = 0; i < cloudCount; i++)
+        {
+            var cloud = Instantiate(cloudPrefab, transform);
+            cloud.name = $"{cloudPrefab.name}_{i + 1}";
+            spawnedClouds.Add(cloud);
+            ConfigureCloud(cloud, true);
+        }
+    }
+    private void ConfigureCloud(LoopingCloud cloud, bool isInitialSpawn)
+    {
+        if (cloud == null)
+        {
+            return;
+        }
+        var sprite = isInitialSpawn || randomizeSpriteOnRecycle
+            ? GetRandomSprite()
+            : cloud.CurrentSprite;
+        var speed = isInitialSpawn || randomizeSpeedOnRecycle
+            ? GetRandomSpeed()
+            : cloud.CurrentSpeed;
+        var localX = isInitialSpawn
+            ? Random.Range(GetMinX() - recyclePadding, GetMaxX() + recyclePadding)
+            : GetRecycleSpawnX();
+        var localY = Random.Range(GetMinY(), GetMaxY());
+        cloud.Configure(
+            this,
+            sprite,
+            new Vector2(localX, localY),
+            speed,
+            moveLeftToRight ? 1f : -1f,
+            GetMinX(),
+            GetMaxX(),
+            recyclePadding);
+    }
+    private bool HasValidSetup()
+    {
+        if (cloudPrefab != null && HasAtLeastOneSprite())
+        {
+            missingSetupWarningShown = false;
+            return true;
+        }
+        if (!missingSetupWarningShown)
+        {
+            Debug.LogWarning("CloudLoopController setup incomplete: assign a cloud prefab and at least one sprite.");
+            missingSetupWarningShown = true;
+        }
+        return false;
+    }
+    private bool HasAtLeastOneSprite()
+    {
+        if (cloudSprites == null || cloudSprites.Length <= 0)
+        {
+            return false;
+        }
+        for (var i = 0; i < cloudSprites.Length; i++)
+        {
+            if (cloudSprites[i] != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    private Sprite GetRandomSprite()
+    {
+        if (cloudSprites == null || cloudSprites.Length <= 0)
+        {
+            return null;
+        }
+        for (var attempt = 0; attempt < cloudSprites.Length; attempt++)
+        {
+            var sprite = cloudSprites[Random.Range(0, cloudSprites.Length)];
+            if (sprite != null)
+            {
+                return sprite;
+            }
+        }
+        for (var i = 0; i < cloudSprites.Length; i++)
+        {
+            if (cloudSprites[i] != null)
+            {
+                return cloudSprites[i];
+            }
+        }
+        return null;
+    }
+    private float GetRandomSpeed()
+    {
+        return Random.Range(GetMinSpeed(), GetMaxSpeed());
+    }
+    private float GetRecycleSpawnX()
+    {
+        return moveLeftToRight
+            ? GetMinX() - recyclePadding
+            : GetMaxX() + recyclePadding;
+    }
+    private float GetMinX()
+    {
+        return Mathf.Min(horizontalBounds.x, horizontalBounds.y);
+    }
+    private float GetMaxX()
+    {
+        return Mathf.Max(horizontalBounds.x, horizontalBounds.y);
+    }
+    private float GetMinY()
+    {
+        return Mathf.Min(verticalBounds.x, verticalBounds.y);
+    }
+    private float GetMaxY()
+    {
+        return Mathf.Max(verticalBounds.x, verticalBounds.y);
+    }
+    private float GetMinSpeed()
+    {
+        return Mathf.Max(0f, Mathf.Min(speedRange.x, speedRange.y));
+    }
+    private float GetMaxSpeed()
+    {
+        return Mathf.Max(GetMinSpeed(), Mathf.Max(speedRange.x, speedRange.y));
+    }
+    private void DrawDirectionGizmo(float minX, float maxX, float maxY)
+    {
+        Gizmos.color = DirectionLineColor;
+        var directionY = maxY + 0.5f;
+        var arrowStart = moveLeftToRight
+            ? new Vector3(minX - recyclePadding, directionY, 0f)
+            : new Vector3(maxX + recyclePadding, directionY, 0f);
+        var arrowEnd = moveLeftToRight
+            ? new Vector3(maxX + recyclePadding, directionY, 0f)
+            : new Vector3(minX - recyclePadding, directionY, 0f);
+        Gizmos.DrawLine(arrowStart, arrowEnd);
+        DrawArrowHead(arrowEnd, moveLeftToRight ? 1f : -1f);
+    }
+    private void DrawArrowHead(Vector3 tipPosition, float directionSign)
+    {
+        const float arrowHeadLength = 0.45f;
+        const float arrowHeadSpread = 0.18f;
+        var backwardX = tipPosition.x - directionSign * arrowHeadLength;
+        var upper = new Vector3(backwardX, tipPosition.y + arrowHeadSpread, tipPosition.z);
+        var lower = new Vector3(backwardX, tipPosition.y - arrowHeadSpread, tipPosition.z);
+        Gizmos.DrawLine(tipPosition, upper);
+        Gizmos.DrawLine(tipPosition, lower);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Environment/LoopingCloud.cs">
+using UnityEngine;
+[DisallowMultipleComponent]
+[RequireComponent(typeof(SpriteRenderer))]
+public class LoopingCloud : MonoBehaviour
+{
     private SpriteRenderer spriteRenderer;
-    public Vector2 GetWorldPosition()
+    private CloudLoopController owner;
+    private float speed;
+    private float directionSign;
+    private float minX;
+    private float maxX;
+    private float recyclePadding;
+    public Sprite CurrentSprite => spriteRenderer != null ? spriteRenderer.sprite : null;
+    public float CurrentSpeed => speed;
+    private void Awake()
     {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
+        spriteRenderer = GetComponent<SpriteRenderer>();
     }
-    public void SetWorldPosition(Vector2 worldPosition)
+    private void Update()
     {
-        var currentPosition = transform.position;
-        UpdateFacing(new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y));
-        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
-    }
-    private void UpdateFacing(Vector2 movementOffset)
-    {
-        if (Mathf.Abs(movementOffset.x) <= FacingThreshold)
+        if (speed <= 0f)
         {
             return;
         }
+        var localPosition = transform.localPosition;
+        localPosition.x += directionSign * speed * Time.deltaTime;
+        transform.localPosition = localPosition;
+        if (ShouldRecycle(localPosition.x))
+        {
+            owner?.RecycleCloud(this);
+        }
+    }
+    public void Configure(
+        CloudLoopController cloudOwner,
+        Sprite sprite,
+        Vector2 localPosition,
+        float moveSpeed,
+        float horizontalDirection,
+        float minLocalX,
+        float maxLocalX,
+        float recycleOffset)
+    {
+        owner = cloudOwner;
+        speed = Mathf.Max(0f, moveSpeed);
+        directionSign = Mathf.Approximately(horizontalDirection, 0f) ? 1f : Mathf.Sign(horizontalDirection);
+        minX = Mathf.Min(minLocalX, maxLocalX);
+        maxX = Mathf.Max(minLocalX, maxLocalX);
+        recyclePadding = Mathf.Max(0f, recycleOffset);
         if (spriteRenderer == null)
         {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+            spriteRenderer = GetComponent<SpriteRenderer>();
         }
-        if (spriteRenderer == null)
+        spriteRenderer.sprite = sprite;
+        var currentPosition = transform.localPosition;
+        transform.localPosition = new Vector3(localPosition.x, localPosition.y, currentPosition.z);
+    }
+    private bool ShouldRecycle(float localX)
+    {
+        return directionSign > 0f
+            ? localX > maxX + recyclePadding
+            : localX < minX - recyclePadding;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Environment/WorldYSortSpriteGroup.cs">
+using UnityEngine;
+[ExecuteAlways]
+[DisallowMultipleComponent]
+public class WorldYSortSpriteGroup : MonoBehaviour
+{
+    private const int SortingPrecision = 100;
+    [SerializeField] private bool includeInactiveChildren = true;
+    private SpriteRenderer[] spriteRenderers = new SpriteRenderer[0];
+    private void Reset()
+    {
+        RefreshSpriteRenderers();
+        ApplySortingOrders();
+    }
+    private void OnEnable()
+    {
+        RefreshSpriteRenderers();
+        ApplySortingOrders();
+    }
+    private void OnValidate()
+    {
+        RefreshSpriteRenderers();
+        ApplySortingOrders();
+    }
+    private void OnTransformChildrenChanged()
+    {
+        RefreshSpriteRenderers();
+        ApplySortingOrders();
+    }
+    private void LateUpdate()
+    {
+        ApplySortingOrders();
+    }
+    private void RefreshSpriteRenderers()
+    {
+        spriteRenderers = GetComponentsInChildren<SpriteRenderer>(includeInactiveChildren);
+    }
+    private void ApplySortingOrders()
+    {
+        if (spriteRenderers == null || spriteRenderers.Length == 0)
         {
-            return;
+            RefreshSpriteRenderers();
         }
-        spriteRenderer.flipX = movementOffset.x < 0f;
+        for (var i = 0; i < spriteRenderers.Length; i++)
+        {
+            var spriteRenderer = spriteRenderers[i];
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+            var sortingOrder = -Mathf.RoundToInt(spriteRenderer.transform.position.y * SortingPrecision);
+            if (spriteRenderer.sortingOrder != sortingOrder)
+            {
+                spriteRenderer.sortingOrder = sortingOrder;
+            }
+        }
     }
 }
 </file>
@@ -1948,7 +2126,7 @@ public class NightPoiSystem
             {
                 continue;
             }
-            var distance = Vector2.SqrMagnitude(registeredPoi.GetWorldPosition() - keeperPosition);
+            var distance = Vector2.SqrMagnitude(registeredPoi.GetKeeperTargetWorldPosition() - keeperPosition);
             if (distance >= bestDistance)
             {
                 continue;
@@ -3623,120 +3801,6 @@ public class BellRingResult
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-public class BellWorldObject : MonoBehaviour, IPointerClickHandler
-{
-    [SerializeField] private string bellId;
-    [SerializeField] private WorldBarFillShrink cooldownBar;
-    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
-    private float cooldownRemainingSeconds;
-    private float cooldownDurationSeconds;
-    private SpriteRenderer spriteRenderer;
-    public string BellId => bellId;
-    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
-    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
-    private void Awake()
-    {
-        EnsureReferences();
-        cooldownBar?.SetVisible(false);
-    }
-    private void Update()
-    {
-        if (cooldownRemainingSeconds <= 0f)
-        {
-            cooldownBar?.SetVisible(false);
-            return;
-        }
-        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
-        RefreshCooldownPresentation();
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        EnsureReferences();
-        if (string.IsNullOrWhiteSpace(bellId))
-        {
-            validationError = "missing bell id";
-            return true;
-        }
-        if (CMS.Get<BellDef>(bellId) == null)
-        {
-            validationError = "missing BellDef";
-            return true;
-        }
-        if (spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void ShowFeedbackPopup(string message, Color color)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-        EnsureReferences();
-        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
-    }
-    public void StartCooldown(float cooldownSeconds)
-    {
-        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
-        cooldownRemainingSeconds = cooldownDurationSeconds;
-        RefreshCooldownPresentation();
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-            return;
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
-            return;
-        }
-        G.main.TryInteractWithBell(bellId);
-    }
-    private void RefreshCooldownPresentation()
-    {
-        if (cooldownBar == null)
-            return;
-        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
-        {
-            cooldownBar.SetVisible(false);
-            return;
-        }
-        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
-        cooldownBar.SetVisible(true);
-        cooldownBar.SetNormalized(remainingNormalized);
-    }
-    private void EnsureReferences()
-    {
-        if (spriteRenderer == null)
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        if (cooldownBar == null)
-            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
-    }
-    private float GetPopupOffsetY()
-    {
-        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
-        return spriteHeight * 0.6f + popupVerticalPadding;
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
 using UnityEngine;
 [CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
@@ -3863,6 +3927,61 @@ public class FaithCollectionSystem
         runState.FaithCollectionTimerProgress -= completedPayoutCycles * collectionIntervalSeconds;
         runState.Faith += collectedFaith;
         return collectedFaith;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
+using UnityEngine;
+public class KeeperActor : MonoBehaviour
+{
+    private const float FacingThreshold = 0.001f;
+    private const int SortingPrecision = 100;
+    private SpriteRenderer spriteRenderer;
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public void SetWorldPosition(Vector2 worldPosition)
+    {
+        var currentPosition = transform.position;
+        UpdateFacing(new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y));
+        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
+    }
+    private void UpdateFacing(Vector2 movementOffset)
+    {
+        if (Mathf.Abs(movementOffset.x) <= FacingThreshold)
+        {
+            return;
+        }
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.flipX = movementOffset.x < 0f;
+    }
+    private void UpdateSortingOrder()
+    {
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+    }
+    private SpriteRenderer GetSpriteRenderer()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        return spriteRenderer;
     }
 }
 </file>
@@ -4046,6 +4165,7 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
     [SerializeField] private string id;
     [SerializeField] private NightPoiType type;
     [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private Transform keeperTargetPoint;
     [SerializeField] private NightPoiProgressView progressView;
     public string Id => id;
     public NightPoiType Type => type;
@@ -4063,6 +4183,12 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
         var worldPosition = transform.position;
         return new Vector2(worldPosition.x, worldPosition.y);
     }
+    public Vector2 GetKeeperTargetWorldPosition()
+    {
+        var targetTransform = keeperTargetPoint != null ? keeperTargetPoint : transform;
+        var worldPosition = targetTransform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
     public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
     {
         var interactionRadiusValue = InteractionRadius;
@@ -4070,7 +4196,7 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
         {
             return false;
         }
-        return Vector2.Distance(GetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+        return Vector2.Distance(GetKeeperTargetWorldPosition(), keeperPosition) <= interactionRadiusValue;
     }
     public bool TryGetWorldInteractionValidationError(out string validationError)
     {
@@ -4694,6 +4820,120 @@ public class BellSystem
         }
         var costModifier = runState != null ? runState.BellFaithCostModifier : 0;
         return UnityEngine.Mathf.Max(0, bellDef.FaithCost + costModifier);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class BellWorldObject : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string bellId;
+    [SerializeField] private WorldBarFillShrink cooldownBar;
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+    private float cooldownRemainingSeconds;
+    private float cooldownDurationSeconds;
+    private SpriteRenderer spriteRenderer;
+    public string BellId => bellId;
+    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
+    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    private void Awake()
+    {
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+    private void Update()
+    {
+        if (cooldownRemainingSeconds <= 0f)
+        {
+            cooldownBar?.SetVisible(false);
+            return;
+        }
+        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
+        RefreshCooldownPresentation();
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        EnsureReferences();
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            validationError = "missing bell id";
+            return true;
+        }
+        if (CMS.Get<BellDef>(bellId) == null)
+        {
+            validationError = "missing BellDef";
+            return true;
+        }
+        if (spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void ShowFeedbackPopup(string message, Color color)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+        EnsureReferences();
+        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
+    }
+    public void StartCooldown(float cooldownSeconds)
+    {
+        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
+        cooldownRemainingSeconds = cooldownDurationSeconds;
+        RefreshCooldownPresentation();
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+            return;
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
+            return;
+        }
+        G.main.TryInteractWithBell(bellId);
+    }
+    private void RefreshCooldownPresentation()
+    {
+        if (cooldownBar == null)
+            return;
+        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
+        {
+            cooldownBar.SetVisible(false);
+            return;
+        }
+        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
+        cooldownBar.SetVisible(true);
+        cooldownBar.SetNormalized(remainingNormalized);
+    }
+    private void EnsureReferences()
+    {
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        if (cooldownBar == null)
+            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
+    }
+    private float GetPopupOffsetY()
+    {
+        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
+        return spriteHeight * 0.6f + popupVerticalPadding;
     }
 }
 </file>
@@ -8232,7 +8472,7 @@ public class Main : MonoBehaviour
             Debug.LogWarning($"Keeper move failed: night poi '{poiId}' not found");
             return false;
         }
-        return TryMoveKeeperTo(poi.GetWorldPosition(), poi.Id);
+        return TryMoveKeeperTo(poi.GetKeeperTargetWorldPosition(), poi.Id);
     }
     public bool TryMoveKeeperToPoiType(NightPoiType poiType)
     {

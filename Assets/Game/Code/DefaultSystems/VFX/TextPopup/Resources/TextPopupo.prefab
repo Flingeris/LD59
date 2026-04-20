@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 4744802598649254109}
   - component: {fileID: 4767573453592129617}
   - component: {fileID: 6613572649675342548}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: TextPopupo
   m_TagString: Untagged
   m_Icon: {fileID: 0}

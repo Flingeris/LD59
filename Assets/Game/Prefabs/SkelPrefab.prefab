@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8574890528226441659}
   - component: {fileID: 6090948564340898345}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: LifeTimeBar
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -57,7 +57,7 @@ GameObject:
   - component: {fileID: 7629911367158161818}
   - component: {fileID: 7481703953572530215}
   - component: {fileID: 1263925118273065844}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: Fill
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -105,7 +105,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  - {fileID: 2100000, guid: 9dfc825aed78fcd4ba02077103263b40, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -163,7 +163,7 @@ GameObject:
   - component: {fileID: 8158794107988948295}
   - component: {fileID: 5283734595350567808}
   - component: {fileID: 303448911071448545}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: lifetimeFill
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -211,7 +211,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  - {fileID: 2100000, guid: 9dfc825aed78fcd4ba02077103263b40, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -268,7 +268,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6668760534121722647}
   - component: {fileID: 5483328422541989574}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: HpBar
   m_TagString: Untagged
   m_Icon: {fileID: 0}

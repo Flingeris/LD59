@@ -285,7 +285,7 @@ public class Main : MonoBehaviour
             return false;
         }
 
-        return TryMoveKeeperTo(poi.GetWorldPosition(), poi.Id);
+        return TryMoveKeeperTo(poi.GetKeeperTargetWorldPosition(), poi.Id);
     }
 
     public bool TryMoveKeeperToPoiType(NightPoiType poiType)

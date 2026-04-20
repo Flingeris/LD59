@@ -103,7 +103,7 @@ public class NightPoiSystem
                 continue;
             }
 
-            var distance = Vector2.SqrMagnitude(registeredPoi.GetWorldPosition() - keeperPosition);
+            var distance = Vector2.SqrMagnitude(registeredPoi.GetKeeperTargetWorldPosition() - keeperPosition);
             if (distance >= bestDistance)
             {
                 continue;

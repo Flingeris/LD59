@@ -6,6 +6,7 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
     [SerializeField] private string id;
     [SerializeField] private NightPoiType type;
     [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private Transform keeperTargetPoint;
     [SerializeField] private NightPoiProgressView progressView;
 
     public string Id => id;
@@ -28,6 +29,13 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
         return new Vector2(worldPosition.x, worldPosition.y);
     }
 
+    public Vector2 GetKeeperTargetWorldPosition()
+    {
+        var targetTransform = keeperTargetPoint != null ? keeperTargetPoint : transform;
+        var worldPosition = targetTransform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+
     public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
     {
         var interactionRadiusValue = InteractionRadius;
@@ -36,7 +44,7 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
             return false;
         }
 
-        return Vector2.Distance(GetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+        return Vector2.Distance(GetKeeperTargetWorldPosition(), keeperPosition) <= interactionRadiusValue;
     }
 
     public bool TryGetWorldInteractionValidationError(out string validationError)

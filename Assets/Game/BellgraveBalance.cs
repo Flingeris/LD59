@@ -124,8 +124,8 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<UnitDef>();
             def.InitializeRuntime(
                 "vampire",
-                1,
-                12,
+                100,
+                9999,
                 0.55f,
                 1.9f,
                 2.5f,

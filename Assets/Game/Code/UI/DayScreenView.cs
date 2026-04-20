@@ -1,31 +1,21 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Debug = UnityEngine.Debug;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [DisallowMultipleComponent]
 public class DayScreenView : MonoBehaviour
 {
-    private const float CompactCanvasWidthThreshold = 420f;
-    private const float CompactCanvasHeightThreshold = 240f;
-    private const float CompactContentHorizontalMargin = 6f;
-    private const float CompactContentVerticalMargin = 6f;
-    private const float CompactSectionPadding = 6f;
-    private const float CompactBottomButtonHeight = 18f;
-    private const float CompactUpgradeItemSpacing = 4f;
-    private const float CompactPreferredUpgradeItemHeight = 24f;
-    private const float CompactMinimumUpgradeItemHeight = 18f;
-    private const float RegularContentHorizontalMargin = 24f;
-    private const float RegularContentVerticalMargin = 18f;
-    private const float RegularContentMaxWidth = 680f;
-    private const float RegularContentMaxHeight = 420f;
-    private const float RegularSectionPadding = 16f;
-    private const float RegularSummaryColumnWidthNormalized = 0.36f;
-    private const float RegularBottomButtonHeight = 40f;
-    private const float RegularUpgradeItemSpacing = 8f;
-    private const float RegularPreferredUpgradeItemHeight = 52f;
-    private const float RegularMinimumUpgradeItemHeight = 40f;
+    private const string GeneratedRootAssetPath = "Assets/Game/Resources/GeneratedUi/GeneratedDayScreenView.prefab";
+    private const string GeneratedCardAssetPath = "Assets/Game/Resources/GeneratedUi/GeneratedDayUpgradeCard.prefab";
+    private const string GeneratedCardResourcePath = "GeneratedUi/GeneratedDayUpgradeCard";
 
     [SerializeField] private TMP_Text summaryText;
     [SerializeField] private RectTransform upgradeItemsContainer;
@@ -35,28 +25,50 @@ public class DayScreenView : MonoBehaviour
     public event Action StartNightRequested;
     public event Action<string> UpgradePurchaseRequested;
 
-    private bool isInitialized;
     private readonly List<DayUpgradeItemView> spawnedUpgradeItems = new();
-    private RectTransform rootRect;
-    private RectTransform contentPanelRect;
-    private RectTransform summaryPanelRect;
-    private RectTransform upgradesPanelRect;
-    private Image contentPanelImage;
-    private Image summaryPanelImage;
-    private Image upgradesPanelImage;
+
+    private bool isInitialized;
+    private bool hasSavedGeneratedPrefabs;
+    private bool isApplyingLayout;
+
     private RunState currentRunState;
     private IReadOnlyList<DayUpgradeItemData> currentUpgradeItems = Array.Empty<DayUpgradeItemData>();
-    private LayoutMetrics currentLayout;
-    private bool isApplyingLayout;
+
+    private RectTransform rootRect;
+    private RectTransform contentRootRect;
+    private RectTransform summaryPanelRect;
+    private RectTransform cardsPanelRect;
+    private RectTransform footerPanelRect;
+
+    private Image contentRootImage;
+    private Image summaryPanelImage;
+    private Image cardsPanelImage;
+    private Image footerPanelImage;
 
     private void Awake()
     {
         EnsureInitialized();
     }
 
+    private void OnDestroy()
+    {
+        if (startNightButton != null)
+        {
+            startNightButton.onClick.RemoveListener(HandleStartNightPressed);
+        }
+
+        ClearUpgradeItems();
+        isInitialized = false;
+    }
+
     private void OnRectTransformDimensionsChange()
     {
-        if (!isActiveAndEnabled || !gameObject.activeInHierarchy || isApplyingLayout)
+        if (!isActiveAndEnabled || isApplyingLayout)
+        {
+            return;
+        }
+
+        if (!gameObject.activeInHierarchy)
         {
             return;
         }
@@ -64,28 +76,12 @@ public class DayScreenView : MonoBehaviour
         EnsureInitialized();
         ApplyRuntimeLayout();
 
-        if (currentRunState != null && summaryText != null)
+        if (currentRunState != null)
         {
-            summaryText.text = BuildSummary(currentRunState);
+            RefreshSummary(currentRunState);
         }
 
-        if (currentUpgradeItems != null)
-        {
-            RebuildUpgradeItems(currentUpgradeItems);
-        }
-    }
-
-    private void OnDestroy()
-    {
-        if (!isInitialized || startNightButton == null)
-        {
-            ClearUpgradeItems();
-            return;
-        }
-
-        startNightButton.onClick.RemoveListener(HandleStartNightPressed);
-        isInitialized = false;
-        ClearUpgradeItems();
+        RebuildUpgradeItems(currentUpgradeItems);
     }
 
     public void Show(RunState runState, IReadOnlyList<DayUpgradeItemData> upgradeItems)
@@ -109,45 +105,185 @@ public class DayScreenView : MonoBehaviour
 
         currentRunState = runState;
         currentUpgradeItems = upgradeItems ?? Array.Empty<DayUpgradeItemData>();
+
         EnsureInitialized();
         ApplyRuntimeLayout();
-
-        if (summaryText != null)
-        {
-            summaryText.text = BuildSummary(runState);
-        }
-
-        if (startNightButton != null)
-        {
-            startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
-        }
-
+        RefreshSummary(runState);
+        RefreshStartNightButton(runState);
         RebuildUpgradeItems(currentUpgradeItems);
     }
 
     private void EnsureInitialized()
     {
         rootRect ??= transform as RectTransform;
-
-        if (upgradeItemTemplate != null)
-        {
-            upgradeItemTemplate.gameObject.SetActive(false);
-        }
-
-        if (isInitialized || startNightButton == null)
+        if (rootRect == null)
         {
             return;
         }
 
-        startNightButton.onClick.AddListener(HandleStartNightPressed);
-        isInitialized = true;
-        EnsureRuntimePanels();
+        MakeRootNonBlocking();
+        EnsureRuntimeStructure();
+
+        if (!isInitialized)
+        {
+            if (startNightButton != null)
+            {
+                startNightButton.onClick.RemoveListener(HandleStartNightPressed);
+                startNightButton.onClick.AddListener(HandleStartNightPressed);
+            }
+
+            isInitialized = true;
+        }
+
         ApplyRuntimeLayout();
+        TrySaveGeneratedPrefabs();
+    }
+
+    private void MakeRootNonBlocking()
+    {
+        if (TryGetComponent<Image>(out var rootImage))
+        {
+            rootImage.color = new Color(0f, 0f, 0f, 0f);
+            rootImage.raycastTarget = false;
+        }
+    }
+
+    private void EnsureRuntimeStructure()
+    {
+        if (contentRootRect == null)
+        {
+            contentRootRect = CreatePanel("DayScreenContentRoot", rootRect, out contentRootImage);
+            contentRootImage.color = new Color(0f, 0f, 0f, 0f);
+            contentRootImage.raycastTarget = false;
+        }
+
+        if (summaryPanelRect == null)
+        {
+            summaryPanelRect = CreatePanel("DaySummaryPanel", contentRootRect, out summaryPanelImage);
+            summaryPanelImage.color = new Color(0.10f, 0.12f, 0.15f, 0.94f);
+        }
+
+        if (cardsPanelRect == null)
+        {
+            cardsPanelRect = CreatePanel("DayCardsPanel", contentRootRect, out cardsPanelImage);
+            cardsPanelImage.color = new Color(0f, 0f, 0f, 0f);
+            cardsPanelImage.raycastTarget = false;
+        }
+
+        if (footerPanelRect == null)
+        {
+            footerPanelRect = CreatePanel("DayFooterPanel", contentRootRect, out footerPanelImage);
+            footerPanelImage.color = new Color(0f, 0f, 0f, 0f);
+            footerPanelImage.raycastTarget = false;
+        }
+
+        if (summaryText == null)
+        {
+            summaryText = CreateText("SummaryText", summaryPanelRect, string.Empty);
+        }
+        else if (summaryText.rectTransform.parent != summaryPanelRect)
+        {
+            summaryText.rectTransform.SetParent(summaryPanelRect, false);
+        }
+
+        if (startNightButton == null)
+        {
+            startNightButton = CreateButton("StartNightButton", footerPanelRect, "Start Night");
+        }
+        else if ((startNightButton.transform as RectTransform)?.parent != footerPanelRect)
+        {
+            (startNightButton.transform as RectTransform)?.SetParent(footerPanelRect, false);
+        }
+
+        EnsureUpgradeTemplate();
+        EnsureUpgradeContainer();
+    }
+
+    private void EnsureUpgradeTemplate()
+    {
+        if (upgradeItemTemplate == null)
+        {
+            var generatedPrefab = Resources.Load<GameObject>(GeneratedCardResourcePath);
+            if (generatedPrefab != null)
+            {
+                var instance = Instantiate(generatedPrefab, cardsPanelRect, false);
+                instance.name = generatedPrefab.name;
+                upgradeItemTemplate = instance.GetComponent<DayUpgradeItemView>();
+            }
+        }
+
+        if (upgradeItemTemplate == null)
+        {
+            var templateObject = new GameObject(
+                "DayUpgradeItemTemplate",
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image),
+                typeof(DayUpgradeItemView));
+
+            var templateRect = templateObject.GetComponent<RectTransform>();
+            templateRect.SetParent(cardsPanelRect, false);
+            templateRect.sizeDelta = new Vector2(92f, 74f);
+
+            upgradeItemTemplate = templateObject.GetComponent<DayUpgradeItemView>();
+        }
+
+        upgradeItemTemplate.gameObject.SetActive(false);
+    }
+
+    private void EnsureUpgradeContainer()
+    {
+        if (upgradeItemsContainer == null)
+        {
+            var containerObject = new GameObject("UpgradeItemsContainer", typeof(RectTransform));
+            upgradeItemsContainer = containerObject.GetComponent<RectTransform>();
+            upgradeItemsContainer.SetParent(cardsPanelRect, false);
+        }
+        else if (upgradeItemsContainer.parent != cardsPanelRect)
+        {
+            upgradeItemsContainer.SetParent(cardsPanelRect, false);
+        }
+    }
+
+    private void RefreshSummary(RunState runState)
+    {
+        if (summaryText == null || runState == null)
+        {
+            return;
+        }
+
+        summaryText.text = BuildSummary(runState);
+    }
+
+    private void RefreshStartNightButton(RunState runState)
+    {
+        if (startNightButton == null || runState == null)
+        {
+            return;
+        }
+
+        startNightButton.interactable = runState.CurrentPhase == GamePhase.Day;
     }
 
     private void HandleStartNightPressed()
     {
         StartNightRequested?.Invoke();
+    }
+
+    private string BuildSummary(RunState runState)
+    {
+        var hasLastNight = runState.LastDayReward != null && runState.LastDayReward.SourceNightIndex > 0;
+
+        var leadLine = hasLastNight
+            ? $"Night {runState.LastDayReward.SourceNightIndex} survived."
+            : "Prepare for the next night.";
+
+        return
+            $"<b>Day {runState.CurrentDay}</b>\n" +
+            $"<color=#d7c7a8>{leadLine}</color>\n" +
+            $"Start Faith: <color=#f0ead6>{Mathf.Max(0, runState.StartingNightFaith)}</color>\n" +
+            $"Gold: <color=#f4c96b>{Mathf.Max(0, runState.Gold)}</color>\n" +
+            $"Cemetery: <color=#d7e3d1>{Mathf.Max(0, runState.CemeteryState)}/{Mathf.Max(1, runState.CemeteryMaxState)}</color>";
     }
 
     private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
@@ -159,66 +295,42 @@ public class DayScreenView : MonoBehaviour
             return;
         }
 
-        var templateRect = upgradeItemTemplate.transform as RectTransform;
-        if (templateRect == null)
+        var offerCount = Mathf.Min(3, upgradeItems.Count);
+        if (offerCount <= 0)
         {
             return;
         }
 
-        var columnCount = Mathf.Max(1, currentLayout.UpgradeColumnCount);
-        var spacing = currentLayout.UpgradeItemSpacing;
-        var availableWidth = upgradeItemsContainer.rect.width;
-        if (availableWidth <= 1f)
-        {
-            availableWidth = templateRect.rect.width;
-        }
+        var availableWidth = Mathf.Max(280f, upgradeItemsContainer.rect.width);
+        var availableHeight = Mathf.Max(70f, upgradeItemsContainer.rect.height);
 
-        if (currentLayout.IsCompact && availableWidth < 150f)
-        {
-            columnCount = 1;
-        }
+        const float spacing = 4f;
+        var cardWidth = Mathf.Floor((availableWidth - spacing * 2f) / 3f);
+        var cardHeight = Mathf.Clamp(availableHeight, 70f, 82f);
 
-        var rowCount = Mathf.CeilToInt(upgradeItems.Count / (float)columnCount);
-        var availableHeight = upgradeItemsContainer.rect.height;
-        var itemHeight = currentLayout.PreferredUpgradeItemHeight;
-        if (rowCount > 0 && availableHeight > 0f)
-        {
-            var fittedHeight = (availableHeight - spacing * Mathf.Max(0, rowCount - 1)) / rowCount;
-            itemHeight = Mathf.Clamp(
-                fittedHeight,
-                currentLayout.MinimumUpgradeItemHeight,
-                currentLayout.PreferredUpgradeItemHeight);
-        }
+        var usedWidth = offerCount * cardWidth + Mathf.Max(0, offerCount - 1) * spacing;
+        var startX = Mathf.Floor((availableWidth - usedWidth) * 0.5f);
 
-        var itemWidth = (availableWidth - spacing * Mathf.Max(0, columnCount - 1)) / columnCount;
-        if (itemWidth <= 1f)
-        {
-            itemWidth = templateRect.rect.width;
-        }
-
-        for (var i = 0; i < upgradeItems.Count; i++)
+        for (var i = 0; i < offerCount; i++)
         {
             var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
-            var itemRect = itemView.transform as RectTransform;
-            if (itemRect != null)
+            itemView.gameObject.name = $"UpgradeItem_{i + 1}";
+            itemView.gameObject.SetActive(true);
+
+            if (itemView.transform is RectTransform itemRect)
             {
-                var row = i / columnCount;
-                var column = i % columnCount;
-                itemRect.anchorMin = new Vector2(0f, 1f);
-                itemRect.anchorMax = new Vector2(0f, 1f);
-                itemRect.pivot = new Vector2(0f, 1f);
-                itemRect.sizeDelta = new Vector2(itemWidth, itemHeight);
-                itemRect.anchoredPosition = new Vector2(
-                    column * (itemWidth + spacing),
-                    -(row * (itemHeight + spacing)));
+                itemRect.anchorMin = new Vector2(0f, 0.5f);
+                itemRect.anchorMax = new Vector2(0f, 0.5f);
+                itemRect.pivot = new Vector2(0f, 0.5f);
+                itemRect.sizeDelta = new Vector2(cardWidth, cardHeight);
+                itemRect.anchoredPosition = new Vector2(startX + i * (cardWidth + spacing), 0f);
             }
 
-            itemView.gameObject.name = $"UpgradeItem_{i}";
             itemView.BuyRequested -= HandleUpgradeBuyRequested;
             itemView.BuyRequested += HandleUpgradeBuyRequested;
-            itemView.ApplyLayout(currentLayout.IsCompact, itemWidth, itemHeight);
+            itemView.ApplyLayout(true, cardWidth, cardHeight);
             itemView.Bind(upgradeItems[i]);
-            itemView.gameObject.SetActive(true);
+
             spawnedUpgradeItems.Add(itemView);
         }
     }
@@ -234,7 +346,6 @@ public class DayScreenView : MonoBehaviour
             }
 
             itemView.BuyRequested -= HandleUpgradeBuyRequested;
-            itemView.gameObject.SetActive(false);
             Destroy(itemView.gameObject);
         }
 
@@ -246,165 +357,15 @@ public class DayScreenView : MonoBehaviour
         UpgradePurchaseRequested?.Invoke(upgradeId);
     }
 
-    private string BuildSummary(RunState runState)
+    private void ApplyRuntimeLayout()
     {
-        var hasLastNight = runState.LastDayReward != null && runState.LastDayReward.SourceNightIndex > 0;
-        var hasReward = runState.LastDayReward != null && runState.LastDayReward.HasAnyReward;
-        var offerCount = currentUpgradeItems != null ? currentUpgradeItems.Count : 0;
-        var upgradeChoiceLine = offerCount > 0
-            ? $"{offerCount} offers available today."
-            : "No offers available today.";
-        var resourcesLine = currentLayout.IsCompact
-            ? $"Faith {runState.Faith}  Gold {runState.Gold}"
-            : $"Faith reserve: <color=#f0ead6>{runState.Faith}</color>\nGold: <color=#f4c96b>{runState.Gold}</color>";
-        var cemeteryLine = currentLayout.IsCompact
-            ? $"Cemetery {runState.CemeteryState}/{runState.CemeteryMaxState}"
-            : $"Cemetery: <color=#d7e3d1>{runState.CemeteryState}/{runState.CemeteryMaxState}</color>";
-
-        if (currentLayout.IsCompact)
-        {
-            var leadLine = hasLastNight
-                ? $"Night {runState.LastDayReward.SourceNightIndex} survived."
-                : "Prepare for the next night.";
-            var followupLine = hasReward
-                ? $"{BuildRewardSummary(runState.LastDayReward)}. {upgradeChoiceLine}"
-                : upgradeChoiceLine;
-
-            return
-                $"<b>Day {runState.CurrentDay}</b>\n" +
-                $"<color=#d7c7a8>{leadLine} {followupLine}</color>\n" +
-                $"{resourcesLine}\n" +
-                cemeteryLine;
-        }
-
-        var summary =
-            $"<b>Day {runState.CurrentDay}</b>\n" +
-            (hasLastNight
-                ? $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. {upgradeChoiceLine}</color>\n\n"
-                : "<color=#d7c7a8>The cemetery is quiet. Prepare the next signal.</color>\n\n");
-
-        if (hasReward)
-        {
-            summary += $"<b>Last Reward</b>\n{BuildRewardSummary(runState.LastDayReward)}\n\n";
-        }
-
-        summary +=
-            "<b>State</b>\n" +
-            $"{resourcesLine}\n" +
-            cemeteryLine;
-
-        return summary;
-    }
-
-    private static string BuildRewardSummary(DayRewardData reward)
-    {
-        if (reward == null || !reward.HasAnyReward)
-        {
-            return "none";
-        }
-
-        if (reward.FaithReward > 0 && reward.GoldReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith, +{reward.GoldReward} Gold";
-        }
-
-        if (reward.FaithReward > 0)
-        {
-            return $"+{reward.FaithReward} Faith";
-        }
-
-        return $"+{reward.GoldReward} Gold";
-    }
-
-    private void EnsureRuntimePanels()
-    {
-        if (rootRect == null)
+        if (rootRect == null || contentRootRect == null || summaryPanelRect == null || cardsPanelRect == null ||
+            footerPanelRect == null)
         {
             return;
         }
 
-        var rootImage = GetComponent<Image>();
-        if (rootImage != null)
-        {
-            rootImage.color = new Color(0.03f, 0.04f, 0.06f, 0.9f);
-            rootImage.type = Image.Type.Sliced;
-        }
-
-        if (contentPanelRect == null)
-        {
-            contentPanelRect = CreatePanel("DayContentPanel", rootRect, new Color(0.09f, 0.11f, 0.15f, 0.94f), out contentPanelImage);
-            contentPanelRect.SetSiblingIndex(0);
-        }
-
-        if (summaryPanelRect == null)
-        {
-            summaryPanelRect = CreatePanel("SummaryPanel", contentPanelRect, new Color(0.14f, 0.16f, 0.2f, 0.96f), out summaryPanelImage);
-        }
-
-        if (upgradesPanelRect == null)
-        {
-            upgradesPanelRect = CreatePanel("UpgradesPanel", contentPanelRect, new Color(0.12f, 0.14f, 0.18f, 0.96f), out upgradesPanelImage);
-        }
-
-        if (rootImage != null)
-        {
-            if (contentPanelImage != null && contentPanelImage.sprite == null)
-            {
-                contentPanelImage.sprite = rootImage.sprite;
-            }
-
-            if (summaryPanelImage != null && summaryPanelImage.sprite == null)
-            {
-                summaryPanelImage.sprite = rootImage.sprite;
-            }
-
-            if (upgradesPanelImage != null && upgradesPanelImage.sprite == null)
-            {
-                upgradesPanelImage.sprite = rootImage.sprite;
-            }
-        }
-
-        if (summaryText != null && summaryText.rectTransform.parent != summaryPanelRect)
-        {
-            summaryText.rectTransform.SetParent(summaryPanelRect, false);
-        }
-
-        if (startNightButton != null)
-        {
-            var buttonRect = startNightButton.transform as RectTransform;
-            if (buttonRect != null && buttonRect.parent != summaryPanelRect)
-            {
-                buttonRect.SetParent(summaryPanelRect, false);
-            }
-
-            if (startNightButton.TryGetComponent<Image>(out var buttonImage))
-            {
-                buttonImage.color = new Color(0.92f, 0.88f, 0.78f, 1f);
-                buttonImage.type = Image.Type.Sliced;
-            }
-
-            var buttonLabel = startNightButton.GetComponentInChildren<TMP_Text>(true);
-            if (buttonLabel != null)
-            {
-                buttonLabel.text = "Start Night";
-                buttonLabel.alignment = TextAlignmentOptions.Center;
-                buttonLabel.enableAutoSizing = true;
-                buttonLabel.fontSizeMin = 14f;
-                buttonLabel.fontSizeMax = 28f;
-                buttonLabel.color = new Color(0.12f, 0.12f, 0.14f, 1f);
-                buttonLabel.fontStyle = FontStyles.Bold;
-            }
-        }
-
-        if (upgradeItemsContainer != null && upgradeItemsContainer.parent != upgradesPanelRect)
-        {
-            upgradeItemsContainer.SetParent(upgradesPanelRect, false);
-        }
-    }
-
-    private void ApplyRuntimeLayout()
-    {
-        if (rootRect == null || contentPanelRect == null || summaryPanelRect == null || upgradesPanelRect == null || isApplyingLayout)
+        if (isApplyingLayout)
         {
             return;
         }
@@ -413,91 +374,93 @@ public class DayScreenView : MonoBehaviour
 
         try
         {
-            currentLayout = CalculateLayoutMetrics();
-            var targetWidth = Mathf.Max(160f, rootRect.rect.width - currentLayout.ContentHorizontalMargin * 2f);
-            var targetHeight = Mathf.Max(100f, rootRect.rect.height - currentLayout.ContentVerticalMargin * 2f);
-            if (!currentLayout.IsCompact)
-            {
-                targetWidth = Mathf.Min(targetWidth, RegularContentMaxWidth);
-                targetHeight = Mathf.Min(targetHeight, RegularContentMaxHeight);
-            }
+            // canvas target: 320x180
+            var rootWidth = Mathf.Max(320f, rootRect.rect.width);
+            var rootHeight = Mathf.Max(180f, rootRect.rect.height);
 
-            contentPanelRect.anchorMin = new Vector2(0.5f, 0.5f);
-            contentPanelRect.anchorMax = new Vector2(0.5f, 0.5f);
-            contentPanelRect.pivot = new Vector2(0.5f, 0.5f);
-            contentPanelRect.sizeDelta = new Vector2(targetWidth, targetHeight);
-            contentPanelRect.anchoredPosition = Vector2.zero;
+            var contentWidth = 312f;
+            var headerHeight = 46f;
+            var cardsHeight = 76f;
+            var footerHeight = 24f;
+            var topMargin = 4f;
+            var verticalGap = 4f;
+            var totalHeight = headerHeight + verticalGap + cardsHeight + verticalGap + footerHeight;
 
-            if (currentLayout.IsCompact)
-            {
-                var summaryHeight = Mathf.Clamp(targetHeight * 0.36f, 50f, 64f);
+            contentRootRect.anchorMin = new Vector2(0.5f, 1f);
+            contentRootRect.anchorMax = new Vector2(0.5f, 1f);
+            contentRootRect.pivot = new Vector2(0.5f, 1f);
+            contentRootRect.sizeDelta = new Vector2(contentWidth, totalHeight);
+            contentRootRect.anchoredPosition = new Vector2(0f, -topMargin);
 
-                summaryPanelRect.anchorMin = new Vector2(0f, 1f);
-                summaryPanelRect.anchorMax = new Vector2(1f, 1f);
-                summaryPanelRect.pivot = new Vector2(0.5f, 1f);
-                summaryPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding, -(currentLayout.SectionPadding + summaryHeight));
-                summaryPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding, -currentLayout.SectionPadding);
+            summaryPanelRect.anchorMin = new Vector2(0f, 1f);
+            summaryPanelRect.anchorMax = new Vector2(0f, 1f);
+            summaryPanelRect.pivot = new Vector2(0f, 1f);
+            summaryPanelRect.sizeDelta = new Vector2(140f, headerHeight);
+            summaryPanelRect.anchoredPosition = Vector2.zero;
 
-                upgradesPanelRect.anchorMin = new Vector2(0f, 0f);
-                upgradesPanelRect.anchorMax = new Vector2(1f, 1f);
-                upgradesPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding, currentLayout.SectionPadding);
-                upgradesPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding, -(summaryHeight + currentLayout.SectionPadding * 1.5f));
-            }
-            else
-            {
-                summaryPanelRect.anchorMin = new Vector2(0f, 0f);
-                summaryPanelRect.anchorMax = new Vector2(currentLayout.SummaryColumnWidthNormalized, 1f);
-                summaryPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding, currentLayout.SectionPadding);
-                summaryPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding * 0.5f, -currentLayout.SectionPadding);
+            cardsPanelRect.anchorMin = new Vector2(0f, 1f);
+            cardsPanelRect.anchorMax = new Vector2(1f, 1f);
+            cardsPanelRect.pivot = new Vector2(0.5f, 1f);
+            cardsPanelRect.sizeDelta = new Vector2(0f, cardsHeight);
+            cardsPanelRect.anchoredPosition = new Vector2(0f, -(headerHeight + verticalGap));
 
-                upgradesPanelRect.anchorMin = new Vector2(currentLayout.SummaryColumnWidthNormalized, 0f);
-                upgradesPanelRect.anchorMax = new Vector2(1f, 1f);
-                upgradesPanelRect.offsetMin = new Vector2(currentLayout.SectionPadding * 0.5f, currentLayout.SectionPadding);
-                upgradesPanelRect.offsetMax = new Vector2(-currentLayout.SectionPadding, -currentLayout.SectionPadding);
-            }
+            footerPanelRect.anchorMin = new Vector2(0f, 1f);
+            footerPanelRect.anchorMax = new Vector2(1f, 1f);
+            footerPanelRect.pivot = new Vector2(0.5f, 1f);
+            footerPanelRect.sizeDelta = new Vector2(0f, footerHeight);
+            footerPanelRect.anchoredPosition =
+                new Vector2(0f, -(headerHeight + verticalGap + cardsHeight + verticalGap));
 
-            var textPadding = currentLayout.IsCompact ? 6f : 12f;
             if (summaryText != null)
             {
                 var summaryRect = summaryText.rectTransform;
-                summaryRect.anchorMin = new Vector2(0f, 0f);
-                summaryRect.anchorMax = new Vector2(1f, 1f);
-                summaryRect.offsetMin = new Vector2(textPadding, currentLayout.BottomButtonHeight + textPadding + 2f);
-                summaryRect.offsetMax = new Vector2(-textPadding, -textPadding);
+                summaryRect.anchorMin = Vector2.zero;
+                summaryRect.anchorMax = Vector2.one;
+                summaryRect.offsetMin = new Vector2(5f, 4f);
+                summaryRect.offsetMax = new Vector2(-5f, -4f);
+
                 summaryText.alignment = TextAlignmentOptions.TopLeft;
                 summaryText.enableAutoSizing = true;
-                summaryText.fontSizeMin = currentLayout.IsCompact ? 5f : 8f;
-                summaryText.fontSizeMax = currentLayout.IsCompact ? 10f : 16f;
-                summaryText.color = new Color(0.95f, 0.94f, 0.9f, 1f);
-            }
-
-            if (startNightButton != null)
-            {
-                var buttonRect = startNightButton.transform as RectTransform;
-                if (buttonRect != null)
-                {
-                    buttonRect.anchorMin = new Vector2(0f, 0f);
-                    buttonRect.anchorMax = new Vector2(1f, 0f);
-                    buttonRect.offsetMin = new Vector2(textPadding, textPadding);
-                    buttonRect.offsetMax = new Vector2(-textPadding, textPadding + currentLayout.BottomButtonHeight);
-                }
-
-                var buttonLabel = startNightButton.GetComponentInChildren<TMP_Text>(true);
-                if (buttonLabel != null)
-                {
-                    buttonLabel.fontSizeMin = currentLayout.IsCompact ? 5f : 8f;
-                    buttonLabel.fontSizeMax = currentLayout.IsCompact ? 10f : 16f;
-                }
+                summaryText.fontSizeMin = 5f;
+                summaryText.fontSizeMax = 10f;
+                summaryText.lineSpacing = -10f;
+                summaryText.color = new Color(0.95f, 0.94f, 0.90f, 1f);
             }
 
             if (upgradeItemsContainer != null)
             {
-                var listPadding = currentLayout.IsCompact ? 6f : 10f;
-                upgradeItemsContainer.anchorMin = new Vector2(0f, 0f);
-                upgradeItemsContainer.anchorMax = new Vector2(1f, 1f);
-                upgradeItemsContainer.offsetMin = new Vector2(listPadding, listPadding);
-                upgradeItemsContainer.offsetMax = new Vector2(-listPadding, -listPadding);
-                upgradeItemsContainer.pivot = new Vector2(0f, 1f);
+                upgradeItemsContainer.anchorMin = Vector2.zero;
+                upgradeItemsContainer.anchorMax = Vector2.one;
+                upgradeItemsContainer.offsetMin = Vector2.zero;
+                upgradeItemsContainer.offsetMax = Vector2.zero;
+                upgradeItemsContainer.pivot = new Vector2(0.5f, 0.5f);
+            }
+
+            if (startNightButton != null && startNightButton.transform is RectTransform buttonRect)
+            {
+                buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
+                buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+                buttonRect.pivot = new Vector2(0.5f, 0.5f);
+                buttonRect.sizeDelta = new Vector2(120f, 20f);
+                buttonRect.anchoredPosition = Vector2.zero;
+
+                if (startNightButton.TryGetComponent<Image>(out var buttonImage))
+                {
+                    buttonImage.color = new Color(0.91f, 0.86f, 0.75f, 1f);
+                    buttonImage.type = Image.Type.Sliced;
+                }
+
+                var buttonText = startNightButton.GetComponentInChildren<TMP_Text>(true);
+                if (buttonText != null)
+                {
+                    buttonText.alignment = TextAlignmentOptions.Center;
+                    buttonText.enableAutoSizing = true;
+                    buttonText.fontSizeMin = 6f;
+                    buttonText.fontSizeMax = 10f;
+                    buttonText.fontStyle = FontStyles.Bold;
+                    buttonText.color = new Color(0.12f, 0.12f, 0.14f, 1f);
+                    buttonText.text = "Start Night";
+                }
             }
         }
         finally
@@ -506,50 +469,89 @@ public class DayScreenView : MonoBehaviour
         }
     }
 
-    private LayoutMetrics CalculateLayoutMetrics()
+    private static RectTransform CreatePanel(string objectName, Transform parent, out Image image)
     {
-        var canvasWidth = Mathf.Max(1f, rootRect.rect.width);
-        var canvasHeight = Mathf.Max(1f, rootRect.rect.height);
-        var isCompact = canvasWidth <= CompactCanvasWidthThreshold || canvasHeight <= CompactCanvasHeightThreshold;
-
-        return new LayoutMetrics
-        {
-            IsCompact = isCompact,
-            ContentHorizontalMargin = isCompact ? CompactContentHorizontalMargin : RegularContentHorizontalMargin,
-            ContentVerticalMargin = isCompact ? CompactContentVerticalMargin : RegularContentVerticalMargin,
-            SectionPadding = isCompact ? CompactSectionPadding : RegularSectionPadding,
-            SummaryColumnWidthNormalized = RegularSummaryColumnWidthNormalized,
-            BottomButtonHeight = isCompact ? CompactBottomButtonHeight : RegularBottomButtonHeight,
-            UpgradeItemSpacing = isCompact ? CompactUpgradeItemSpacing : RegularUpgradeItemSpacing,
-            PreferredUpgradeItemHeight = isCompact ? CompactPreferredUpgradeItemHeight : RegularPreferredUpgradeItemHeight,
-            MinimumUpgradeItemHeight = isCompact ? CompactMinimumUpgradeItemHeight : RegularMinimumUpgradeItemHeight,
-            UpgradeColumnCount = isCompact ? 2 : 1
-        };
-    }
-
-    private struct LayoutMetrics
-    {
-        public bool IsCompact;
-        public float ContentHorizontalMargin;
-        public float ContentVerticalMargin;
-        public float SectionPadding;
-        public float SummaryColumnWidthNormalized;
-        public float BottomButtonHeight;
-        public float UpgradeItemSpacing;
-        public float PreferredUpgradeItemHeight;
-        public float MinimumUpgradeItemHeight;
-        public int UpgradeColumnCount;
-    }
-
-    private static RectTransform CreatePanel(string panelName, RectTransform parent, Color color, out Image panelImage)
-    {
-        var panelObject = new GameObject(panelName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        var panelRect = panelObject.transform as RectTransform;
+        var panelObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        var panelRect = panelObject.GetComponent<RectTransform>();
         panelRect.SetParent(parent, false);
-        panelImage = panelObject.GetComponent<Image>();
-        panelImage.color = color;
-        panelImage.raycastTarget = false;
-        panelImage.type = Image.Type.Sliced;
+
+        image = panelObject.GetComponent<Image>();
+        image.type = Image.Type.Sliced;
+        image.raycastTarget = false;
+
         return panelRect;
+    }
+
+    private static TMP_Text CreateText(string objectName, Transform parent, string textValue)
+    {
+        var textObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI));
+        var textRect = textObject.GetComponent<RectTransform>();
+        textRect.SetParent(parent, false);
+
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = textValue;
+        text.raycastTarget = false;
+
+        return text;
+    }
+
+    private static Button CreateButton(string objectName, Transform parent, string label)
+    {
+        var buttonObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image),
+            typeof(Button));
+        var buttonRect = buttonObject.GetComponent<RectTransform>();
+        buttonRect.SetParent(parent, false);
+
+        var image = buttonObject.GetComponent<Image>();
+        image.type = Image.Type.Sliced;
+
+        var button = buttonObject.GetComponent<Button>();
+
+        var labelObject =
+            new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        var labelRect = labelObject.GetComponent<RectTransform>();
+        labelRect.SetParent(buttonObject.transform, false);
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+
+        var labelText = labelObject.GetComponent<TextMeshProUGUI>();
+        labelText.text = label;
+        labelText.alignment = TextAlignmentOptions.Center;
+        labelText.raycastTarget = false;
+
+        return button;
+    }
+
+    [Conditional("UNITY_EDITOR")]
+    private void TrySaveGeneratedPrefabs()
+    {
+#if UNITY_EDITOR
+        if (hasSavedGeneratedPrefabs)
+        {
+            return;
+        }
+
+        try
+        {
+            var resourcesDirectoryAbsolutePath = Path.Combine(Application.dataPath, "Game/Resources/GeneratedUi");
+            Directory.CreateDirectory(resourcesDirectoryAbsolutePath);
+            AssetDatabase.Refresh();
+
+            if (upgradeItemTemplate != null)
+            {
+                PrefabUtility.SaveAsPrefabAsset(upgradeItemTemplate.gameObject, GeneratedCardAssetPath);
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(gameObject, GeneratedRootAssetPath);
+            hasSavedGeneratedPrefabs = true;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"DayScreenView: failed to save generated prefab assets. {exception.Message}");
+        }
+#endif
     }
 }

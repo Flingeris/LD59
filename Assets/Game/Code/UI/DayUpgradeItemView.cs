@@ -3,6 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
+[Serializable]
 public class DayUpgradeItemData
 {
     public string UpgradeId;
@@ -23,15 +24,18 @@ public class DayUpgradeItemView : MonoBehaviour
     public event Action<string> BuyRequested;
 
     private bool isInitialized;
-    private string currentUpgradeId;
+    private string currentUpgradeId = string.Empty;
+
     private RectTransform rootRect;
     private RectTransform nameRect;
-    private RectTransform priceRect;
     private RectTransform effectRect;
+    private RectTransform priceRect;
     private RectTransform buyButtonRect;
+
     private Image backgroundImage;
     private Image buyButtonImage;
     private TMP_Text buyButtonText;
+
     private bool useCompactLayout;
     private float layoutWidth = -1f;
     private float layoutHeight = -1f;
@@ -43,18 +47,18 @@ public class DayUpgradeItemView : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (!isInitialized || buyButton == null)
+        if (buyButton != null)
         {
-            return;
+            buyButton.onClick.RemoveListener(HandleBuyPressed);
         }
 
-        buyButton.onClick.RemoveListener(HandleBuyPressed);
         isInitialized = false;
     }
 
     public void Bind(DayUpgradeItemData itemData)
     {
         EnsureInitialized();
+
         currentUpgradeId = itemData?.UpgradeId ?? string.Empty;
 
         if (nameText != null)
@@ -62,24 +66,26 @@ public class DayUpgradeItemView : MonoBehaviour
             nameText.text = itemData?.NameText ?? string.Empty;
         }
 
-        if (priceText != null)
-        {
-            priceText.text = itemData?.PriceText ?? string.Empty;
-        }
-
         if (effectText != null)
         {
             effectText.text = itemData?.EffectText ?? string.Empty;
         }
 
+        if (priceText != null)
+        {
+            priceText.text = itemData?.PriceText ?? string.Empty;
+        }
+
+        var canBuy = itemData != null
+                     && itemData.CanBuy
+                     && !string.IsNullOrWhiteSpace(itemData.UpgradeId);
+
         if (buyButton != null)
         {
-            var canBuy = itemData != null
-                && itemData.CanBuy
-                && !string.IsNullOrWhiteSpace(itemData.UpgradeId);
             buyButton.interactable = canBuy;
-            StyleForState(canBuy);
         }
+
+        ApplyStateStyle(canBuy);
     }
 
     public void ApplyLayout(bool compactLayout, float itemWidth, float itemHeight)
@@ -87,22 +93,221 @@ public class DayUpgradeItemView : MonoBehaviour
         useCompactLayout = compactLayout;
         layoutWidth = itemWidth;
         layoutHeight = itemHeight;
+
         EnsureInitialized();
         ApplyRuntimeLayout();
     }
 
     private void EnsureInitialized()
     {
-        ResolveRuntimeReferences();
+        ResolveReferences();
+        EnsureRuntimeStructure();
         ApplyRuntimeLayout();
 
-        if (isInitialized || buyButton == null)
+        if (isInitialized)
         {
             return;
         }
 
-        buyButton.onClick.AddListener(HandleBuyPressed);
+        if (buyButton != null)
+        {
+            buyButton.onClick.RemoveListener(HandleBuyPressed);
+            buyButton.onClick.AddListener(HandleBuyPressed);
+        }
+
         isInitialized = true;
+    }
+
+    private void ResolveReferences()
+    {
+        rootRect ??= transform as RectTransform;
+        backgroundImage ??= GetComponent<Image>();
+    }
+
+    private void EnsureRuntimeStructure()
+    {
+        if (rootRect == null)
+        {
+            return;
+        }
+
+        if (backgroundImage == null)
+        {
+            backgroundImage = gameObject.AddComponent<Image>();
+        }
+
+        backgroundImage.type = Image.Type.Sliced;
+
+        if (nameText == null)
+        {
+            nameText = CreateText("NameText", transform, TextAlignmentOptions.TopLeft);
+        }
+
+        if (effectText == null)
+        {
+            effectText = CreateText("EffectText", transform, TextAlignmentOptions.TopLeft);
+        }
+
+        if (priceText == null)
+        {
+            priceText = CreateText("PriceText", transform, TextAlignmentOptions.Center);
+        }
+
+        if (buyButton == null)
+        {
+            buyButton = CreateButton("BuyButton", transform, "Buy");
+        }
+
+        nameRect ??= nameText.rectTransform;
+        effectRect ??= effectText.rectTransform;
+        priceRect ??= priceText.rectTransform;
+        buyButtonRect ??= buyButton.transform as RectTransform;
+        buyButtonImage ??= buyButton.GetComponent<Image>();
+        buyButtonText ??= buyButton.GetComponentInChildren<TMP_Text>(true);
+
+        if (buyButtonImage != null)
+        {
+            buyButtonImage.type = Image.Type.Sliced;
+        }
+    }
+
+    private void ApplyRuntimeLayout()
+    {
+        if (rootRect == null)
+        {
+            return;
+        }
+
+        var width = layoutWidth > 0f ? layoutWidth : 100f;
+        var height = layoutHeight > 0f ? layoutHeight : 76f;
+
+        rootRect.sizeDelta = new Vector2(width, height);
+
+        var padding = useCompactLayout ? 3f : 8f;
+        var buttonHeight = useCompactLayout ? 14f : 28f;
+        var priceHeight = useCompactLayout ? 10f : 20f;
+        var titleHeight = useCompactLayout ? 12f : 24f;
+
+        if (nameRect != null)
+        {
+            nameRect.anchorMin = new Vector2(0f, 1f);
+            nameRect.anchorMax = new Vector2(1f, 1f);
+            nameRect.pivot = new Vector2(0.5f, 1f);
+            nameRect.offsetMin = new Vector2(padding, -(padding + titleHeight));
+            nameRect.offsetMax = new Vector2(-padding, -padding);
+        }
+
+        if (effectRect != null)
+        {
+            effectRect.anchorMin = new Vector2(0f, 0f);
+            effectRect.anchorMax = new Vector2(1f, 1f);
+            effectRect.offsetMin = new Vector2(padding, padding + buttonHeight + priceHeight + 2f);
+            effectRect.offsetMax = new Vector2(-padding, -(padding + titleHeight + 2f));
+        }
+
+        if (priceRect != null)
+        {
+            priceRect.anchorMin = new Vector2(0f, 0f);
+            priceRect.anchorMax = new Vector2(1f, 0f);
+            priceRect.pivot = new Vector2(0.5f, 0f);
+            priceRect.offsetMin = new Vector2(padding, padding + buttonHeight + 1f);
+            priceRect.offsetMax = new Vector2(-padding, padding + buttonHeight + 1f + priceHeight);
+        }
+
+        if (buyButtonRect != null)
+        {
+            buyButtonRect.anchorMin = new Vector2(0f, 0f);
+            buyButtonRect.anchorMax = new Vector2(1f, 0f);
+            buyButtonRect.pivot = new Vector2(0.5f, 0f);
+            buyButtonRect.offsetMin = new Vector2(padding, padding);
+            buyButtonRect.offsetMax = new Vector2(-padding, padding + buttonHeight);
+        }
+
+        ConfigureTextStyles();
+    }
+
+    private void ConfigureTextStyles()
+    {
+        if (nameText != null)
+        {
+            nameText.enableAutoSizing = true;
+            nameText.fontSizeMin = useCompactLayout ? 4f : 8f;
+            nameText.fontSizeMax = useCompactLayout ? 7f : 14f;
+            nameText.fontStyle = FontStyles.Bold;
+            nameText.color = new Color(0.96f, 0.94f, 0.90f, 1f);
+            nameText.textWrappingMode = TextWrappingModes.Normal;
+            nameText.overflowMode = TextOverflowModes.Ellipsis;
+            nameText.alignment = TextAlignmentOptions.TopLeft;
+            nameText.lineSpacing = -15f;
+            nameText.raycastTarget = false;
+        }
+
+        if (effectText != null)
+        {
+            effectText.enableAutoSizing = true;
+            effectText.fontSizeMin = useCompactLayout ? 3f : 7f;
+            effectText.fontSizeMax = useCompactLayout ? 6f : 12f;
+            effectText.color = new Color(0.78f, 0.81f, 0.86f, 1f);
+            effectText.textWrappingMode = TextWrappingModes.Normal;
+            effectText.overflowMode = TextOverflowModes.Ellipsis;
+            effectText.alignment = TextAlignmentOptions.TopLeft;
+            effectText.lineSpacing = -20f;
+            effectText.raycastTarget = false;
+        }
+
+        if (priceText != null)
+        {
+            priceText.enableAutoSizing = true;
+            priceText.fontSizeMin = useCompactLayout ? 4f : 7f;
+            priceText.fontSizeMax = useCompactLayout ? 6f : 11f;
+            priceText.fontStyle = FontStyles.Bold;
+            priceText.alignment = TextAlignmentOptions.Center;
+            priceText.lineSpacing = -15f;
+            priceText.raycastTarget = false;
+        }
+
+        if (buyButtonText != null)
+        {
+            buyButtonText.enableAutoSizing = true;
+            buyButtonText.fontSizeMin = useCompactLayout ? 4f : 7f;
+            buyButtonText.fontSizeMax = useCompactLayout ? 6f : 11f;
+            buyButtonText.fontStyle = FontStyles.Bold;
+            buyButtonText.alignment = TextAlignmentOptions.Center;
+            buyButtonText.lineSpacing = -15f;
+            buyButtonText.raycastTarget = false;
+        }
+    }
+
+    private void ApplyStateStyle(bool canBuy)
+    {
+        if (backgroundImage != null)
+        {
+            backgroundImage.color = canBuy
+                ? new Color(0.14f, 0.17f, 0.21f, 0.96f)
+                : new Color(0.10f, 0.12f, 0.15f, 0.92f);
+        }
+
+        if (priceText != null)
+        {
+            priceText.color = canBuy
+                ? new Color(0.98f, 0.83f, 0.45f, 1f)
+                : new Color(0.66f, 0.61f, 0.52f, 1f);
+        }
+
+        if (buyButtonImage != null)
+        {
+            buyButtonImage.color = canBuy
+                ? new Color(0.90f, 0.86f, 0.74f, 1f)
+                : new Color(0.38f, 0.38f, 0.42f, 0.90f);
+        }
+
+        if (buyButtonText != null)
+        {
+            buyButtonText.text = canBuy ? "Buy" : "Locked";
+            buyButtonText.color = canBuy
+                ? new Color(0.12f, 0.12f, 0.14f, 1f)
+                : new Color(0.20f, 0.20f, 0.22f, 0.85f);
+        }
     }
 
     private void HandleBuyPressed()
@@ -115,171 +320,46 @@ public class DayUpgradeItemView : MonoBehaviour
         BuyRequested?.Invoke(currentUpgradeId);
     }
 
-    private void ResolveRuntimeReferences()
+    private static TMP_Text CreateText(string objectName, Transform parent, TextAlignmentOptions alignment)
     {
-        rootRect ??= transform as RectTransform;
-        nameRect ??= nameText != null ? nameText.rectTransform : null;
-        priceRect ??= priceText != null ? priceText.rectTransform : null;
-        effectRect ??= effectText != null ? effectText.rectTransform : null;
-        buyButtonRect ??= buyButton != null ? buyButton.transform as RectTransform : null;
-        backgroundImage ??= GetComponent<Image>();
-        buyButtonImage ??= buyButton != null ? buyButton.targetGraphic as Image : null;
-        buyButtonText ??= buyButton != null ? buyButton.GetComponentInChildren<TMP_Text>(true) : null;
+        var textObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI));
+        var textRect = textObject.GetComponent<RectTransform>();
+        textRect.SetParent(parent, false);
 
-        if (backgroundImage == null)
-        {
-            backgroundImage = gameObject.AddComponent<Image>();
-        }
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        text.alignment = alignment;
+        text.raycastTarget = false;
 
-        if (backgroundImage.sprite == null && buyButtonImage != null)
-        {
-            backgroundImage.sprite = buyButtonImage.sprite;
-        }
-
-        backgroundImage.type = Image.Type.Sliced;
-        backgroundImage.raycastTarget = false;
+        return text;
     }
 
-    private void ApplyRuntimeLayout()
+    private static Button CreateButton(string objectName, Transform parent, string label)
     {
-        var resolvedWidth = layoutWidth > 0f
-            ? layoutWidth
-            : rootRect != null && rootRect.rect.width > 0f
-                ? rootRect.rect.width
-                : 120f;
-        var resolvedHeight = layoutHeight > 0f ? layoutHeight : 78f;
+        var buttonObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image),
+            typeof(Button));
+        var buttonRect = buttonObject.GetComponent<RectTransform>();
+        buttonRect.SetParent(parent, false);
 
-        if (rootRect != null)
-        {
-            rootRect.sizeDelta = new Vector2(resolvedWidth, resolvedHeight);
-        }
+        var image = buttonObject.GetComponent<Image>();
+        image.type = Image.Type.Sliced;
 
-        var padding = useCompactLayout
-            ? Mathf.Clamp(resolvedHeight * 0.18f, 3f, 5f)
-            : Mathf.Clamp(resolvedHeight * 0.16f, 6f, 10f);
-        var sideColumnWidth = useCompactLayout
-            ? Mathf.Clamp(resolvedWidth * 0.34f, 42f, 56f)
-            : Mathf.Clamp(resolvedWidth * 0.26f, 74f, 128f);
-        sideColumnWidth = Mathf.Min(sideColumnWidth, Mathf.Max(40f, resolvedWidth - padding * 2f - 44f));
-        var topLineHeight = Mathf.Clamp(resolvedHeight * (useCompactLayout ? 0.34f : 0.28f), 7f, 18f);
-        var buttonHeight = Mathf.Clamp(resolvedHeight * (useCompactLayout ? 0.46f : 0.42f), 10f, 22f);
-        var textRightInset = sideColumnWidth + padding * 2f;
+        var button = buttonObject.GetComponent<Button>();
 
-        if (nameRect != null)
-        {
-            nameRect.anchorMin = new Vector2(0f, 1f);
-            nameRect.anchorMax = new Vector2(1f, 1f);
-            nameRect.offsetMin = new Vector2(padding, -(padding + topLineHeight));
-            nameRect.offsetMax = new Vector2(-textRightInset, -padding);
-        }
+        var textObject =
+            new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        var textRect = textObject.GetComponent<RectTransform>();
+        textRect.SetParent(buttonObject.transform, false);
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
 
-        if (effectRect != null)
-        {
-            effectRect.anchorMin = new Vector2(0f, 0f);
-            effectRect.anchorMax = new Vector2(1f, 1f);
-            effectRect.offsetMin = new Vector2(padding, padding);
-            effectRect.offsetMax = new Vector2(-textRightInset, -(padding + topLineHeight + 1f));
-        }
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.alignment = TextAlignmentOptions.Center;
+        text.raycastTarget = false;
 
-        if (priceRect != null)
-        {
-            priceRect.anchorMin = new Vector2(1f, 1f);
-            priceRect.anchorMax = new Vector2(1f, 1f);
-            priceRect.pivot = new Vector2(1f, 1f);
-            priceRect.anchoredPosition = new Vector2(-padding, -padding);
-            priceRect.sizeDelta = new Vector2(sideColumnWidth, topLineHeight);
-        }
-
-        if (buyButtonRect != null)
-        {
-            buyButtonRect.anchorMin = new Vector2(1f, 0f);
-            buyButtonRect.anchorMax = new Vector2(1f, 0f);
-            buyButtonRect.pivot = new Vector2(1f, 0f);
-            buyButtonRect.anchoredPosition = new Vector2(-padding, padding);
-            buyButtonRect.sizeDelta = new Vector2(sideColumnWidth, buttonHeight);
-        }
-
-        if (nameText != null)
-        {
-            nameText.alignment = TextAlignmentOptions.TopLeft;
-            nameText.enableAutoSizing = true;
-            nameText.fontSizeMin = useCompactLayout ? 4f : 7f;
-            nameText.fontSizeMax = useCompactLayout ? 8f : 14f;
-            nameText.fontStyle = FontStyles.Bold;
-            nameText.color = new Color(0.96f, 0.94f, 0.9f, 1f);
-            nameText.textWrappingMode = TextWrappingModes.NoWrap;
-            nameText.overflowMode = TextOverflowModes.Ellipsis;
-        }
-
-        if (effectText != null)
-        {
-            effectText.alignment = TextAlignmentOptions.TopLeft;
-            effectText.enableAutoSizing = true;
-            effectText.fontSizeMin = useCompactLayout ? 3.5f : 6f;
-            effectText.fontSizeMax = useCompactLayout ? 6f : 10f;
-            effectText.color = new Color(0.78f, 0.81f, 0.86f, 1f);
-            effectText.textWrappingMode = TextWrappingModes.NoWrap;
-            effectText.overflowMode = TextOverflowModes.Ellipsis;
-        }
-
-        if (priceText != null)
-        {
-            priceText.alignment = TextAlignmentOptions.TopRight;
-            priceText.enableAutoSizing = true;
-            priceText.fontSizeMin = useCompactLayout ? 3.5f : 6f;
-            priceText.fontSizeMax = useCompactLayout ? 6.5f : 10f;
-            priceText.fontStyle = FontStyles.Bold;
-            priceText.textWrappingMode = TextWrappingModes.NoWrap;
-            priceText.overflowMode = TextOverflowModes.Ellipsis;
-        }
-
-        if (buyButtonText != null)
-        {
-            buyButtonText.alignment = TextAlignmentOptions.Center;
-            buyButtonText.enableAutoSizing = true;
-            buyButtonText.fontSizeMin = useCompactLayout ? 4f : 6f;
-            buyButtonText.fontSizeMax = useCompactLayout ? 6.5f : 10f;
-            buyButtonText.fontStyle = FontStyles.Bold;
-            buyButtonText.textWrappingMode = TextWrappingModes.NoWrap;
-            buyButtonText.overflowMode = TextOverflowModes.Ellipsis;
-        }
-
-        if (buyButtonImage != null && buyButtonImage.sprite == null)
-        {
-            buyButtonImage.sprite = backgroundImage != null ? backgroundImage.sprite : null;
-        }
-    }
-
-    private void StyleForState(bool canBuy)
-    {
-        if (backgroundImage != null)
-        {
-            backgroundImage.color = canBuy
-                ? new Color(0.17f, 0.2f, 0.25f, 0.92f)
-                : new Color(0.12f, 0.14f, 0.18f, 0.88f);
-        }
-
-        if (priceText != null)
-        {
-            priceText.color = canBuy
-                ? new Color(0.98f, 0.83f, 0.45f, 1f)
-                : new Color(0.72f, 0.65f, 0.5f, 1f);
-        }
-
-        if (buyButtonImage != null)
-        {
-            buyButtonImage.color = canBuy
-                ? new Color(0.9f, 0.86f, 0.74f, 1f)
-                : new Color(0.42f, 0.42f, 0.44f, 0.85f);
-            buyButtonImage.type = Image.Type.Sliced;
-        }
-
-        if (buyButtonText != null)
-        {
-            buyButtonText.text = canBuy ? "Buy" : "Locked";
-            buyButtonText.color = canBuy
-                ? new Color(0.12f, 0.12f, 0.14f, 1f)
-                : new Color(0.2f, 0.2f, 0.22f, 0.85f);
-        }
+        return button;
     }
 }

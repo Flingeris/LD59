@@ -9,6 +9,15 @@ using UnityEngine.Serialization;
 
 public class Main : MonoBehaviour
 {
+    private enum DayUpgradeOfferCategory
+    {
+        Economy = 0,
+        Combat = 1,
+        Utility = 2
+    }
+
+    private const int DailyUpgradeOfferCount = 3;
+
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
     [SerializeField] private KeeperActor keeperActor;
@@ -148,6 +157,7 @@ public class Main : MonoBehaviour
         waveSystem.StopWave();
         ClearLaneCombatants();
         StopKeeperMovement();
+        GenerateDayUpgradeOffers();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Day);
         return true;
@@ -198,6 +208,13 @@ public class Main : MonoBehaviour
             var wrongPhaseResult = UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.WrongPhase);
             Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {wrongPhaseResult.FailureReason}");
             return wrongPhaseResult;
+        }
+
+        if (!IsUpgradeOfferedToday(upgradeId))
+        {
+            var notOfferedResult = UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotOfferedToday);
+            Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {notOfferedResult.FailureReason}");
+            return notOfferedResult;
         }
 
         var purchaseResult = upgradeSystem.TryPurchaseUpgrade(upgradeId, RunState);
@@ -1328,18 +1345,29 @@ public class Main : MonoBehaviour
     private List<DayUpgradeItemData> BuildDayUpgradeDisplayItems()
     {
         var displayItems = new List<DayUpgradeItemData>();
-        var upgradeDefs = new List<UpgradeDef>(CMS.GetAll<UpgradeDef>());
-        upgradeDefs.Sort(CompareUpgradeDefsForDisplay);
-
-        for (var i = 0; i < upgradeDefs.Count; i++)
+        var offerIds = RunState.CurrentDayUpgradeOfferIds;
+        if (offerIds == null || offerIds.Count == 0)
         {
-            var upgradeDef = upgradeDefs[i];
+            return displayItems;
+        }
+
+        for (var i = 0; i < offerIds.Count; i++)
+        {
+            var upgradeId = offerIds[i];
+            if (string.IsNullOrWhiteSpace(upgradeId))
+            {
+                continue;
+            }
+
+            var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
             if (upgradeDef == null)
             {
                 continue;
             }
 
-            if (RunState.PurchasedUpgradeIds != null && RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+            if (!upgradeDef.IsRepeatable &&
+                RunState.PurchasedUpgradeIds != null &&
+                RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
             {
                 continue;
             }
@@ -1361,6 +1389,210 @@ public class Main : MonoBehaviour
         }
 
         return displayItems;
+    }
+
+    private void GenerateDayUpgradeOffers()
+    {
+        if (RunState == null)
+        {
+            return;
+        }
+
+        RunState.CurrentDayUpgradeOfferIds ??= new List<string>();
+        RunState.CurrentDayUpgradeOfferIds.Clear();
+
+        var eligibleUpgradeDefs = GetEligibleDayUpgradeDefs();
+        if (eligibleUpgradeDefs.Count == 0)
+        {
+            return;
+        }
+
+        TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Economy);
+        TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Combat);
+        TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Utility);
+
+        if (RunState.CurrentDayUpgradeOfferIds.Count >= DailyUpgradeOfferCount)
+        {
+            return;
+        }
+
+        var fallbackStartIndex = GetDeterministicOfferIndex(
+            eligibleUpgradeDefs.Count,
+            (RunState.CurrentDay - 1) * 11 + (RunState.PurchasedUpgradeIds?.Count ?? 0));
+
+        for (var i = 0; i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount; i++)
+        {
+            var candidateIndex = (fallbackStartIndex + i) % eligibleUpgradeDefs.Count;
+            var candidate = eligibleUpgradeDefs[candidateIndex];
+            if (candidate == null || RunState.CurrentDayUpgradeOfferIds.Contains(candidate.Id))
+            {
+                continue;
+            }
+
+            RunState.CurrentDayUpgradeOfferIds.Add(candidate.Id);
+        }
+    }
+
+    private List<UpgradeDef> GetEligibleDayUpgradeDefs()
+    {
+        var upgradeDefs = new List<UpgradeDef>(CMS.GetAll<UpgradeDef>());
+        upgradeDefs.Sort(CompareUpgradeDefsForDisplay);
+
+        var eligibleUpgradeDefs = new List<UpgradeDef>();
+        for (var i = 0; i < upgradeDefs.Count; i++)
+        {
+            var upgradeDef = upgradeDefs[i];
+            if (upgradeDef == null)
+            {
+                continue;
+            }
+
+            if (!upgradeDef.IsRepeatable &&
+                RunState.PurchasedUpgradeIds != null &&
+                RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+            {
+                continue;
+            }
+
+            if (!UpgradeSystem.SupportsEffectType(upgradeDef.EffectType))
+            {
+                continue;
+            }
+
+            if (!IsUpgradeUnlockedForCurrentRun(upgradeDef))
+            {
+                continue;
+            }
+
+            eligibleUpgradeDefs.Add(upgradeDef);
+        }
+
+        return eligibleUpgradeDefs;
+    }
+
+    private void TryAddDailyOffer(
+        IReadOnlyList<UpgradeDef> eligibleUpgradeDefs,
+        ICollection<string> selectedOfferIds,
+        DayUpgradeOfferCategory category)
+    {
+        var categoryCandidates = new List<UpgradeDef>();
+        for (var i = 0; i < eligibleUpgradeDefs.Count; i++)
+        {
+            var upgradeDef = eligibleUpgradeDefs[i];
+            if (upgradeDef == null ||
+                selectedOfferIds.Contains(upgradeDef.Id) ||
+                ResolveDayUpgradeOfferCategory(upgradeDef) != category)
+            {
+                continue;
+            }
+
+            categoryCandidates.Add(upgradeDef);
+        }
+
+        if (categoryCandidates.Count == 0)
+        {
+            return;
+        }
+
+        var categorySalt = category switch
+        {
+            DayUpgradeOfferCategory.Economy => 3,
+            DayUpgradeOfferCategory.Combat => 7,
+            DayUpgradeOfferCategory.Utility => 11,
+            _ => 0
+        };
+        var selectedIndex = GetDeterministicOfferIndex(
+            categoryCandidates.Count,
+            (RunState.CurrentDay - 1) * 5 + (RunState.PurchasedUpgradeIds?.Count ?? 0) + categorySalt);
+        selectedOfferIds.Add(categoryCandidates[selectedIndex].Id);
+    }
+
+    private bool IsUpgradeOfferedToday(string upgradeId)
+    {
+        return RunState != null
+               && !string.IsNullOrWhiteSpace(upgradeId)
+               && RunState.CurrentDayUpgradeOfferIds != null
+               && RunState.CurrentDayUpgradeOfferIds.Contains(upgradeId);
+    }
+
+    private bool IsUpgradeUnlockedForCurrentRun(UpgradeDef upgradeDef)
+    {
+        if (upgradeDef == null)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(upgradeDef.TargetUnitId))
+        {
+            return true;
+        }
+
+        return upgradeDef.TargetUnitId switch
+        {
+            "zombie" => IsBellUnlockedForCurrentRun("bell_zombie"),
+            "vampire" => IsBellUnlockedForCurrentRun("bell_vampire"),
+            _ => true
+        };
+    }
+
+    private bool IsBellUnlockedForCurrentRun(string bellId)
+    {
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            return false;
+        }
+
+        if (bellId == "bell_small")
+        {
+            return true;
+        }
+
+        var bellWorldObjects = FindObjectsByType<BellWorldObject>();
+        for (var i = 0; i < bellWorldObjects.Length; i++)
+        {
+            var bellWorldObject = bellWorldObjects[i];
+            if (bellWorldObject != null && bellWorldObject.BellId == bellId)
+            {
+                return true;
+            }
+        }
+
+        var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
+        return bellNightSpawnController != null
+               && bellNightSpawnController.TryGetUnlockNightIndex(bellId, out var unlockNightIndex)
+               && RunState != null
+               && RunState.CurrentNight >= unlockNightIndex;
+    }
+
+    private static DayUpgradeOfferCategory ResolveDayUpgradeOfferCategory(UpgradeDef upgradeDef)
+    {
+        return upgradeDef.EffectType switch
+        {
+            UpgradeEffectType.FaithIncomeBonus => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.BellFaithCostModifier => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.StartingNightFaithBonus => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.FaithCollectionIntervalModifier => DayUpgradeOfferCategory.Economy,
+
+            UpgradeEffectType.UnitDamageModifier => DayUpgradeOfferCategory.Combat,
+            UpgradeEffectType.UnitLifetimeModifier => DayUpgradeOfferCategory.Combat,
+            UpgradeEffectType.UnitHpModifier => DayUpgradeOfferCategory.Combat,
+
+            UpgradeEffectType.CemeteryRepair => DayUpgradeOfferCategory.Utility,
+            UpgradeEffectType.CemeteryMaxStateBonus => DayUpgradeOfferCategory.Utility,
+            UpgradeEffectType.KeeperMoveSpeedBonus => DayUpgradeOfferCategory.Utility,
+            UpgradeEffectType.NightInstantRepairCharge => DayUpgradeOfferCategory.Utility,
+            _ => DayUpgradeOfferCategory.Utility
+        };
+    }
+
+    private static int GetDeterministicOfferIndex(int candidateCount, int seed)
+    {
+        if (candidateCount <= 0)
+        {
+            return 0;
+        }
+
+        return Mathf.Abs(seed) % candidateCount;
     }
 
     private static int CompareUpgradeDefsForDisplay(UpgradeDef left, UpgradeDef right)

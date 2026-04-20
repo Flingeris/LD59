@@ -250,6 +250,10 @@ public class DayScreenView : MonoBehaviour
     {
         var hasLastNight = runState.LastDayReward != null && runState.LastDayReward.SourceNightIndex > 0;
         var hasReward = runState.LastDayReward != null && runState.LastDayReward.HasAnyReward;
+        var offerCount = currentUpgradeItems != null ? currentUpgradeItems.Count : 0;
+        var upgradeChoiceLine = offerCount > 0
+            ? $"{offerCount} offers available today."
+            : "No offers available today.";
         var resourcesLine = currentLayout.IsCompact
             ? $"Faith {runState.Faith}  Gold {runState.Gold}"
             : $"Faith reserve: <color=#f0ead6>{runState.Faith}</color>\nGold: <color=#f4c96b>{runState.Gold}</color>";
@@ -263,8 +267,8 @@ public class DayScreenView : MonoBehaviour
                 ? $"Night {runState.LastDayReward.SourceNightIndex} survived."
                 : "Prepare for the next night.";
             var followupLine = hasReward
-                ? $"{BuildRewardSummary(runState.LastDayReward)}."
-                : "Spend gold before dusk.";
+                ? $"{BuildRewardSummary(runState.LastDayReward)}. {upgradeChoiceLine}"
+                : upgradeChoiceLine;
 
             return
                 $"<b>Day {runState.CurrentDay}</b>\n" +
@@ -276,7 +280,7 @@ public class DayScreenView : MonoBehaviour
         var summary =
             $"<b>Day {runState.CurrentDay}</b>\n" +
             (hasLastNight
-                ? $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. Spend your gold before dusk.</color>\n\n"
+                ? $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. {upgradeChoiceLine}</color>\n\n"
                 : "<color=#d7c7a8>The cemetery is quiet. Prepare the next signal.</color>\n\n");
 
         if (hasReward)

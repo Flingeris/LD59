@@ -18,7 +18,7 @@ public class UpgradeSystem
 
         runState.PurchasedUpgradeIds ??= new HashSet<string>();
 
-        if (runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+        if (!upgradeDef.IsRepeatable && runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
         {
             return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
         }
@@ -35,7 +35,11 @@ public class UpgradeSystem
         }
 
         runState.Gold -= price;
-        runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
+        if (!upgradeDef.IsRepeatable)
+        {
+            runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
+        }
+
         ApplyEffect(upgradeDef, runState);
         ClampRunState(runState);
 

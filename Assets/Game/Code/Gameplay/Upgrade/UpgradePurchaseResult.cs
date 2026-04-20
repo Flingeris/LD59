@@ -6,7 +6,8 @@ public enum UpgradePurchaseFailureReason
     UpgradeNotFound = 3,
     AlreadyPurchased = 4,
     NotEnoughGold = 5,
-    EffectNotSupported = 6
+    EffectNotSupported = 6,
+    UpgradeNotOfferedToday = 7
 }
 
 public class UpgradePurchaseResult

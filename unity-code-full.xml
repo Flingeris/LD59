@@ -73,7 +73,7 @@ Assets/Game/Code/DefaultSystems/VFX/TextPopup/Popups.cs
 Assets/Game/Code/DefaultSystems/VFX/TextPopup/TextPopupInstance.cs
 Assets/Game/Code/DefaultSystems/VFX/TextPopup/TextPopupService.cs
 Assets/Game/Code/Editor/WebGLBuilder.cs
-Assets/Game/Code/Gameplay/Balance/BellgraveBalance.cs
+Assets/Game/Code/Gameplay/Bell/BellNightSpawnController.cs
 Assets/Game/Code/Gameplay/Bell/BellRingFailureReason.cs
 Assets/Game/Code/Gameplay/Bell/BellRingResult.cs
 Assets/Game/Code/Gameplay/Bell/BellSystem.cs
@@ -146,415 +146,6 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="Assets/Game/Code/Gameplay/Balance/BellgraveBalance.cs">
-using System.Collections.Generic;
-using UnityEngine;
-public static class BellgraveBalance
-{
-    public static class Run
-    {
-        public const int InitialCemeteryState = 100;
-        public const float InitialKeeperMoveSpeed = 3f;
-        public const float KeeperArrivalDistance = 0.05f;
-        public const int StartingNightFaith = 10;
-        public const int FaithCollectionPayoutAmount = 3;
-        public const float FaithCollectionIntervalSeconds = 3f;
-        public const int NightCemeteryRepairAmount = 1;
-        public const float NightCemeteryRepairIntervalSeconds = 1f;
-        public const int TargetSurvivedDays = 5;
-    }
-    public static class Content
-    {
-        public static IEnumerable<ContentDef> BuildRuntimeDefs()
-        {
-            yield return CreateBellSmall();
-            yield return CreateSkel1();
-            yield return CreateEn1();
-            yield return CreateMorningPrayers();
-            yield return CreateSacredRepairs();
-            yield return CreateStoneBoundary();
-            yield return CreateVigilHymn();
-            yield return CreateGraveOfferings();
-            yield return CreateQuickenedBones();
-            yield return CreateLongerService();
-            yield return CreateSharpenedBones();
-            yield return CreateVampiricVigil();
-            yield return CreateZombieFortitude();
-            yield return CreateSwifterPrayers();
-            yield return CreateNightRepairRite();
-        }
-        public static BellDef CreateBellSmall()
-        {
-            var def = ScriptableObject.CreateInstance<BellDef>();
-            def.InitializeRuntime(
-                "bell_small",
-                "bell_small",
-                8,
-                2f,
-                "skel1",
-                null);
-            return def;
-        }
-        public static UnitDef CreateSkel1()
-        {
-            var def = ScriptableObject.CreateInstance<UnitDef>();
-            def.InitializeRuntime(
-                "skel1",
-                10,
-                3,
-                1f,
-                1f,
-                20f,
-                LoadRequired<GameObject>("ContentPrefabs/SkelPrefab", "skel1"));
-            return def;
-        }
-        public static EnemyDef CreateEn1()
-        {
-            var def = ScriptableObject.CreateInstance<EnemyDef>();
-            def.InitializeRuntime(
-                "en1",
-                10,
-                1,
-                1,
-                1f,
-                2f,
-                LoadRequired<GameObject>("ContentPrefabs/EnemyPrefab", "en1"));
-            return def;
-        }
-        public static UpgradeDef CreateMorningPrayers()
-        {
-            return CreateUpgrade(
-                "upgrade_morning_prayers",
-                "Morning Prayers",
-                5,
-                UpgradeEffectType.StartingNightFaithBonus,
-                4);
-        }
-        public static UpgradeDef CreateSacredRepairs()
-        {
-            return CreateUpgrade(
-                "upgrade_sacred_repairs",
-                "Sacred Repairs",
-                5,
-                UpgradeEffectType.CemeteryRepair,
-                5);
-        }
-        public static UpgradeDef CreateStoneBoundary()
-        {
-            return CreateUpgrade(
-                "upgrade_stone_boundary",
-                "Stone Boundary",
-                9,
-                UpgradeEffectType.CemeteryMaxStateBonus,
-                8);
-        }
-        public static UpgradeDef CreateVigilHymn()
-        {
-            return CreateUpgrade(
-                "upgrade_vigil_hymn",
-                "Vigil Hymn",
-                10,
-                UpgradeEffectType.BellFaithCostModifier,
-                2);
-        }
-        public static UpgradeDef CreateGraveOfferings()
-        {
-            return CreateUpgrade(
-                "upgrade_grave_offerings",
-                "Grave Offerings",
-                7,
-                UpgradeEffectType.FaithIncomeBonus,
-                2);
-        }
-        public static UpgradeDef CreateQuickenedBones()
-        {
-            return CreateUpgrade(
-                "upgrade_quickened_bones",
-                "Quickened Bones",
-                8,
-                UpgradeEffectType.KeeperMoveSpeedBonus,
-                1);
-        }
-        public static UpgradeDef CreateLongerService()
-        {
-            return CreateUpgrade(
-                "upgrade_longer_service",
-                "Longer Service",
-                8,
-                UpgradeEffectType.UnitLifetimeModifier,
-                4f,
-                "skel1");
-        }
-        public static UpgradeDef CreateSharpenedBones()
-        {
-            return CreateUpgrade(
-                "upgrade_sharpened_bones",
-                "Sharpened Bones",
-                9,
-                UpgradeEffectType.UnitDamageModifier,
-                1f,
-                "skel1");
-        }
-        public static UpgradeDef CreateVampiricVigil()
-        {
-            return CreateUpgrade(
-                "upgrade_vampiric_vigil",
-                "Vampiric Vigil",
-                10,
-                UpgradeEffectType.UnitLifetimeModifier,
-                1f,
-                "vampire");
-        }
-        public static UpgradeDef CreateZombieFortitude()
-        {
-            return CreateUpgrade(
-                "upgrade_zombie_fortitude",
-                "Zombie Fortitude",
-                9,
-                UpgradeEffectType.UnitHpModifier,
-                6f,
-                "zombie");
-        }
-        public static UpgradeDef CreateSwifterPrayers()
-        {
-            return CreateUpgrade(
-                "upgrade_swifter_prayers",
-                "Swifter Prayers",
-                8,
-                UpgradeEffectType.FaithCollectionIntervalModifier,
-                0.25f);
-        }
-        public static UpgradeDef CreateNightRepairRite()
-        {
-            return CreateUpgrade(
-                "upgrade_night_repair_rite",
-                "Night Repair Rite",
-                10,
-                UpgradeEffectType.NightInstantRepairCharge,
-                5f);
-        }
-        private static UpgradeDef CreateUpgrade(
-            string id,
-            string displayName,
-            int price,
-            UpgradeEffectType effectType,
-            float effectValue,
-            string targetUnitId = null)
-        {
-            var def = ScriptableObject.CreateInstance<UpgradeDef>();
-            def.InitializeRuntime(id, displayName, price, effectType, effectValue, targetUnitId);
-            return def;
-        }
-    }
-    public static class Nights
-    {
-        public static readonly NightWaveBalance Night1 = new(
-            30f,
-            WaveAt(2f, Spawn("en1", 1)),
-            WaveAt(30f, Spawn("en1", 2)));
-        public static readonly NightWaveBalance Night2 = new(
-            60f,
-            WaveAt(10f, Spawn("en1", 1)),
-            WaveAt(20f, Spawn("en1", 2)),
-            WaveAt(32f, Spawn("en1", 2)),
-            WaveAt(44f, Spawn("en1", 2)),
-            WaveAt(54f, Spawn("en1", 3)));
-        public static readonly NightWaveBalance Night3 = new(
-            66f,
-            WaveAt(8f, Spawn("en1", 1)),
-            WaveAt(18f, Spawn("en1", 2)),
-            WaveAt(30f, Spawn("en1", 3)),
-            WaveAt(42f, Spawn("en1", 3)),
-            WaveAt(56f, Spawn("en1", 3)));
-        public static readonly NightWaveBalance Night4 = new(
-            72f,
-            WaveAt(8f, Spawn("en1", 2)),
-            WaveAt(20f, Spawn("en1", 2)),
-            WaveAt(32f, Spawn("en1", 3)),
-            WaveAt(44f, Spawn("en1", 3)),
-            WaveAt(58f, Spawn("en1", 4)));
-        public static readonly NightWaveBalance Night5 = new(
-            78f,
-            WaveAt(8f, Spawn("en1", 2)),
-            WaveAt(18f, Spawn("en1", 3)),
-            WaveAt(30f, Spawn("en1", 3)),
-            WaveAt(42f, Spawn("en1", 3)),
-            WaveAt(54f, Spawn("en1", 3)),
-            WaveAt(66f, Spawn("en1", 2)));
-        private static NightSpawnBalance Spawn(string enemyId, int count)
-        {
-            return new NightSpawnBalance(enemyId, count);
-        }
-        private static TimedNightSpawnBalance WaveAt(float triggerTime, params NightSpawnBalance[] spawns)
-        {
-            return new TimedNightSpawnBalance(triggerTime, spawns);
-        }
-    }
-    private static T LoadRequired<T>(string path, string ownerId) where T : Object
-    {
-        var asset = Resources.Load<T>(path);
-        if (asset == null)
-        {
-            Debug.LogError($"[BellgraveBalance] Missing resource '{path}' for '{ownerId}'");
-        }
-        return asset;
-    }
-}
-public readonly struct NightWaveBalance
-{
-    public readonly float DurationSeconds;
-    public readonly IReadOnlyList<TimedNightSpawnBalance> Entries;
-    public NightWaveBalance(float durationSeconds, params TimedNightSpawnBalance[] entries)
-    {
-        DurationSeconds = durationSeconds;
-        Entries = entries;
-    }
-}
-public readonly struct TimedNightSpawnBalance
-{
-    public readonly float TriggerTime;
-    public readonly IReadOnlyList<NightSpawnBalance> Spawns;
-    public TimedNightSpawnBalance(float triggerTime, params NightSpawnBalance[] spawns)
-    {
-        TriggerTime = triggerTime;
-        Spawns = spawns;
-    }
-}
-public readonly struct NightSpawnBalance
-{
-    public readonly string EnemyId;
-    public readonly int Count;
-    public NightSpawnBalance(string enemyId, int count)
-    {
-        EnemyId = enemyId;
-        Count = count;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/UnitRuntimeStats.cs">
-using UnityEngine;
-public readonly struct UnitRuntimeStats
-{
-    public readonly int MaxHp;
-    public readonly int Damage;
-    public readonly float AttackIntervalSeconds;
-    public readonly float MoveSpeed;
-    public readonly float LifetimeSeconds;
-    public UnitRuntimeStats(
-        int maxHp,
-        int damage,
-        float attackIntervalSeconds,
-        float moveSpeed,
-        float lifetimeSeconds)
-    {
-        MaxHp = Mathf.Max(0, maxHp);
-        Damage = Mathf.Max(0, damage);
-        AttackIntervalSeconds = Mathf.Max(0f, attackIntervalSeconds);
-        MoveSpeed = Mathf.Max(0f, moveSpeed);
-        LifetimeSeconds = Mathf.Max(0f, lifetimeSeconds);
-    }
-    public static UnitRuntimeStats From(UnitDef unitDef, RunState runState)
-    {
-        if (unitDef == null)
-        {
-            return new UnitRuntimeStats(0, 0, 0f, 0f, 0f);
-        }
-        var hpModifier = runState != null ? runState.GetUnitHpModifier(unitDef.Id) : 0;
-        var damageModifier = runState != null ? runState.GetUnitDamageModifier(unitDef.Id) : 0;
-        var lifetimeModifier = runState != null ? runState.GetUnitLifetimeModifier(unitDef.Id) : 0f;
-        return new UnitRuntimeStats(
-            unitDef.Hp + hpModifier,
-            unitDef.Damage + damageModifier,
-            unitDef.AttackInterval,
-            unitDef.MoveSpeed,
-            unitDef.LifetimeSeconds + lifetimeModifier);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
-using GameAnalyticsSDK;
-using UnityEngine;
-public static class AnalyticsSystem
-{
-    private static bool _initialized;
-    public static void Init()
-    {
-#if UNITY_EDITOR
-#else
-      if (_initialized)return;
-        GameAnalytics.Initialize();
-        _initialized = true;
-            Debug.Log("[Analytics] GameAnalytics initialized");
-#endif
-    }
-    public static void OnGameStarted()
-    {
-        if (!_initialized) return;
-        GameAnalytics.NewDesignEvent("game:started");
-    }
-    public static void OnLevelChanged(int levelIndex, string levelName)
-    {
-        if (!_initialized) return;
-        levelName = string.IsNullOrWhiteSpace(levelName) ? "unknown" : levelName;
-        GameAnalytics.NewProgressionEvent(
-            GAProgressionStatus.Start,
-            "run",
-            $"level_{levelIndex}",
-            levelName
-        );
-        GameAnalytics.NewDesignEvent($"level:changed:{levelName}", levelIndex);
-    }
-    public static void OnLevelCompleted(int levelIndex, string levelName)
-    {
-        if (!_initialized) return;
-        levelName = string.IsNullOrWhiteSpace(levelName) ? "unknown" : levelName;
-        GameAnalytics.NewProgressionEvent(
-            GAProgressionStatus.Complete,
-            "run",
-            $"level_{levelIndex}",
-            levelName
-        );
-    }
-    public static void OnLevelFailed(int levelIndex, string levelName)
-    {
-        if (!_initialized) return;
-        levelName = string.IsNullOrWhiteSpace(levelName) ? "unknown" : levelName;
-        GameAnalytics.NewProgressionEvent(
-            GAProgressionStatus.Fail,
-            "run",
-            $"level_{levelIndex}",
-            levelName
-        );
-    }
-    public static void OnGameEnded(string result, int totalLevelsPassed)
-    {
-        if (!_initialized) return;
-        result = string.IsNullOrWhiteSpace(result) ? "unknown" : result.ToLowerInvariant();
-        GameAnalytics.NewDesignEvent($"run:ended:{result}", totalLevelsPassed);
-    }
-    public static void OnError(string message)
-    {
-        if (!_initialized) return;
-        if (string.IsNullOrWhiteSpace(message)) return;
-        GameAnalytics.NewErrorEvent(GAErrorSeverity.Error, message);
-    }
-    public static void OnRewardPicked(string rewardId)
-    {
-        if (!_initialized) return;
-        if (string.IsNullOrWhiteSpace(rewardId)) rewardId = "unknown";
-        GameAnalytics.NewDesignEvent($"reward:picked:{rewardId}");
-    }
-    public static void TestEvent(string eventId)
-    {
-        if (!_initialized) return;
-        if (string.IsNullOrWhiteSpace(eventId)) eventId = "debug:unknown";
-        GameAnalytics.NewDesignEvent(eventId);
-    }
-}
-</file>
 
 <file path="Assets/Game/Code/DefaultSystems/AudioSystem/AudioPlayers/AmbientPlayer.cs">
 using UnityEngine;
@@ -865,130 +456,6 @@ public class SoundEntity
             return Clips[Random.Range(0, Clips.Count)];
         }
         return Clips[0];
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/DefaultSystems/CMS/CMS.cs">
-using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
-public static class CMS
-{
-    private static bool isInit;
-    private static readonly Dictionary<string, ContentDef> _byId = new();
-    private static readonly List<ContentDef> _all = new();
-    public static void Init()
-    {
-        if (isInit) return;
-        isInit = true;
-        AutoAdd();
-    }
-    private static void AutoAdd()
-    {
-        _byId.Clear();
-        _all.Clear();
-        var allDefs = Resources.LoadAll<ContentDef>("Content");
-        foreach (var def in allDefs)
-        {
-            if (def == null) continue;
-            if (def is BellDef || def is UnitDef || def is EnemyDef || def is UpgradeDef)
-            {
-                continue;
-            }
-            AddDef(def);
-        }
-        foreach (var runtimeDef in BellgraveBalance.Content.BuildRuntimeDefs())
-        {
-            AddDef(runtimeDef);
-        }
-        Debug.Log($"[CSM] Loaded {_all.Count} defs");
-    }
-    private static void AddDef(ContentDef def)
-    {
-        var id = def.Id;
-        if (string.IsNullOrWhiteSpace(id))
-        {
-            Debug.LogWarning($"[CSM] Def '{def.name}' has empty Id");
-            return;
-        }
-        if (_byId.ContainsKey(id))
-        {
-            Debug.LogError($"[CSM] Duplicate Id '{id}' on asset '{def.name}' and '{_byId[id].name}'");
-            return;
-        }
-        _byId.Add(id, def);
-        _all.Add(def);
-    }
-    public static ContentDef Get(string id)
-    {
-        Init();
-        if (string.IsNullOrWhiteSpace(id))
-        {
-            Debug.LogError("[CSM] Get called with null/empty id");
-            return null;
-        }
-        if (_byId.TryGetValue(id, out var def))
-            return def;
-        Debug.LogError($"[CSM] Def with Id '{id}' not found");
-        return null;
-    }
-    public static T Get<T>(string id) where T : ContentDef
-    {
-        Init();
-        if (!_byId.TryGetValue(id, out var def))
-        {
-            Debug.LogError($"[CSM] Def with Id '{id}' not found");
-            return null;
-        }
-        if (def is T typed)
-            return typed;
-        Debug.LogError($"[CSM] Def '{id}' is '{def.GetType().Name}', not '{typeof(T).Name}'");
-        return null;
-    }
-    public static IEnumerable<T> GetAll<T>() where T : ContentDef
-    {
-        Init();
-        return _all.OfType<T>();
-    }
-    public static IEnumerable<ContentDef> GetAll()
-    {
-        Init();
-        return _all;
-    }
-}
-public static class CMSUtil
-{
-    public static T Load<T>(this string path) where T : Object
-    {
-        return Resources.Load<T>(path);
-    }
-    public static Sprite LoadFromSpritesheet(string imageName, string spriteName)
-    {
-        Sprite[] all = Resources.LoadAll<Sprite>(imageName);
-        foreach (var s in all)
-        {
-            if (s.name == spriteName)
-            {
-                return s;
-            }
-        }
-        return null;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/DefaultSystems/CMS/ContentDef.cs">
-using UnityEngine;
-public abstract class ContentDef : ScriptableObject
-{
-    [Tooltip("Уникальный ID. Если пустой, будет использовано имя файла ассета.")]
-    [SerializeField] private string id;
-    public string Id => string.IsNullOrEmpty(id) ? name : id;
-    protected void InitializeContent(string contentId)
-    {
-        id = contentId;
-        name = contentId;
     }
 }
 </file>
@@ -1839,114 +1306,146 @@ public static class WebGLBuilder
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs">
+<file path="Assets/Game/Code/Gameplay/Bell/BellNightSpawnController.cs">
+using System.Collections.Generic;
 using UnityEngine;
-public class CemeteryStateSystem
+[DisallowMultipleComponent]
+public class BellNightSpawnController : MonoBehaviour
 {
-    public bool ApplyBreakthroughDamage(RunState runState, int damageAmount)
+    [System.Serializable]
+    private class BellNightSpawnRule
     {
-        if (runState == null || damageAmount <= 0)
+        public string bellId;
+        [Min(1)] public int unlockNightIndex = 1;
+        public Transform spawnPoint;
+    }
+    [SerializeField] private BellNightSpawnRule[] spawnRules;
+    private readonly HashSet<string> spawnedBellIds = new();
+    private bool duplicateRuleWarningShown;
+    public bool TryGetUnlockNightIndex(string bellId, out int unlockNightIndex)
+    {
+        unlockNightIndex = 0;
+        if (string.IsNullOrWhiteSpace(bellId) || spawnRules == null || spawnRules.Length == 0)
         {
             return false;
         }
-        var clampedMaxState = Mathf.Max(0, runState.CemeteryMaxState);
-        var nextState = Mathf.Clamp(runState.CemeteryState - damageAmount, 0, clampedMaxState);
-        if (nextState == runState.CemeteryState)
+        var foundRule = false;
+        for (var i = 0; i < spawnRules.Length; i++)
+        {
+            var rule = spawnRules[i];
+            if (rule == null || rule.bellId != bellId)
+            {
+                continue;
+            }
+            if (!foundRule || rule.unlockNightIndex < unlockNightIndex)
+            {
+                unlockNightIndex = rule.unlockNightIndex;
+                foundRule = true;
+            }
+        }
+        return foundRule;
+    }
+    public bool TrySpawnForNight(int nightIndex)
+    {
+        if (nightIndex <= 0 || spawnRules == null || spawnRules.Length == 0)
         {
             return false;
         }
-        runState.CemeteryState = nextState;
+        WarnAboutDuplicateRulesIfNeeded();
+        var didSpawnAnyBell = false;
+        for (var i = 0; i < spawnRules.Length; i++)
+        {
+            var rule = spawnRules[i];
+            if (rule == null || rule.unlockNightIndex != nightIndex || string.IsNullOrWhiteSpace(rule.bellId))
+            {
+                continue;
+            }
+            if (IsBellAlreadyPresent(rule.bellId))
+            {
+                spawnedBellIds.Add(rule.bellId);
+                continue;
+            }
+            if (!TrySpawnBell(rule))
+            {
+                continue;
+            }
+            didSpawnAnyBell = true;
+        }
+        return didSpawnAnyBell;
+    }
+    private bool TrySpawnBell(BellNightSpawnRule rule)
+    {
+        var bellDef = CMS.Get<BellDef>(rule.bellId);
+        if (bellDef == null)
+        {
+            Debug.LogWarning($"Bell night spawn skipped: BellDef '{rule.bellId}' not found");
+            return false;
+        }
+        if (bellDef.WorldPrefab == null)
+        {
+            Debug.LogWarning($"Bell night spawn skipped: BellDef '{rule.bellId}' has no world prefab");
+            return false;
+        }
+        if (rule.spawnPoint == null)
+        {
+            Debug.LogWarning($"Bell night spawn skipped: '{rule.bellId}' has no spawn point");
+            return false;
+        }
+        var spawnedObject = Instantiate(
+            bellDef.WorldPrefab,
+            rule.spawnPoint.position,
+            rule.spawnPoint.rotation);
+        spawnedObject.name = $"Bell_{rule.bellId}";
+        var bellWorldObject = spawnedObject.GetComponent<BellWorldObject>();
+        if (bellWorldObject == null)
+        {
+            Debug.LogWarning(
+                $"Bell night spawn created '{rule.bellId}', but prefab '{bellDef.WorldPrefab.name}' is missing BellWorldObject");
+            Destroy(spawnedObject);
+            return false;
+        }
+        bellWorldObject.InitializeRuntime(rule.bellId);
+        spawnedBellIds.Add(rule.bellId);
         return true;
     }
-    public int ApplyNightRepair(RunState runState, float deltaTime)
+    private bool IsBellAlreadyPresent(string bellId)
     {
-        if (runState == null || deltaTime <= 0f)
+        if (spawnedBellIds.Contains(bellId))
         {
-            return 0;
+            return true;
         }
-        if (runState.NightCemeteryRepairAmount <= 0 ||
-            runState.NightCemeteryRepairIntervalSeconds <= 0f ||
-            runState.CemeteryState >= runState.CemeteryMaxState)
+        var bells = FindObjectsByType<BellWorldObject>();
+        for (var i = 0; i < bells.Length; i++)
         {
-            return 0;
-        }
-        runState.NightCemeteryRepairTimerProgress += deltaTime;
-        var totalRepaired = 0;
-        while (runState.NightCemeteryRepairTimerProgress >= runState.NightCemeteryRepairIntervalSeconds)
-        {
-            runState.NightCemeteryRepairTimerProgress -= runState.NightCemeteryRepairIntervalSeconds;
-            var previousState = runState.CemeteryState;
-            runState.CemeteryState = Mathf.Clamp(
-                runState.CemeteryState + runState.NightCemeteryRepairAmount,
-                0,
-                Mathf.Max(0, runState.CemeteryMaxState));
-            var repairedAmount = runState.CemeteryState - previousState;
-            if (repairedAmount <= 0)
+            var bell = bells[i];
+            if (bell != null && bell.BellId == bellId)
             {
-                break;
-            }
-            totalRepaired += repairedAmount;
-            if (runState.CemeteryState >= runState.CemeteryMaxState)
-            {
-                runState.NightCemeteryRepairTimerProgress = 0f;
-                break;
+                return true;
             }
         }
-        return totalRepaired;
+        return false;
     }
-    public int ApplyInstantRepair(RunState runState, int repairAmount)
+    private void WarnAboutDuplicateRulesIfNeeded()
     {
-        if (runState == null || repairAmount <= 0)
-        {
-            return 0;
-        }
-        var previousState = runState.CemeteryState;
-        runState.CemeteryState = Mathf.Clamp(
-            runState.CemeteryState + repairAmount,
-            0,
-            Mathf.Max(0, runState.CemeteryMaxState));
-        return Mathf.Max(0, runState.CemeteryState - previousState);
-    }
-    public void ResetNightRepairProgress(RunState runState)
-    {
-        if (runState == null)
+        if (duplicateRuleWarningShown || spawnRules == null || spawnRules.Length == 0)
         {
             return;
         }
-        runState.NightCemeteryRepairTimerProgress = 0f;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Upgrade Def")]
-public class UpgradeDef : ContentDef
-{
-    [SerializeField] private string displayName;
-    [SerializeField] private int price;
-    [SerializeField] private UpgradeEffectType effectType;
-    [SerializeField] private float effectValue;
-    [SerializeField] private string targetUnitId;
-    public string DisplayName => displayName;
-    public int Price => price;
-    public UpgradeEffectType EffectType => effectType;
-    public float EffectValue => effectValue;
-    public string TargetUnitId => targetUnitId;
-    internal void InitializeRuntime(
-        string contentId,
-        string contentDisplayName,
-        int contentPrice,
-        UpgradeEffectType contentEffectType,
-        float contentEffectValue,
-        string contentTargetUnitId = null)
-    {
-        InitializeContent(contentId);
-        displayName = contentDisplayName;
-        price = contentPrice;
-        effectType = contentEffectType;
-        effectValue = contentEffectValue;
-        targetUnitId = contentTargetUnitId;
+        duplicateRuleWarningShown = true;
+        var keys = new HashSet<string>();
+        for (var i = 0; i < spawnRules.Length; i++)
+        {
+            var rule = spawnRules[i];
+            if (rule == null || string.IsNullOrWhiteSpace(rule.bellId))
+            {
+                continue;
+            }
+            var key = $"{rule.bellId}@{rule.unlockNightIndex}";
+            if (!keys.Add(key))
+            {
+                Debug.LogWarning($"Bell night spawn has duplicate rule '{key}' on '{name}'");
+            }
+        }
     }
 }
 </file>
@@ -2411,35 +1910,43 @@ public class SingleLaneHost : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneUnitSpawner.cs">
+<file path="Assets/Game/Code/Gameplay/Lane/UnitRuntimeStats.cs">
 using UnityEngine;
-public class SingleLaneUnitSpawner
+public readonly struct UnitRuntimeStats
 {
-    public UnitSpawnResult TrySpawnPlayerUnit(UnitDef unitDef, SingleLaneHost laneHost, RunState runState)
+    public readonly int MaxHp;
+    public readonly int Damage;
+    public readonly float AttackIntervalSeconds;
+    public readonly float MoveSpeed;
+    public readonly float LifetimeSeconds;
+    public UnitRuntimeStats(
+        int maxHp,
+        int damage,
+        float attackIntervalSeconds,
+        float moveSpeed,
+        float lifetimeSeconds)
     {
-        if (laneHost == null)
+        MaxHp = Mathf.Max(0, maxHp);
+        Damage = Mathf.Max(0, damage);
+        AttackIntervalSeconds = Mathf.Max(0f, attackIntervalSeconds);
+        MoveSpeed = Mathf.Max(0f, moveSpeed);
+        LifetimeSeconds = Mathf.Max(0f, lifetimeSeconds);
+    }
+    public static UnitRuntimeStats From(UnitDef unitDef, RunState runState)
+    {
+        if (unitDef == null)
         {
-            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
+            return new UnitRuntimeStats(0, 0, 0f, 0f, 0f);
         }
-        if (laneHost.PlayerSpawnPoint == null)
-        {
-            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
-        }
-        if (unitDef == null || unitDef.ViewPrefab == null)
-        {
-            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
-        }
-        var spawnedGameObject = Object.Instantiate(
-            unitDef.ViewPrefab,
-            laneHost.PlayerSpawnPoint.position,
-            laneHost.PlayerSpawnPoint.rotation);
-        var laneUnit = spawnedGameObject.GetComponent<LaneUnit>();
-        if (laneUnit == null)
-        {
-            laneUnit = spawnedGameObject.AddComponent<LaneUnit>();
-        }
-        laneUnit.Initialize(unitDef, UnitRuntimeStats.From(unitDef, runState));
-        return UnitSpawnResult.Success(laneUnit);
+        var hpModifier = runState != null ? runState.GetUnitHpModifier(unitDef.Id) : 0;
+        var damageModifier = runState != null ? runState.GetUnitDamageModifier(unitDef.Id) : 0;
+        var lifetimeModifier = runState != null ? runState.GetUnitLifetimeModifier(unitDef.Id) : 0f;
+        return new UnitRuntimeStats(
+            unitDef.Hp + hpModifier,
+            unitDef.Damage + damageModifier,
+            unitDef.AttackInterval,
+            unitDef.MoveSpeed,
+            unitDef.LifetimeSeconds + lifetimeModifier);
     }
 }
 </file>
@@ -2610,7 +2117,8 @@ public enum UpgradePurchaseFailureReason
     UpgradeNotFound = 3,
     AlreadyPurchased = 4,
     NotEnoughGold = 5,
-    EffectNotSupported = 6
+    EffectNotSupported = 6,
+    UpgradeNotOfferedToday = 7
 }
 public class UpgradePurchaseResult
 {
@@ -3162,6 +2670,88 @@ public class WorldProgressBarView : MonoBehaviour
             new Vector2(0.5f, 0.5f),
             1f);
         return runtimeBarSprite;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
+using GameAnalyticsSDK;
+using UnityEngine;
+public static class AnalyticsSystem
+{
+    private static bool _initialized;
+    public static void Init()
+    {
+#if UNITY_EDITOR
+#else
+      if (_initialized)return;
+        GameAnalytics.Initialize();
+        _initialized = true;
+            Debug.Log("[Analytics] GameAnalytics initialized");
+#endif
+    }
+    public static void OnGameStarted()
+    {
+        if (!_initialized) return;
+        GameAnalytics.NewDesignEvent("game:started");
+    }
+    public static void OnLevelChanged(int levelIndex, string levelName)
+    {
+        if (!_initialized) return;
+        levelName = string.IsNullOrWhiteSpace(levelName) ? "unknown" : levelName;
+        GameAnalytics.NewProgressionEvent(
+            GAProgressionStatus.Start,
+            "run",
+            $"level_{levelIndex}",
+            levelName
+        );
+        GameAnalytics.NewDesignEvent($"level:changed:{levelName}", levelIndex);
+    }
+    public static void OnLevelCompleted(int levelIndex, string levelName)
+    {
+        if (!_initialized) return;
+        levelName = string.IsNullOrWhiteSpace(levelName) ? "unknown" : levelName;
+        GameAnalytics.NewProgressionEvent(
+            GAProgressionStatus.Complete,
+            "run",
+            $"level_{levelIndex}",
+            levelName
+        );
+    }
+    public static void OnLevelFailed(int levelIndex, string levelName)
+    {
+        if (!_initialized) return;
+        levelName = string.IsNullOrWhiteSpace(levelName) ? "unknown" : levelName;
+        GameAnalytics.NewProgressionEvent(
+            GAProgressionStatus.Fail,
+            "run",
+            $"level_{levelIndex}",
+            levelName
+        );
+    }
+    public static void OnGameEnded(string result, int totalLevelsPassed)
+    {
+        if (!_initialized) return;
+        result = string.IsNullOrWhiteSpace(result) ? "unknown" : result.ToLowerInvariant();
+        GameAnalytics.NewDesignEvent($"run:ended:{result}", totalLevelsPassed);
+    }
+    public static void OnError(string message)
+    {
+        if (!_initialized) return;
+        if (string.IsNullOrWhiteSpace(message)) return;
+        GameAnalytics.NewErrorEvent(GAErrorSeverity.Error, message);
+    }
+    public static void OnRewardPicked(string rewardId)
+    {
+        if (!_initialized) return;
+        if (string.IsNullOrWhiteSpace(rewardId)) rewardId = "unknown";
+        GameAnalytics.NewDesignEvent($"reward:picked:{rewardId}");
+    }
+    public static void TestEvent(string eventId)
+    {
+        if (!_initialized) return;
+        if (string.IsNullOrWhiteSpace(eventId)) eventId = "debug:unknown";
+        GameAnalytics.NewDesignEvent(eventId);
     }
 }
 </file>
@@ -4014,6 +3604,130 @@ public class SoundsLibrary : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/DefaultSystems/CMS/CMS.cs">
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+public static class CMS
+{
+    private static bool isInit;
+    private static readonly Dictionary<string, ContentDef> _byId = new();
+    private static readonly List<ContentDef> _all = new();
+    public static void Init()
+    {
+        if (isInit) return;
+        isInit = true;
+        AutoAdd();
+    }
+    private static void AutoAdd()
+    {
+        _byId.Clear();
+        _all.Clear();
+        var allDefs = Resources.LoadAll<ContentDef>("Content");
+        foreach (var def in allDefs)
+        {
+            if (def == null) continue;
+            if (def is BellDef || def is UnitDef || def is EnemyDef || def is UpgradeDef)
+            {
+                continue;
+            }
+            AddDef(def);
+        }
+        foreach (var runtimeDef in BellgraveBalance.Content.BuildRuntimeDefs())
+        {
+            AddDef(runtimeDef);
+        }
+        Debug.Log($"[CSM] Loaded {_all.Count} defs");
+    }
+    private static void AddDef(ContentDef def)
+    {
+        var id = def.Id;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            Debug.LogWarning($"[CSM] Def '{def.name}' has empty Id");
+            return;
+        }
+        if (_byId.ContainsKey(id))
+        {
+            Debug.LogError($"[CSM] Duplicate Id '{id}' on asset '{def.name}' and '{_byId[id].name}'");
+            return;
+        }
+        _byId.Add(id, def);
+        _all.Add(def);
+    }
+    public static ContentDef Get(string id)
+    {
+        Init();
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            Debug.LogError("[CSM] Get called with null/empty id");
+            return null;
+        }
+        if (_byId.TryGetValue(id, out var def))
+            return def;
+        Debug.LogError($"[CSM] Def with Id '{id}' not found");
+        return null;
+    }
+    public static T Get<T>(string id) where T : ContentDef
+    {
+        Init();
+        if (!_byId.TryGetValue(id, out var def))
+        {
+            Debug.LogError($"[CSM] Def with Id '{id}' not found");
+            return null;
+        }
+        if (def is T typed)
+            return typed;
+        Debug.LogError($"[CSM] Def '{id}' is '{def.GetType().Name}', not '{typeof(T).Name}'");
+        return null;
+    }
+    public static IEnumerable<T> GetAll<T>() where T : ContentDef
+    {
+        Init();
+        return _all.OfType<T>();
+    }
+    public static IEnumerable<ContentDef> GetAll()
+    {
+        Init();
+        return _all;
+    }
+}
+public static class CMSUtil
+{
+    public static T Load<T>(this string path) where T : Object
+    {
+        return Resources.Load<T>(path);
+    }
+    public static Sprite LoadFromSpritesheet(string imageName, string spriteName)
+    {
+        Sprite[] all = Resources.LoadAll<Sprite>(imageName);
+        foreach (var s in all)
+        {
+            if (s.name == spriteName)
+            {
+                return s;
+            }
+        }
+        return null;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/DefaultSystems/CMS/ContentDef.cs">
+using UnityEngine;
+public abstract class ContentDef : ScriptableObject
+{
+    [Tooltip("Уникальный ID. Если пустой, будет использовано имя файла ассета.")]
+    [SerializeField] private string id;
+    public string Id => string.IsNullOrEmpty(id) ? name : id;
+    protected void InitializeContent(string contentId)
+    {
+        id = contentId;
+        name = contentId;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/DefaultSystems/SettingsUI/PauseManager.cs">
 using TMPro;
 using UnityEngine;
@@ -4661,128 +4375,119 @@ public class BellRingResult
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
+<file path="Assets/Game/Code/Gameplay/Cemetery/CemeteryStateSystem.cs">
 using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
-public class BellDef : ContentDef
+public class CemeteryStateSystem
+{
+    public bool ApplyBreakthroughDamage(RunState runState, int damageAmount)
+    {
+        if (runState == null || damageAmount <= 0)
+        {
+            return false;
+        }
+        var clampedMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        var nextState = Mathf.Clamp(runState.CemeteryState - damageAmount, 0, clampedMaxState);
+        if (nextState == runState.CemeteryState)
+        {
+            return false;
+        }
+        runState.CemeteryState = nextState;
+        return true;
+    }
+    public int ApplyNightRepair(RunState runState, float deltaTime)
+    {
+        if (runState == null || deltaTime <= 0f)
+        {
+            return 0;
+        }
+        if (runState.NightCemeteryRepairAmount <= 0 ||
+            runState.NightCemeteryRepairIntervalSeconds <= 0f ||
+            runState.CemeteryState >= runState.CemeteryMaxState)
+        {
+            return 0;
+        }
+        runState.NightCemeteryRepairTimerProgress += deltaTime;
+        var totalRepaired = 0;
+        while (runState.NightCemeteryRepairTimerProgress >= runState.NightCemeteryRepairIntervalSeconds)
+        {
+            runState.NightCemeteryRepairTimerProgress -= runState.NightCemeteryRepairIntervalSeconds;
+            var previousState = runState.CemeteryState;
+            runState.CemeteryState = Mathf.Clamp(
+                runState.CemeteryState + runState.NightCemeteryRepairAmount,
+                0,
+                Mathf.Max(0, runState.CemeteryMaxState));
+            var repairedAmount = runState.CemeteryState - previousState;
+            if (repairedAmount <= 0)
+            {
+                break;
+            }
+            totalRepaired += repairedAmount;
+            if (runState.CemeteryState >= runState.CemeteryMaxState)
+            {
+                runState.NightCemeteryRepairTimerProgress = 0f;
+                break;
+            }
+        }
+        return totalRepaired;
+    }
+    public int ApplyInstantRepair(RunState runState, int repairAmount)
+    {
+        if (runState == null || repairAmount <= 0)
+        {
+            return 0;
+        }
+        var previousState = runState.CemeteryState;
+        runState.CemeteryState = Mathf.Clamp(
+            runState.CemeteryState + repairAmount,
+            0,
+            Mathf.Max(0, runState.CemeteryMaxState));
+        return Mathf.Max(0, runState.CemeteryState - previousState);
+    }
+    public void ResetNightRepairProgress(RunState runState)
+    {
+        if (runState == null)
+        {
+            return;
+        }
+        runState.NightCemeteryRepairTimerProgress = 0f;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Upgrade Def")]
+public class UpgradeDef : ContentDef
 {
     [SerializeField] private string displayName;
-    [SerializeField] private int faithCost;
-    [Min(0f)] [SerializeField] private float cooldownSeconds;
-    [SerializeField] private string linkedUnitId;
-    [SerializeField] private Sprite icon;
+    [SerializeField] private int price;
+    [SerializeField] private UpgradeEffectType effectType;
+    [SerializeField] private float effectValue;
+    [SerializeField] private string targetUnitId;
+    [SerializeField] private bool isRepeatable;
     public string DisplayName => displayName;
-    public int FaithCost => faithCost;
-    public float CooldownSeconds => Mathf.Max(0f, cooldownSeconds);
-    public string LinkedUnitId => linkedUnitId;
-    public Sprite Icon => icon;
+    public int Price => price;
+    public UpgradeEffectType EffectType => effectType;
+    public float EffectValue => effectValue;
+    public string TargetUnitId => targetUnitId;
+    public bool IsRepeatable => isRepeatable;
     internal void InitializeRuntime(
         string contentId,
         string contentDisplayName,
-        int contentFaithCost,
-        float contentCooldownSeconds,
-        string contentLinkedUnitId,
-        Sprite contentIcon)
+        int contentPrice,
+        UpgradeEffectType contentEffectType,
+        float contentEffectValue,
+        string contentTargetUnitId = null,
+        bool contentIsRepeatable = false)
     {
         InitializeContent(contentId);
         displayName = contentDisplayName;
-        faithCost = contentFaithCost;
-        cooldownSeconds = contentCooldownSeconds;
-        linkedUnitId = contentLinkedUnitId;
-        icon = contentIcon;
+        price = contentPrice;
+        effectType = contentEffectType;
+        effectValue = contentEffectValue;
+        targetUnitId = contentTargetUnitId;
+        isRepeatable = contentIsRepeatable;
     }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/EnemyDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Enemy Def")]
-public class EnemyDef : ContentDef
-{
-    [SerializeField] private int hp;
-    [SerializeField] private int damage;
-    [SerializeField] private int goldReward = 1;
-    [SerializeField] private float attackInterval;
-    [SerializeField] private float moveSpeed;
-    [SerializeField] private GameObject viewPrefab;
-    public int Hp => hp;
-    public int Damage => damage;
-    public int GoldReward => goldReward;
-    public float AttackInterval => attackInterval;
-    public float MoveSpeed => moveSpeed;
-    public GameObject ViewPrefab => viewPrefab;
-    internal void InitializeRuntime(
-        string contentId,
-        int contentHp,
-        int contentDamage,
-        int contentGoldReward,
-        float contentAttackInterval,
-        float contentMoveSpeed,
-        GameObject contentViewPrefab)
-    {
-        InitializeContent(contentId);
-        hp = contentHp;
-        damage = contentDamage;
-        goldReward = contentGoldReward;
-        attackInterval = contentAttackInterval;
-        moveSpeed = contentMoveSpeed;
-        viewPrefab = contentViewPrefab;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
-using UnityEngine;
-[CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
-public class UnitDef : ContentDef
-{
-    [SerializeField] private int hp;
-    [SerializeField] private int damage;
-    [SerializeField] private float attackInterval;
-    [SerializeField] private float moveSpeed;
-    [Min(0f)] [SerializeField] private float lifetimeSeconds;
-    [SerializeField] private GameObject viewPrefab;
-    public int Hp => hp;
-    public int Damage => damage;
-    public float AttackInterval => attackInterval;
-    public float MoveSpeed => moveSpeed;
-    public float LifetimeSeconds => lifetimeSeconds;
-    public GameObject ViewPrefab => viewPrefab;
-    internal void InitializeRuntime(
-        string contentId,
-        int contentHp,
-        int contentDamage,
-        float contentAttackInterval,
-        float contentMoveSpeed,
-        float contentLifetimeSeconds,
-        GameObject contentViewPrefab)
-    {
-        InitializeContent(contentId);
-        hp = contentHp;
-        damage = contentDamage;
-        attackInterval = contentAttackInterval;
-        moveSpeed = contentMoveSpeed;
-        lifetimeSeconds = contentLifetimeSeconds;
-        viewPrefab = contentViewPrefab;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs">
-public enum UpgradeEffectType
-{
-    FaithIncomeBonus = 0,
-    CemeteryRepair = 1,
-    CemeteryMaxStateBonus = 2,
-    UnlockBell = 3,
-    BellFaithCostModifier = 4,
-    UnitDamageModifier = 5,
-    StartingNightFaithBonus = 6,
-    KeeperMoveSpeedBonus = 7,
-    UnitLifetimeModifier = 8,
-    UnitHpModifier = 9,
-    FaithCollectionIntervalModifier = 10,
-    NightInstantRepairCharge = 11
 }
 </file>
 
@@ -5011,6 +4716,39 @@ public class SingleLaneEnemySpawner
         }
         laneEnemy.Initialize(enemyDef, forwardTargetPosition);
         return EnemySpawnResult.Success(laneEnemy);
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/SingleLaneUnitSpawner.cs">
+using UnityEngine;
+public class SingleLaneUnitSpawner
+{
+    public UnitSpawnResult TrySpawnPlayerUnit(UnitDef unitDef, SingleLaneHost laneHost, RunState runState)
+    {
+        if (laneHost == null)
+        {
+            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingLaneHost);
+        }
+        if (laneHost.PlayerSpawnPoint == null)
+        {
+            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingSpawnPoint);
+        }
+        if (unitDef == null || unitDef.ViewPrefab == null)
+        {
+            return UnitSpawnResult.Failure(UnitSpawnFailureReason.MissingPrefab);
+        }
+        var spawnedGameObject = Object.Instantiate(
+            unitDef.ViewPrefab,
+            laneHost.PlayerSpawnPoint.position,
+            laneHost.PlayerSpawnPoint.rotation);
+        var laneUnit = spawnedGameObject.GetComponent<LaneUnit>();
+        if (laneUnit == null)
+        {
+            laneUnit = spawnedGameObject.AddComponent<LaneUnit>();
+        }
+        laneUnit.Initialize(unitDef, UnitRuntimeStats.From(unitDef, runState));
+        return UnitSpawnResult.Success(laneUnit);
     }
 }
 </file>
@@ -5726,117 +5464,132 @@ public class BellSystem
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
+<file path="Assets/Game/Code/Gameplay/Defs/BellDef.cs">
 using UnityEngine;
-using UnityEngine.EventSystems;
-public class BellWorldObject : MonoBehaviour, IPointerClickHandler
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Bell Def")]
+public class BellDef : ContentDef
 {
-    [SerializeField] private string bellId;
-    [SerializeField] private WorldBarFillShrink cooldownBar;
-    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
-    private float cooldownRemainingSeconds;
-    private float cooldownDurationSeconds;
-    private SpriteRenderer spriteRenderer;
-    public string BellId => bellId;
-    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
-    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
-    private void Awake()
+    [SerializeField] private string displayName;
+    [SerializeField] private int faithCost;
+    [Min(0f)] [SerializeField] private float cooldownSeconds;
+    [SerializeField] private string linkedUnitId;
+    [SerializeField] private Sprite icon;
+    [SerializeField] private GameObject worldPrefab;
+    public string DisplayName => displayName;
+    public int FaithCost => faithCost;
+    public float CooldownSeconds => Mathf.Max(0f, cooldownSeconds);
+    public string LinkedUnitId => linkedUnitId;
+    public Sprite Icon => icon;
+    public GameObject WorldPrefab => worldPrefab;
+    internal void InitializeRuntime(
+        string contentId,
+        string contentDisplayName,
+        int contentFaithCost,
+        float contentCooldownSeconds,
+        string contentLinkedUnitId,
+        Sprite contentIcon,
+        GameObject contentWorldPrefab)
     {
-        EnsureReferences();
-        cooldownBar?.SetVisible(false);
+        InitializeContent(contentId);
+        displayName = contentDisplayName;
+        faithCost = contentFaithCost;
+        cooldownSeconds = contentCooldownSeconds;
+        linkedUnitId = contentLinkedUnitId;
+        icon = contentIcon;
+        worldPrefab = contentWorldPrefab;
     }
-    private void Update()
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/EnemyDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Enemy Def")]
+public class EnemyDef : ContentDef
+{
+    [SerializeField] private int hp;
+    [SerializeField] private int damage;
+    [SerializeField] private int goldReward = 1;
+    [SerializeField] private float attackInterval;
+    [SerializeField] private float moveSpeed;
+    [SerializeField] private GameObject viewPrefab;
+    public int Hp => hp;
+    public int Damage => damage;
+    public int GoldReward => goldReward;
+    public float AttackInterval => attackInterval;
+    public float MoveSpeed => moveSpeed;
+    public GameObject ViewPrefab => viewPrefab;
+    internal void InitializeRuntime(
+        string contentId,
+        int contentHp,
+        int contentDamage,
+        int contentGoldReward,
+        float contentAttackInterval,
+        float contentMoveSpeed,
+        GameObject contentViewPrefab)
     {
-        if (cooldownRemainingSeconds <= 0f)
-        {
-            cooldownBar?.SetVisible(false);
-            return;
-        }
-        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
-        RefreshCooldownPresentation();
+        InitializeContent(contentId);
+        hp = contentHp;
+        damage = contentDamage;
+        goldReward = contentGoldReward;
+        attackInterval = contentAttackInterval;
+        moveSpeed = contentMoveSpeed;
+        viewPrefab = contentViewPrefab;
     }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/UnitDef.cs">
+using UnityEngine;
+[CreateAssetMenu(menuName = "Bellgrave/Defs/Unit Def")]
+public class UnitDef : ContentDef
+{
+    [SerializeField] private int hp;
+    [SerializeField] private int damage;
+    [SerializeField] private float attackInterval;
+    [SerializeField] private float moveSpeed;
+    [Min(0f)] [SerializeField] private float lifetimeSeconds;
+    [SerializeField] private GameObject viewPrefab;
+    public int Hp => hp;
+    public int Damage => damage;
+    public float AttackInterval => attackInterval;
+    public float MoveSpeed => moveSpeed;
+    public float LifetimeSeconds => lifetimeSeconds;
+    public GameObject ViewPrefab => viewPrefab;
+    internal void InitializeRuntime(
+        string contentId,
+        int contentHp,
+        int contentDamage,
+        float contentAttackInterval,
+        float contentMoveSpeed,
+        float contentLifetimeSeconds,
+        GameObject contentViewPrefab)
     {
-        EnsureReferences();
-        if (string.IsNullOrWhiteSpace(bellId))
-        {
-            validationError = "missing bell id";
-            return true;
-        }
-        if (CMS.Get<BellDef>(bellId) == null)
-        {
-            validationError = "missing BellDef";
-            return true;
-        }
-        if (spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
+        InitializeContent(contentId);
+        hp = contentHp;
+        damage = contentDamage;
+        attackInterval = contentAttackInterval;
+        moveSpeed = contentMoveSpeed;
+        lifetimeSeconds = contentLifetimeSeconds;
+        viewPrefab = contentViewPrefab;
     }
-    public void ShowFeedbackPopup(string message, Color color)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-        EnsureReferences();
-        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
-    }
-    public void StartCooldown(float cooldownSeconds)
-    {
-        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
-        cooldownRemainingSeconds = cooldownDurationSeconds;
-        RefreshCooldownPresentation();
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-            return;
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
-            return;
-        }
-        G.main.TryInteractWithBell(bellId);
-    }
-    private void RefreshCooldownPresentation()
-    {
-        if (cooldownBar == null)
-            return;
-        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
-        {
-            cooldownBar.SetVisible(false);
-            return;
-        }
-        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
-        cooldownBar.SetVisible(true);
-        cooldownBar.SetNormalized(remainingNormalized);
-    }
-    private void EnsureReferences()
-    {
-        if (spriteRenderer == null)
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        if (cooldownBar == null)
-            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
-    }
-    private float GetPopupOffsetY()
-    {
-        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
-        return spriteHeight * 0.6f + popupVerticalPadding;
-    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs">
+public enum UpgradeEffectType
+{
+    FaithIncomeBonus = 0,
+    CemeteryRepair = 1,
+    CemeteryMaxStateBonus = 2,
+    UnlockBell = 3,
+    BellFaithCostModifier = 4,
+    UnitDamageModifier = 5,
+    StartingNightFaithBonus = 6,
+    KeeperMoveSpeedBonus = 7,
+    UnitLifetimeModifier = 8,
+    UnitHpModifier = 9,
+    FaithCollectionIntervalModifier = 10,
+    NightInstantRepairCharge = 11
 }
 </file>
 
@@ -5973,281 +5726,6 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
             return;
         }
         G.main.TryMoveKeeperToPoi(id);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs">
-using System;
-using System.Collections;
-using UnityEngine;
-public sealed class FirstRunTutorialController : IDisposable
-{
-    private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
-    private const float IntroFadeDuration = 0.45f;
-    private const float TutorialEnemySpawnOffsetX = -1.75f;
-    private const string GraveyJonesMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones</color></link>";
-    private const string GraveyJonesPossessiveMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones's</color></link>";
-    private const string BellsMarkup = "<color=#F2D35E>bells</color>";
-    private const string FaithMarkup = "<color=#7EDBFF>faith</color>";
-    private const string LimitedTimeMarkup = "<color=#F2D35E>limited time</color>";
-    private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred place</color>";
-    private const string RepairCemeteryMarkup = "<color=#C8E1BA>repair cemetery</color>";
-    private readonly Main main;
-    private readonly string tutorialBellId;
-    private readonly string tutorialEnemyId;
-    private TutorialOverlayView overlayView;
-    private LaneEnemy tutorialEnemy;
-    private bool isDisposed;
-    private bool isRunning;
-    private bool bellSummoned;
-    private bool tutorialEnemyKilled;
-    private bool faithCollected;
-    private bool cemeteryDamaged;
-    private bool cemeteryRepaired;
-    public FirstRunTutorialController(Main main, string tutorialBellId, string tutorialEnemyId)
-    {
-        this.main = main;
-        this.tutorialBellId = tutorialBellId;
-        this.tutorialEnemyId = tutorialEnemyId;
-        if (main != null)
-        {
-            main.BellSummoned += HandleBellSummoned;
-            main.FaithCollected += HandleFaithCollected;
-            main.EnemyKilled += HandleEnemyKilled;
-            main.CemeteryDamaged += HandleCemeteryDamaged;
-            main.CemeteryRepaired += HandleCemeteryRepaired;
-        }
-    }
-    public bool ShouldRunFirstRunTutorial => PlayerPrefs.GetInt(TutorialCompletedKey, 0) == 0;
-    public bool BlocksWaveProgress { get; private set; }
-    public bool BlocksNightCompletion { get; private set; }
-    public IEnumerator PlayStartupIntroSequence()
-    {
-        var overlay = ResolveOverlay();
-        if (overlay == null)
-        {
-            yield break;
-        }
-        overlay.ShowBlackBackdropImmediate();
-        yield return overlay.PlayTypedMessage($"The old keeper, {GraveyJonesMarkup}, is dead.", true);
-        yield return overlay.PlayTypedMessage("Without him, the cemetery stands unguarded.", true);
-    }
-    public IEnumerator FadeIntoGameplaySequence()
-    {
-        var overlay = ResolveOverlay();
-        if (overlay == null)
-        {
-            yield break;
-        }
-        overlay.HideMessage();
-        yield return overlay.FadeBackdropTo(0f, IntroFadeDuration);
-        overlay.HideImmediate();
-    }
-    public IEnumerator RunNightTutorialSequence()
-    {
-        if (!ShouldRunFirstRunTutorial)
-        {
-            yield break;
-        }
-        var overlay = ResolveOverlay();
-        if (overlay == null)
-        {
-            yield break;
-        }
-        isRunning = true;
-        BlocksWaveProgress = true;
-        BlocksNightCompletion = true;
-        bellSummoned = false;
-        tutorialEnemyKilled = false;
-        faithCollected = false;
-        cemeteryDamaged = false;
-        cemeteryRepaired = false;
-        tutorialEnemy = null;
-        yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
-        var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
-        if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-        tutorialEnemy = enemySpawnResult.SpawnedEnemy;
-        tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
-        yield return new WaitForSeconds(1f);
-        SetTutorialEnemyPaused(true);
-        yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
-        if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-        overlay.ShowWorldMarker(
-            bellWorldObject.transform,
-            "RING BELL",
-            new Color(1f, 0.86f, 0.36f, 1f),
-            TutorialWorldMarkerAnchor.BellPosition);
-        yield return overlay.PlayTypedMessage(
-            $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
-            false);
-        while (!bellSummoned)
-        {
-            yield return null;
-        }
-        overlay.HideWorldMarker();
-        SetTutorialEnemyPaused(false);
-        yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
-        yield return overlay.PlayTypedMessage(
-            $"Each defender has {LimitedTimeMarkup} to serve this holy ground.",
-            false);
-        while (!tutorialEnemyKilled)
-        {
-            yield return null;
-        }
-        yield return overlay.PlayTypedMessage(
-            $"Raising undead defenders costs {FaithMarkup}.",
-            false);
-        yield return overlay.PlayTypedMessage(
-            $"To get it you must pray at {SacredPlacesMarkup}, but it can take time.",
-            false);
-        if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-        overlay.ShowWorldMarker(
-            faithPointPoi.transform,
-            "COLLECT FAITH",
-            new Color(0.56f, 0.9f, 1f, 1f),
-            TutorialWorldMarkerAnchor.FaithPosition);
-        while (!faithCollected)
-        {
-            yield return null;
-        }
-        overlay.HideWorldMarker();
-        yield return overlay.PlayTypedMessage(
-            $"Survive until the final night, and take {GraveyJonesPossessiveMarkup} place.",
-            false);
-        BlocksWaveProgress = false;
-        BlocksNightCompletion = false;
-        while (!cemeteryDamaged)
-        {
-            yield return null;
-        }
-        if (!main.TryGetNightPoiByType(NightPoiType.RepairPoint, out var repairPointPoi))
-        {
-            CompleteTutorial();
-            yield break;
-        }
-        overlay.ShowWorldMarker(
-            repairPointPoi.transform,
-            "REPAIR",
-            new Color(0.78f, 0.88f, 0.72f, 1f),
-            TutorialWorldMarkerAnchor.RepairPosition);
-        yield return overlay.PlayTypedMessage(
-            $"You can {RepairCemeteryMarkup}, but it can take a while.",
-            false);
-        while (!cemeteryRepaired)
-        {
-            yield return null;
-        }
-        CompleteTutorial();
-    }
-    public void Dispose()
-    {
-        if (isDisposed)
-        {
-            return;
-        }
-        isDisposed = true;
-        if (main != null)
-        {
-            main.BellSummoned -= HandleBellSummoned;
-            main.FaithCollected -= HandleFaithCollected;
-            main.EnemyKilled -= HandleEnemyKilled;
-            main.CemeteryDamaged -= HandleCemeteryDamaged;
-            main.CemeteryRepaired -= HandleCemeteryRepaired;
-        }
-        overlayView?.HideImmediate();
-    }
-    private TutorialOverlayView ResolveOverlay()
-    {
-        if (overlayView != null)
-        {
-            return overlayView;
-        }
-        overlayView = G.ui != null ? G.ui.EnsureTutorialOverlay() : null;
-        return overlayView;
-    }
-    private void ReleaseTutorialLocks()
-    {
-        SetTutorialEnemyPaused(false);
-        overlayView?.HideWorldMarker();
-        overlayView?.HideImmediate();
-        BlocksWaveProgress = false;
-        BlocksNightCompletion = false;
-        isRunning = false;
-    }
-    private void CompleteTutorial()
-    {
-        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
-        PlayerPrefs.Save();
-        ReleaseTutorialLocks();
-    }
-    private void HandleBellSummoned(string bellId, LaneUnit spawnedUnit)
-    {
-        if (!isRunning || string.IsNullOrWhiteSpace(bellId) || spawnedUnit == null)
-        {
-            return;
-        }
-        if (!string.Equals(bellId, tutorialBellId, StringComparison.Ordinal))
-        {
-            return;
-        }
-        bellSummoned = true;
-    }
-    private void HandleFaithCollected(int collectedFaith)
-    {
-        if (!isRunning || collectedFaith <= 0)
-        {
-            return;
-        }
-        faithCollected = true;
-    }
-    private void HandleEnemyKilled(LaneEnemy laneEnemy)
-    {
-        if (!isRunning || laneEnemy == null || tutorialEnemy == null)
-        {
-            return;
-        }
-        if (!ReferenceEquals(laneEnemy, tutorialEnemy))
-        {
-            return;
-        }
-        tutorialEnemyKilled = true;
-    }
-    private void HandleCemeteryDamaged(int damageAmount)
-    {
-        if (!isRunning || damageAmount <= 0)
-        {
-            return;
-        }
-        cemeteryDamaged = true;
-    }
-    private void HandleCemeteryRepaired(int repairedAmount)
-    {
-        if (!isRunning || repairedAmount <= 0)
-        {
-            return;
-        }
-        cemeteryRepaired = true;
-    }
-    private void SetTutorialEnemyPaused(bool paused)
-    {
-        if (tutorialEnemy == null)
-        {
-            return;
-        }
-        tutorialEnemy.enabled = !paused;
     }
 }
 </file>
@@ -7005,6 +6483,128 @@ public class TutorialOverlayView : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class BellWorldObject : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string bellId;
+    [SerializeField] private WorldBarFillShrink cooldownBar;
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+    private float cooldownRemainingSeconds;
+    private float cooldownDurationSeconds;
+    private SpriteRenderer spriteRenderer;
+    public string BellId => bellId;
+    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
+    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    private void Awake()
+    {
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+    private void Update()
+    {
+        if (cooldownRemainingSeconds <= 0f)
+        {
+            cooldownBar?.SetVisible(false);
+            return;
+        }
+        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
+        RefreshCooldownPresentation();
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        EnsureReferences();
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            validationError = "missing bell id";
+            return true;
+        }
+        if (CMS.Get<BellDef>(bellId) == null)
+        {
+            validationError = "missing BellDef";
+            return true;
+        }
+        if (spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void ShowFeedbackPopup(string message, Color color)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+        EnsureReferences();
+        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
+    }
+    public void InitializeRuntime(string runtimeBellId)
+    {
+        bellId = runtimeBellId;
+        cooldownRemainingSeconds = 0f;
+        cooldownDurationSeconds = 0f;
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+    public void StartCooldown(float cooldownSeconds)
+    {
+        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
+        cooldownRemainingSeconds = cooldownDurationSeconds;
+        RefreshCooldownPresentation();
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+            return;
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
+            return;
+        }
+        G.main.TryInteractWithBell(bellId);
+    }
+    private void RefreshCooldownPresentation()
+    {
+        if (cooldownBar == null)
+            return;
+        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
+        {
+            cooldownBar.SetVisible(false);
+            return;
+        }
+        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
+        cooldownBar.SetVisible(true);
+        cooldownBar.SetNormalized(remainingNormalized);
+    }
+    private void EnsureReferences()
+    {
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        if (cooldownBar == null)
+            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
+    }
+    private float GetPopupOffsetY()
+    {
+        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
+        return spriteHeight * 0.6f + popupVerticalPadding;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
 using System.Collections;
 using UnityEngine;
@@ -7651,130 +7251,277 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
-using System.Collections.Generic;
+<file path="Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs">
+using System;
+using System.Collections;
 using UnityEngine;
-public class UpgradeSystem
+public sealed class FirstRunTutorialController : IDisposable
 {
-    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
+    private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
+    private const float IntroFadeDuration = 0.45f;
+    private const float TutorialEnemySpawnOffsetX = -1.75f;
+    private const string GraveyJonesMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones</color></link>";
+    private const string GraveyJonesPossessiveMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones's</color></link>";
+    private const string BellsMarkup = "<color=#F2D35E>bells</color>";
+    private const string FaithMarkup = "<color=#7EDBFF>faith</color>";
+    private const string LimitedTimeMarkup = "<color=#F2D35E>limited time</color>";
+    private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred place</color>";
+    private const string RepairCemeteryMarkup = "<color=#C8E1BA>repair cemetery</color>";
+    private readonly Main main;
+    private readonly string tutorialBellId;
+    private readonly string tutorialEnemyId;
+    private TutorialOverlayView overlayView;
+    private LaneEnemy tutorialEnemy;
+    private bool isDisposed;
+    private bool isRunning;
+    private bool bellSummoned;
+    private bool tutorialEnemyKilled;
+    private bool faithCollected;
+    private bool cemeteryDamaged;
+    private bool cemeteryRepaired;
+    public FirstRunTutorialController(Main main, string tutorialBellId, string tutorialEnemyId)
     {
-        if (runState == null)
+        this.main = main;
+        this.tutorialBellId = tutorialBellId;
+        this.tutorialEnemyId = tutorialEnemyId;
+        if (main != null)
         {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
-        }
-        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
-        if (upgradeDef == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
-        }
-        runState.PurchasedUpgradeIds ??= new HashSet<string>();
-        if (runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
-        }
-        if (!SupportsEffectType(upgradeDef.EffectType))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
-        }
-        var price = Mathf.Max(0, upgradeDef.Price);
-        if (runState.Gold < price)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
-        }
-        runState.Gold -= price;
-        runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
-        ApplyEffect(upgradeDef, runState);
-        ClampRunState(runState);
-        return UpgradePurchaseResult.Success(upgradeDef);
-    }
-    public static bool SupportsEffectType(UpgradeEffectType effectType)
-    {
-        return effectType == UpgradeEffectType.FaithIncomeBonus
-            || effectType == UpgradeEffectType.CemeteryRepair
-            || effectType == UpgradeEffectType.CemeteryMaxStateBonus
-            || effectType == UpgradeEffectType.BellFaithCostModifier
-            || effectType == UpgradeEffectType.StartingNightFaithBonus
-            || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
-            || effectType == UpgradeEffectType.UnitDamageModifier
-            || effectType == UpgradeEffectType.UnitLifetimeModifier
-            || effectType == UpgradeEffectType.UnitHpModifier
-            || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
-            || effectType == UpgradeEffectType.NightInstantRepairCharge;
-    }
-    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
-    {
-        var effectValue = Mathf.Max(0f, upgradeDef.EffectValue);
-        var effectIntValue = Mathf.RoundToInt(effectValue);
-        switch (upgradeDef.EffectType)
-        {
-            case UpgradeEffectType.FaithIncomeBonus:
-                runState.FaithCollectionPayoutAmount =
-                    Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectIntValue);
-                break;
-            case UpgradeEffectType.CemeteryRepair:
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectIntValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-            case UpgradeEffectType.CemeteryMaxStateBonus:
-                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectIntValue);
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectIntValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-            case UpgradeEffectType.BellFaithCostModifier:
-                runState.BellFaithCostModifier -= effectIntValue;
-                break;
-            case UpgradeEffectType.StartingNightFaithBonus:
-                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectIntValue);
-                break;
-            case UpgradeEffectType.KeeperMoveSpeedBonus:
-                if (runState.Keeper != null)
-                {
-                    runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed + effectValue);
-                }
-                break;
-            case UpgradeEffectType.UnitDamageModifier:
-                runState.AddUnitDamageModifier(upgradeDef.TargetUnitId, effectIntValue);
-                break;
-            case UpgradeEffectType.UnitLifetimeModifier:
-                runState.AddUnitLifetimeModifier(upgradeDef.TargetUnitId, effectValue);
-                break;
-            case UpgradeEffectType.UnitHpModifier:
-                runState.AddUnitHpModifier(upgradeDef.TargetUnitId, effectIntValue);
-                break;
-            case UpgradeEffectType.FaithCollectionIntervalModifier:
-                runState.FaithCollectionIntervalSeconds =
-                    Mathf.Max(0f, runState.FaithCollectionIntervalSeconds - effectValue);
-                break;
-            case UpgradeEffectType.NightInstantRepairCharge:
-                runState.InstantNightRepairChargesPerNight =
-                    Mathf.Max(0, runState.InstantNightRepairChargesPerNight + 1);
-                runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount + effectIntValue);
-                break;
+            main.BellSummoned += HandleBellSummoned;
+            main.FaithCollected += HandleFaithCollected;
+            main.EnemyKilled += HandleEnemyKilled;
+            main.CemeteryDamaged += HandleCemeteryDamaged;
+            main.CemeteryRepaired += HandleCemeteryRepaired;
         }
     }
-    private static void ClampRunState(RunState runState)
+    public bool ShouldRunFirstRunTutorial => PlayerPrefs.GetInt(TutorialCompletedKey, 0) == 0;
+    public bool BlocksWaveProgress { get; private set; }
+    public bool BlocksNightCompletion { get; private set; }
+    public IEnumerator PlayStartupIntroSequence()
     {
-        runState.Gold = Mathf.Max(0, runState.Gold);
-        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
-        runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
-        runState.FaithCollectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
-        runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
-        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
-        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
-        runState.InstantNightRepairChargesPerNight = Mathf.Max(0, runState.InstantNightRepairChargesPerNight);
-        runState.RemainingInstantNightRepairCharges = Mathf.Clamp(
-            runState.RemainingInstantNightRepairCharges,
-            0,
-            runState.InstantNightRepairChargesPerNight);
-        runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount);
-        if (runState.Keeper != null)
+        var overlay = ResolveOverlay();
+        if (overlay == null)
         {
-            runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed);
+            yield break;
         }
+        overlay.ShowBlackBackdropImmediate();
+        yield return overlay.PlayTypedMessage($"The old keeper, {GraveyJonesMarkup}, is dead.", true);
+        yield return overlay.PlayTypedMessage("Without him, the cemetery stands unguarded.", true);
+    }
+    public IEnumerator FadeIntoGameplaySequence()
+    {
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        overlay.HideMessage();
+        yield return overlay.FadeBackdropTo(0f, IntroFadeDuration);
+        overlay.HideImmediate();
+    }
+    public IEnumerator RunNightTutorialSequence()
+    {
+        if (!ShouldRunFirstRunTutorial)
+        {
+            yield break;
+        }
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        isRunning = true;
+        BlocksWaveProgress = true;
+        BlocksNightCompletion = true;
+        bellSummoned = false;
+        tutorialEnemyKilled = false;
+        faithCollected = false;
+        cemeteryDamaged = false;
+        cemeteryRepaired = false;
+        tutorialEnemy = null;
+        yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
+        var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
+        if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        tutorialEnemy = enemySpawnResult.SpawnedEnemy;
+        tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
+        yield return new WaitForSeconds(1f);
+        SetTutorialEnemyPaused(true);
+        yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
+        if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        overlay.ShowWorldMarker(
+            bellWorldObject.transform,
+            "RING BELL",
+            new Color(1f, 0.86f, 0.36f, 1f),
+            TutorialWorldMarkerAnchor.BellPosition);
+        yield return overlay.PlayTypedMessage(
+            $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
+            false);
+        while (!bellSummoned)
+        {
+            yield return null;
+        }
+        overlay.HideWorldMarker();
+        SetTutorialEnemyPaused(false);
+        yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
+        yield return overlay.PlayTypedMessage(
+            $"Each defender has {LimitedTimeMarkup} to serve this holy ground.",
+            false);
+        while (!tutorialEnemyKilled)
+        {
+            yield return null;
+        }
+        yield return overlay.PlayTypedMessage(
+            $"Raising undead defenders costs {FaithMarkup}.",
+            false);
+        yield return overlay.PlayTypedMessage(
+            $"To get it you must pray at {SacredPlacesMarkup}, but it can take time.",
+            false);
+        if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        overlay.ShowWorldMarker(
+            faithPointPoi.transform,
+            "COLLECT FAITH",
+            new Color(0.56f, 0.9f, 1f, 1f),
+            TutorialWorldMarkerAnchor.FaithPosition);
+        while (!faithCollected)
+        {
+            yield return null;
+        }
+        overlay.HideWorldMarker();
+        yield return overlay.PlayTypedMessage(
+            $"Survive until the final night, and take {GraveyJonesPossessiveMarkup} place.",
+            false);
+        BlocksWaveProgress = false;
+        BlocksNightCompletion = false;
+        while (!cemeteryDamaged)
+        {
+            yield return null;
+        }
+        if (!main.TryGetNightPoiByType(NightPoiType.RepairPoint, out var repairPointPoi))
+        {
+            CompleteTutorial();
+            yield break;
+        }
+        overlay.ShowWorldMarker(
+            repairPointPoi.transform,
+            "REPAIR",
+            new Color(0.78f, 0.88f, 0.72f, 1f),
+            TutorialWorldMarkerAnchor.RepairPosition);
+        yield return overlay.PlayTypedMessage(
+            $"You can {RepairCemeteryMarkup}, but it can take a while.",
+            false);
+        while (!cemeteryRepaired)
+        {
+            yield return null;
+        }
+        CompleteTutorial();
+    }
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+        isDisposed = true;
+        if (main != null)
+        {
+            main.BellSummoned -= HandleBellSummoned;
+            main.FaithCollected -= HandleFaithCollected;
+            main.EnemyKilled -= HandleEnemyKilled;
+            main.CemeteryDamaged -= HandleCemeteryDamaged;
+            main.CemeteryRepaired -= HandleCemeteryRepaired;
+        }
+        overlayView?.HideImmediate();
+    }
+    private TutorialOverlayView ResolveOverlay()
+    {
+        if (overlayView != null)
+        {
+            return overlayView;
+        }
+        overlayView = G.ui != null ? G.ui.EnsureTutorialOverlay() : null;
+        return overlayView;
+    }
+    private void ReleaseTutorialLocks()
+    {
+        SetTutorialEnemyPaused(false);
+        overlayView?.HideWorldMarker();
+        overlayView?.HideImmediate();
+        BlocksWaveProgress = false;
+        BlocksNightCompletion = false;
+        isRunning = false;
+    }
+    private void CompleteTutorial()
+    {
+        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
+        PlayerPrefs.Save();
+        ReleaseTutorialLocks();
+    }
+    private void HandleBellSummoned(string bellId, LaneUnit spawnedUnit)
+    {
+        if (!isRunning || string.IsNullOrWhiteSpace(bellId) || spawnedUnit == null)
+        {
+            return;
+        }
+        if (!string.Equals(bellId, tutorialBellId, StringComparison.Ordinal))
+        {
+            return;
+        }
+        bellSummoned = true;
+    }
+    private void HandleFaithCollected(int collectedFaith)
+    {
+        if (!isRunning || collectedFaith <= 0)
+        {
+            return;
+        }
+        faithCollected = true;
+    }
+    private void HandleEnemyKilled(LaneEnemy laneEnemy)
+    {
+        if (!isRunning || laneEnemy == null || tutorialEnemy == null)
+        {
+            return;
+        }
+        if (!ReferenceEquals(laneEnemy, tutorialEnemy))
+        {
+            return;
+        }
+        tutorialEnemyKilled = true;
+    }
+    private void HandleCemeteryDamaged(int damageAmount)
+    {
+        if (!isRunning || damageAmount <= 0)
+        {
+            return;
+        }
+        cemeteryDamaged = true;
+    }
+    private void HandleCemeteryRepaired(int repairedAmount)
+    {
+        if (!isRunning || repairedAmount <= 0)
+        {
+            return;
+        }
+        cemeteryRepaired = true;
+    }
+    private void SetTutorialEnemyPaused(bool paused)
+    {
+        if (tutorialEnemy == null)
+        {
+            return;
+        }
+        tutorialEnemy.enabled = !paused;
     }
 }
 </file>
@@ -7995,6 +7742,10 @@ public class DayScreenView : MonoBehaviour
     {
         var hasLastNight = runState.LastDayReward != null && runState.LastDayReward.SourceNightIndex > 0;
         var hasReward = runState.LastDayReward != null && runState.LastDayReward.HasAnyReward;
+        var offerCount = currentUpgradeItems != null ? currentUpgradeItems.Count : 0;
+        var upgradeChoiceLine = offerCount > 0
+            ? $"{offerCount} offers available today."
+            : "No offers available today.";
         var resourcesLine = currentLayout.IsCompact
             ? $"Faith {runState.Faith}  Gold {runState.Gold}"
             : $"Faith reserve: <color=#f0ead6>{runState.Faith}</color>\nGold: <color=#f4c96b>{runState.Gold}</color>";
@@ -8007,8 +7758,8 @@ public class DayScreenView : MonoBehaviour
                 ? $"Night {runState.LastDayReward.SourceNightIndex} survived."
                 : "Prepare for the next night.";
             var followupLine = hasReward
-                ? $"{BuildRewardSummary(runState.LastDayReward)}."
-                : "Spend gold before dusk.";
+                ? $"{BuildRewardSummary(runState.LastDayReward)}. {upgradeChoiceLine}"
+                : upgradeChoiceLine;
             return
                 $"<b>Day {runState.CurrentDay}</b>\n" +
                 $"<color=#d7c7a8>{leadLine} {followupLine}</color>\n" +
@@ -8018,7 +7769,7 @@ public class DayScreenView : MonoBehaviour
         var summary =
             $"<b>Day {runState.CurrentDay}</b>\n" +
             (hasLastNight
-                ? $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. Spend your gold before dusk.</color>\n\n"
+                ? $"<color=#d7c7a8>Night {runState.LastDayReward.SourceNightIndex} survived. {upgradeChoiceLine}</color>\n\n"
                 : "<color=#d7c7a8>The cemetery is quiet. Prepare the next signal.</color>\n\n");
         if (hasReward)
         {
@@ -8257,70 +8008,133 @@ public class DayScreenView : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
+<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
 using System.Collections.Generic;
-public class Night1 : NightDefinition
+using UnityEngine;
+public class UpgradeSystem
 {
-    public override string Id => "night_1";
-    public override float DurationSeconds => BellgraveBalance.Nights.Night1.DurationSeconds;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
     {
-        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night1);
-    }
-}
-public class Night2 : NightDefinition
-{
-    public override string Id => "night_2";
-    public override float DurationSeconds => BellgraveBalance.Nights.Night2.DurationSeconds;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night2);
-    }
-}
-public class Night3 : NightDefinition
-{
-    public override string Id => "night_3";
-    public override float DurationSeconds => BellgraveBalance.Nights.Night3.DurationSeconds;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night3);
-    }
-}
-public class Night4 : NightDefinition
-{
-    public override string Id => "night_4";
-    public override float DurationSeconds => BellgraveBalance.Nights.Night4.DurationSeconds;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night4);
-    }
-}
-public class Night5 : NightDefinition
-{
-    public override string Id => "night_5";
-    public override float DurationSeconds => BellgraveBalance.Nights.Night5.DurationSeconds;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night5);
-    }
-}
-internal static class NightBalanceBuilder
-{
-    public static IReadOnlyList<NightWaveEntry> BuildEntries(NightWaveBalance balance)
-    {
-        var result = new List<NightWaveEntry>(balance.Entries.Count);
-        for (var entryIndex = 0; entryIndex < balance.Entries.Count; entryIndex++)
+        if (runState == null)
         {
-            var timedEntry = balance.Entries[entryIndex];
-            var spawnEntries = new List<NightWaveSpawnEntry>(timedEntry.Spawns.Count);
-            for (var spawnIndex = 0; spawnIndex < timedEntry.Spawns.Count; spawnIndex++)
-            {
-                var spawn = timedEntry.Spawns[spawnIndex];
-                spawnEntries.Add(new NightWaveSpawnEntry(spawn.EnemyId, spawn.Count));
-            }
-            result.Add(new NightWaveEntry(timedEntry.TriggerTime, spawnEntries));
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
         }
-        return result;
+        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
+        if (upgradeDef == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
+        }
+        runState.PurchasedUpgradeIds ??= new HashSet<string>();
+        if (!upgradeDef.IsRepeatable && runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
+        }
+        if (!SupportsEffectType(upgradeDef.EffectType))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
+        }
+        var price = Mathf.Max(0, upgradeDef.Price);
+        if (runState.Gold < price)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
+        }
+        runState.Gold -= price;
+        if (!upgradeDef.IsRepeatable)
+        {
+            runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
+        }
+        ApplyEffect(upgradeDef, runState);
+        ClampRunState(runState);
+        return UpgradePurchaseResult.Success(upgradeDef);
+    }
+    public static bool SupportsEffectType(UpgradeEffectType effectType)
+    {
+        return effectType == UpgradeEffectType.FaithIncomeBonus
+            || effectType == UpgradeEffectType.CemeteryRepair
+            || effectType == UpgradeEffectType.CemeteryMaxStateBonus
+            || effectType == UpgradeEffectType.BellFaithCostModifier
+            || effectType == UpgradeEffectType.StartingNightFaithBonus
+            || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
+            || effectType == UpgradeEffectType.UnitDamageModifier
+            || effectType == UpgradeEffectType.UnitLifetimeModifier
+            || effectType == UpgradeEffectType.UnitHpModifier
+            || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
+            || effectType == UpgradeEffectType.NightInstantRepairCharge;
+    }
+    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
+    {
+        var effectValue = Mathf.Max(0f, upgradeDef.EffectValue);
+        var effectIntValue = Mathf.RoundToInt(effectValue);
+        switch (upgradeDef.EffectType)
+        {
+            case UpgradeEffectType.FaithIncomeBonus:
+                runState.FaithCollectionPayoutAmount =
+                    Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectIntValue);
+                break;
+            case UpgradeEffectType.CemeteryRepair:
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectIntValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+            case UpgradeEffectType.CemeteryMaxStateBonus:
+                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectIntValue);
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectIntValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+            case UpgradeEffectType.BellFaithCostModifier:
+                runState.BellFaithCostModifier -= effectIntValue;
+                break;
+            case UpgradeEffectType.StartingNightFaithBonus:
+                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectIntValue);
+                break;
+            case UpgradeEffectType.KeeperMoveSpeedBonus:
+                if (runState.Keeper != null)
+                {
+                    runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed + effectValue);
+                }
+                break;
+            case UpgradeEffectType.UnitDamageModifier:
+                runState.AddUnitDamageModifier(upgradeDef.TargetUnitId, effectIntValue);
+                break;
+            case UpgradeEffectType.UnitLifetimeModifier:
+                runState.AddUnitLifetimeModifier(upgradeDef.TargetUnitId, effectValue);
+                break;
+            case UpgradeEffectType.UnitHpModifier:
+                runState.AddUnitHpModifier(upgradeDef.TargetUnitId, effectIntValue);
+                break;
+            case UpgradeEffectType.FaithCollectionIntervalModifier:
+                runState.FaithCollectionIntervalSeconds =
+                    Mathf.Max(0f, runState.FaithCollectionIntervalSeconds - effectValue);
+                break;
+            case UpgradeEffectType.NightInstantRepairCharge:
+                runState.InstantNightRepairChargesPerNight =
+                    Mathf.Max(0, runState.InstantNightRepairChargesPerNight + 1);
+                runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount + effectIntValue);
+                break;
+        }
+    }
+    private static void ClampRunState(RunState runState)
+    {
+        runState.Gold = Mathf.Max(0, runState.Gold);
+        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
+        runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
+        runState.FaithCollectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
+        runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
+        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
+        runState.InstantNightRepairChargesPerNight = Mathf.Max(0, runState.InstantNightRepairChargesPerNight);
+        runState.RemainingInstantNightRepairCharges = Mathf.Clamp(
+            runState.RemainingInstantNightRepairCharges,
+            0,
+            runState.InstantNightRepairChargesPerNight);
+        runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount);
+        if (runState.Keeper != null)
+        {
+            runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed);
+        }
     }
 }
 </file>
@@ -8717,6 +8531,83 @@ public class LaneEnemy : MonoBehaviour
         {
             G.audioSystem.Play(SoundId.SFX_EnDying);
         }
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
+using System.Collections.Generic;
+public class Night1 : NightDefinition
+{
+    public override string Id => "night_1";
+    public override float DurationSeconds => BellgraveBalance.Nights.Night1.DurationSeconds;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night1);
+    }
+}
+public class Night2 : NightDefinition
+{
+    public override string Id => "night_2";
+    public override float DurationSeconds => BellgraveBalance.Nights.Night2.DurationSeconds;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night2);
+    }
+}
+public class Night3 : NightDefinition
+{
+    public override string Id => "night_3";
+    public override float DurationSeconds => BellgraveBalance.Nights.Night3.DurationSeconds;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night3);
+    }
+}
+public class Night4 : NightDefinition
+{
+    public override string Id => "night_4";
+    public override float DurationSeconds => BellgraveBalance.Nights.Night4.DurationSeconds;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night4);
+    }
+}
+public class Night5 : NightDefinition
+{
+    public override string Id => "night_5";
+    public override float DurationSeconds => BellgraveBalance.Nights.Night5.DurationSeconds;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night5);
+    }
+}
+public class Night6 : NightDefinition
+{
+    public override string Id => "night_6";
+    public override float DurationSeconds => BellgraveBalance.Nights.Night6.DurationSeconds;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return NightBalanceBuilder.BuildEntries(BellgraveBalance.Nights.Night6);
+    }
+}
+internal static class NightBalanceBuilder
+{
+    public static IReadOnlyList<NightWaveEntry> BuildEntries(NightWaveBalance balance)
+    {
+        var result = new List<NightWaveEntry>(balance.Entries.Count);
+        for (var entryIndex = 0; entryIndex < balance.Entries.Count; entryIndex++)
+        {
+            var timedEntry = balance.Entries[entryIndex];
+            var spawnEntries = new List<NightWaveSpawnEntry>(timedEntry.Spawns.Count);
+            for (var spawnIndex = 0; spawnIndex < timedEntry.Spawns.Count; spawnIndex++)
+            {
+                var spawn = timedEntry.Spawns[spawnIndex];
+                spawnEntries.Add(new NightWaveSpawnEntry(spawn.EnemyId, spawn.Count));
+            }
+            result.Add(new NightWaveEntry(timedEntry.TriggerTime, spawnEntries));
+        }
+        return result;
     }
 }
 </file>
@@ -9120,6 +9011,7 @@ public class RunState
     public GamePhase CurrentPhase;
     public DayRewardData LastDayReward;
     public HashSet<string> PurchasedUpgradeIds;
+    public List<string> CurrentDayUpgradeOfferIds;
     public Dictionary<string, int> UnitDamageModifiersById;
     public Dictionary<string, int> UnitHpModifiersById;
     public Dictionary<string, float> UnitLifetimeModifiersById;
@@ -9161,6 +9053,7 @@ public class RunState
             CurrentPhase = GamePhase.Transition,
             LastDayReward = new DayRewardData(),
             PurchasedUpgradeIds = new HashSet<string>(),
+            CurrentDayUpgradeOfferIds = new List<string>(),
             UnitDamageModifiersById = new Dictionary<string, int>(),
             UnitHpModifiersById = new Dictionary<string, int>(),
             UnitLifetimeModifiersById = new Dictionary<string, float>(),
@@ -10400,10 +10293,18 @@ using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 public class Main : MonoBehaviour
 {
+    private enum DayUpgradeOfferCategory
+    {
+        Economy = 0,
+        Combat = 1,
+        Utility = 2
+    }
+    private const int DailyUpgradeOfferCount = 3;
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
     [SerializeField] private KeeperActor keeperActor;
     [SerializeField] private bool showIntroScreenOnStartup = true;
+    [SerializeField] private bool showFirstRunTutorial = true;
     [Min(0f)] [SerializeField] private float titleScreenFadeDuration = 1.25f;
     [SerializeField] private string firstRunTutorialBellId = "bell_small";
     [SerializeField] private string firstRunTutorialEnemyId = "en1";
@@ -10524,6 +10425,7 @@ public class Main : MonoBehaviour
         waveSystem.StopWave();
         ClearLaneCombatants();
         StopKeeperMovement();
+        GenerateDayUpgradeOffers();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Day);
         return true;
@@ -10543,6 +10445,7 @@ public class Main : MonoBehaviour
         cemeteryStateSystem.ResetNightRepairProgress(RunState);
         RunState.RemainingInstantNightRepairCharges = Mathf.Max(0, RunState.InstantNightRepairChargesPerNight);
         PrepareKeeperForNight();
+        TrySpawnNightUnlockedBells();
         StartNightWave();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Night);
@@ -10567,6 +10470,12 @@ public class Main : MonoBehaviour
             var wrongPhaseResult = UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.WrongPhase);
             Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {wrongPhaseResult.FailureReason}");
             return wrongPhaseResult;
+        }
+        if (!IsUpgradeOfferedToday(upgradeId))
+        {
+            var notOfferedResult = UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotOfferedToday);
+            Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {notOfferedResult.FailureReason}");
+            return notOfferedResult;
         }
         var purchaseResult = upgradeSystem.TryPurchaseUpgrade(upgradeId, RunState);
         if (!purchaseResult.IsSuccess)
@@ -11242,6 +11151,19 @@ public class Main : MonoBehaviour
             bellWorldObjectsById.Add(bellWorldObject.BellId, bellWorldObject);
         }
     }
+    private void TrySpawnNightUnlockedBells()
+    {
+        var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
+        if (bellNightSpawnController == null)
+        {
+            return;
+        }
+        if (!bellNightSpawnController.TrySpawnForNight(RunState.CurrentNight))
+        {
+            return;
+        }
+        RebuildBellWorldObjectRegistry();
+    }
     private BellWorldObject ResolveBellWorldObject(string bellId)
     {
         if (string.IsNullOrWhiteSpace(bellId))
@@ -11279,7 +11201,8 @@ public class Main : MonoBehaviour
     {
         startupSequenceInProgress = true;
         UI.EnsureInstance();
-        var shouldRunFirstRunTutorial = firstRunTutorialController != null &&
+        var shouldRunFirstRunTutorial = showFirstRunTutorial &&
+                                        firstRunTutorialController != null &&
                                         firstRunTutorialController.ShouldRunFirstRunTutorial;
         var canShowTitleScreen = showIntroScreenOnStartup && G.ui != null && G.ui.TitleScreenImage != null;
         if (!canShowTitleScreen && !shouldRunFirstRunTutorial)
@@ -11455,7 +11378,8 @@ public class Main : MonoBehaviour
             new Night2(),
             new Night3(),
             new Night4(),
-            new Night5()
+            new Night5(),
+            new Night6()
         };
     }
     private NightDefinition ResolveNightDefinitionForCurrentNight()
@@ -11495,16 +11419,26 @@ public class Main : MonoBehaviour
     private List<DayUpgradeItemData> BuildDayUpgradeDisplayItems()
     {
         var displayItems = new List<DayUpgradeItemData>();
-        var upgradeDefs = new List<UpgradeDef>(CMS.GetAll<UpgradeDef>());
-        upgradeDefs.Sort(CompareUpgradeDefsForDisplay);
-        for (var i = 0; i < upgradeDefs.Count; i++)
+        var offerIds = RunState.CurrentDayUpgradeOfferIds;
+        if (offerIds == null || offerIds.Count == 0)
         {
-            var upgradeDef = upgradeDefs[i];
+            return displayItems;
+        }
+        for (var i = 0; i < offerIds.Count; i++)
+        {
+            var upgradeId = offerIds[i];
+            if (string.IsNullOrWhiteSpace(upgradeId))
+            {
+                continue;
+            }
+            var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
             if (upgradeDef == null)
             {
                 continue;
             }
-            if (RunState.PurchasedUpgradeIds != null && RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+            if (!upgradeDef.IsRepeatable &&
+                RunState.PurchasedUpgradeIds != null &&
+                RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
             {
                 continue;
             }
@@ -11523,6 +11457,178 @@ public class Main : MonoBehaviour
             });
         }
         return displayItems;
+    }
+    private void GenerateDayUpgradeOffers()
+    {
+        if (RunState == null)
+        {
+            return;
+        }
+        RunState.CurrentDayUpgradeOfferIds ??= new List<string>();
+        RunState.CurrentDayUpgradeOfferIds.Clear();
+        var eligibleUpgradeDefs = GetEligibleDayUpgradeDefs();
+        if (eligibleUpgradeDefs.Count == 0)
+        {
+            return;
+        }
+        TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Economy);
+        TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Combat);
+        TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Utility);
+        if (RunState.CurrentDayUpgradeOfferIds.Count >= DailyUpgradeOfferCount)
+        {
+            return;
+        }
+        var fallbackStartIndex = GetDeterministicOfferIndex(
+            eligibleUpgradeDefs.Count,
+            (RunState.CurrentDay - 1) * 11 + (RunState.PurchasedUpgradeIds?.Count ?? 0));
+        for (var i = 0; i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount; i++)
+        {
+            var candidateIndex = (fallbackStartIndex + i) % eligibleUpgradeDefs.Count;
+            var candidate = eligibleUpgradeDefs[candidateIndex];
+            if (candidate == null || RunState.CurrentDayUpgradeOfferIds.Contains(candidate.Id))
+            {
+                continue;
+            }
+            RunState.CurrentDayUpgradeOfferIds.Add(candidate.Id);
+        }
+    }
+    private List<UpgradeDef> GetEligibleDayUpgradeDefs()
+    {
+        var upgradeDefs = new List<UpgradeDef>(CMS.GetAll<UpgradeDef>());
+        upgradeDefs.Sort(CompareUpgradeDefsForDisplay);
+        var eligibleUpgradeDefs = new List<UpgradeDef>();
+        for (var i = 0; i < upgradeDefs.Count; i++)
+        {
+            var upgradeDef = upgradeDefs[i];
+            if (upgradeDef == null)
+            {
+                continue;
+            }
+            if (!upgradeDef.IsRepeatable &&
+                RunState.PurchasedUpgradeIds != null &&
+                RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+            {
+                continue;
+            }
+            if (!UpgradeSystem.SupportsEffectType(upgradeDef.EffectType))
+            {
+                continue;
+            }
+            if (!IsUpgradeUnlockedForCurrentRun(upgradeDef))
+            {
+                continue;
+            }
+            eligibleUpgradeDefs.Add(upgradeDef);
+        }
+        return eligibleUpgradeDefs;
+    }
+    private void TryAddDailyOffer(
+        IReadOnlyList<UpgradeDef> eligibleUpgradeDefs,
+        ICollection<string> selectedOfferIds,
+        DayUpgradeOfferCategory category)
+    {
+        var categoryCandidates = new List<UpgradeDef>();
+        for (var i = 0; i < eligibleUpgradeDefs.Count; i++)
+        {
+            var upgradeDef = eligibleUpgradeDefs[i];
+            if (upgradeDef == null ||
+                selectedOfferIds.Contains(upgradeDef.Id) ||
+                ResolveDayUpgradeOfferCategory(upgradeDef) != category)
+            {
+                continue;
+            }
+            categoryCandidates.Add(upgradeDef);
+        }
+        if (categoryCandidates.Count == 0)
+        {
+            return;
+        }
+        var categorySalt = category switch
+        {
+            DayUpgradeOfferCategory.Economy => 3,
+            DayUpgradeOfferCategory.Combat => 7,
+            DayUpgradeOfferCategory.Utility => 11,
+            _ => 0
+        };
+        var selectedIndex = GetDeterministicOfferIndex(
+            categoryCandidates.Count,
+            (RunState.CurrentDay - 1) * 5 + (RunState.PurchasedUpgradeIds?.Count ?? 0) + categorySalt);
+        selectedOfferIds.Add(categoryCandidates[selectedIndex].Id);
+    }
+    private bool IsUpgradeOfferedToday(string upgradeId)
+    {
+        return RunState != null
+               && !string.IsNullOrWhiteSpace(upgradeId)
+               && RunState.CurrentDayUpgradeOfferIds != null
+               && RunState.CurrentDayUpgradeOfferIds.Contains(upgradeId);
+    }
+    private bool IsUpgradeUnlockedForCurrentRun(UpgradeDef upgradeDef)
+    {
+        if (upgradeDef == null)
+        {
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(upgradeDef.TargetUnitId))
+        {
+            return true;
+        }
+        return upgradeDef.TargetUnitId switch
+        {
+            "zombie" => IsBellUnlockedForCurrentRun("bell_zombie"),
+            "vampire" => IsBellUnlockedForCurrentRun("bell_vampire"),
+            _ => true
+        };
+    }
+    private bool IsBellUnlockedForCurrentRun(string bellId)
+    {
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            return false;
+        }
+        if (bellId == "bell_small")
+        {
+            return true;
+        }
+        var bellWorldObjects = FindObjectsByType<BellWorldObject>();
+        for (var i = 0; i < bellWorldObjects.Length; i++)
+        {
+            var bellWorldObject = bellWorldObjects[i];
+            if (bellWorldObject != null && bellWorldObject.BellId == bellId)
+            {
+                return true;
+            }
+        }
+        var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
+        return bellNightSpawnController != null
+               && bellNightSpawnController.TryGetUnlockNightIndex(bellId, out var unlockNightIndex)
+               && RunState != null
+               && RunState.CurrentNight >= unlockNightIndex;
+    }
+    private static DayUpgradeOfferCategory ResolveDayUpgradeOfferCategory(UpgradeDef upgradeDef)
+    {
+        return upgradeDef.EffectType switch
+        {
+            UpgradeEffectType.FaithIncomeBonus => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.BellFaithCostModifier => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.StartingNightFaithBonus => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.FaithCollectionIntervalModifier => DayUpgradeOfferCategory.Economy,
+            UpgradeEffectType.UnitDamageModifier => DayUpgradeOfferCategory.Combat,
+            UpgradeEffectType.UnitLifetimeModifier => DayUpgradeOfferCategory.Combat,
+            UpgradeEffectType.UnitHpModifier => DayUpgradeOfferCategory.Combat,
+            UpgradeEffectType.CemeteryRepair => DayUpgradeOfferCategory.Utility,
+            UpgradeEffectType.CemeteryMaxStateBonus => DayUpgradeOfferCategory.Utility,
+            UpgradeEffectType.KeeperMoveSpeedBonus => DayUpgradeOfferCategory.Utility,
+            UpgradeEffectType.NightInstantRepairCharge => DayUpgradeOfferCategory.Utility,
+            _ => DayUpgradeOfferCategory.Utility
+        };
+    }
+    private static int GetDeterministicOfferIndex(int candidateCount, int seed)
+    {
+        if (candidateCount <= 0)
+        {
+            return 0;
+        }
+        return Mathf.Abs(seed) % candidateCount;
     }
     private static int CompareUpgradeDefsForDisplay(UpgradeDef left, UpgradeDef right)
     {
@@ -11669,6 +11775,14 @@ public class Main : MonoBehaviour
     }
     private void HandleDebugInput()
     {
+        if (Input.GetKeyDown(KeyCode.N) &&
+            RunState != null &&
+            RunState.CurrentPhase == GamePhase.Night)
+        {
+            Debug.Log("Debug: skipped current night");
+            CompleteNight();
+            return;
+        }
         if (Input.GetKeyDown(KeyCode.R))
         {
             SceneManager.LoadScene("Main");

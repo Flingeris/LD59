@@ -17,6 +17,34 @@ public class BellNightSpawnController : MonoBehaviour
     private readonly HashSet<string> spawnedBellIds = new();
     private bool duplicateRuleWarningShown;
 
+    public bool TryGetUnlockNightIndex(string bellId, out int unlockNightIndex)
+    {
+        unlockNightIndex = 0;
+
+        if (string.IsNullOrWhiteSpace(bellId) || spawnRules == null || spawnRules.Length == 0)
+        {
+            return false;
+        }
+
+        var foundRule = false;
+        for (var i = 0; i < spawnRules.Length; i++)
+        {
+            var rule = spawnRules[i];
+            if (rule == null || rule.bellId != bellId)
+            {
+                continue;
+            }
+
+            if (!foundRule || rule.unlockNightIndex < unlockNightIndex)
+            {
+                unlockNightIndex = rule.unlockNightIndex;
+                foundRule = true;
+            }
+        }
+
+        return foundRule;
+    }
+
     public bool TrySpawnForNight(int nightIndex)
     {
         if (nightIndex <= 0 || spawnRules == null || spawnRules.Length == 0)

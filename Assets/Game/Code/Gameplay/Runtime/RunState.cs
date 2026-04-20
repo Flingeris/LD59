@@ -20,6 +20,7 @@ public class RunState
     public GamePhase CurrentPhase;
     public DayRewardData LastDayReward;
     public HashSet<string> PurchasedUpgradeIds;
+    public List<string> CurrentDayUpgradeOfferIds;
     public Dictionary<string, int> UnitDamageModifiersById;
     public Dictionary<string, int> UnitHpModifiersById;
     public Dictionary<string, float> UnitLifetimeModifiersById;
@@ -63,6 +64,7 @@ public class RunState
             CurrentPhase = GamePhase.Transition,
             LastDayReward = new DayRewardData(),
             PurchasedUpgradeIds = new HashSet<string>(),
+            CurrentDayUpgradeOfferIds = new List<string>(),
             UnitDamageModifiersById = new Dictionary<string, int>(),
             UnitHpModifiersById = new Dictionary<string, int>(),
             UnitLifetimeModifiersById = new Dictionary<string, float>(),

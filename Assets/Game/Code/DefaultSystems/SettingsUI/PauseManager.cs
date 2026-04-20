@@ -1,10 +1,20 @@
+using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class PauseManager : MonoBehaviour
 {
+    private const string GeneratedUiResourceFolder = "GeneratedUi";
+    private const string GeneratedButtonResourcePath = GeneratedUiResourceFolder + "/SettingsButton";
+    private const string GeneratedPanelResourcePath = GeneratedUiResourceFolder + "/SettingsPanel";
+    private const string GeneratedButtonAssetPath = "Assets/Game/Resources/GeneratedUi/SettingsButton.prefab";
+    private const string GeneratedPanelAssetPath = "Assets/Game/Resources/GeneratedUi/SettingsPanel.prefab";
+
     private static readonly Color PanelColor = new(0.08f, 0.09f, 0.13f, 0.92f);
     private static readonly Color PanelOutlineColor = new(0.63f, 0.72f, 0.95f, 0.85f);
     private static readonly Color ButtonColor = new(0.17f, 0.2f, 0.28f, 0.96f);
@@ -21,6 +31,7 @@ public class PauseManager : MonoBehaviour
     [SerializeField] private Button toggleButton;
     [SerializeField] private TMP_FontAsset fontAsset;
     [SerializeField] private Camera targetCamera;
+    [SerializeField] private bool buildFallbackUiIfMissing = true;
 
     public bool IsOpen { get; private set; } = false;
 
@@ -32,6 +43,11 @@ public class PauseManager : MonoBehaviour
     private void Start()
     {
         Init();
+    }
+
+    private void OnDestroy()
+    {
+        UnbindUiEvents();
     }
 
     private void Init()
@@ -111,15 +127,59 @@ public class PauseManager : MonoBehaviour
 
         if (toggleButton == null)
         {
-            toggleButton = CreateMenuButton();
+            if (!buildFallbackUiIfMissing)
+            {
+                BindUiReferences();
+            }
+            else
+            {
+                toggleButton = LoadOrCreateMenuButton();
+            }
         }
 
         if (pausePanel == null)
         {
-            pausePanel = CreatePanel();
+            if (!buildFallbackUiIfMissing)
+            {
+                BindUiReferences();
+            }
+            else
+            {
+                pausePanel = LoadOrCreatePanel();
+            }
         }
 
-        BindGeneratedReferences();
+        BindUiReferences();
+    }
+
+    private Button LoadOrCreateMenuButton()
+    {
+        var buttonPrefab = Resources.Load<GameObject>(GeneratedButtonResourcePath);
+        if (buttonPrefab != null)
+        {
+            var buttonInstance = Instantiate(buttonPrefab, transform, false);
+            buttonInstance.name = buttonPrefab.name;
+            return buttonInstance.GetComponent<Button>();
+        }
+
+        var button = CreateMenuButton();
+        TrySaveGeneratedUiPrefab(button != null ? button.gameObject : null, GeneratedButtonAssetPath);
+        return button;
+    }
+
+    private GameObject LoadOrCreatePanel()
+    {
+        var panelPrefab = Resources.Load<GameObject>(GeneratedPanelResourcePath);
+        if (panelPrefab != null)
+        {
+            var panelInstance = Instantiate(panelPrefab, transform, false);
+            panelInstance.name = panelPrefab.name;
+            return panelInstance;
+        }
+
+        var panel = CreatePanel();
+        TrySaveGeneratedUiPrefab(panel, GeneratedPanelAssetPath);
+        return panel;
     }
 
     private void ResolveFontAsset()
@@ -136,8 +196,14 @@ public class PauseManager : MonoBehaviour
         }
     }
 
-    private void BindGeneratedReferences()
+    private void BindUiReferences()
     {
+        if (toggleButton != null)
+        {
+            toggleButton.onClick.RemoveListener(Toggle);
+            toggleButton.onClick.AddListener(Toggle);
+        }
+
         if (pausePanel == null)
         {
             return;
@@ -174,6 +240,29 @@ public class PauseManager : MonoBehaviour
         {
             toggle_PostFx.onValueChanged.RemoveListener(SetPostFxEnabled);
             toggle_PostFx.onValueChanged.AddListener(SetPostFxEnabled);
+        }
+    }
+
+    private void UnbindUiEvents()
+    {
+        if (toggleButton != null)
+        {
+            toggleButton.onClick.RemoveListener(Toggle);
+        }
+
+        if (slider_Music != null)
+        {
+            slider_Music.onValueChanged.RemoveListener(SetMusicVolume);
+        }
+
+        if (slider_SFX != null)
+        {
+            slider_SFX.onValueChanged.RemoveListener(SetSFXVolume);
+        }
+
+        if (toggle_PostFx != null)
+        {
+            toggle_PostFx.onValueChanged.RemoveListener(SetPostFxEnabled);
         }
     }
 
@@ -394,6 +483,22 @@ public class PauseManager : MonoBehaviour
         var outline = targetObject.AddComponent<Outline>();
         outline.effectColor = outlineColor;
         outline.effectDistance = new Vector2(effectDistance, -effectDistance);
+    }
+
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    private static void TrySaveGeneratedUiPrefab(GameObject targetObject, string assetPath)
+    {
+#if UNITY_EDITOR
+        if (targetObject == null || string.IsNullOrWhiteSpace(assetPath))
+        {
+            return;
+        }
+
+        var resourcesDirectoryAbsolutePath = Path.Combine(Application.dataPath, "Game/Resources/GeneratedUi");
+        Directory.CreateDirectory(resourcesDirectoryAbsolutePath);
+        AssetDatabase.Refresh();
+        PrefabUtility.SaveAsPrefabAsset(targetObject, assetPath);
+#endif
     }
 
     private Camera ResolveTargetCamera()

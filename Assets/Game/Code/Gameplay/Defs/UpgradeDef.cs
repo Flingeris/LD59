@@ -8,12 +8,14 @@ public class UpgradeDef : ContentDef
     [SerializeField] private UpgradeEffectType effectType;
     [SerializeField] private float effectValue;
     [SerializeField] private string targetUnitId;
+    [SerializeField] private bool isRepeatable;
 
     public string DisplayName => displayName;
     public int Price => price;
     public UpgradeEffectType EffectType => effectType;
     public float EffectValue => effectValue;
     public string TargetUnitId => targetUnitId;
+    public bool IsRepeatable => isRepeatable;
 
     internal void InitializeRuntime(
         string contentId,
@@ -21,7 +23,8 @@ public class UpgradeDef : ContentDef
         int contentPrice,
         UpgradeEffectType contentEffectType,
         float contentEffectValue,
-        string contentTargetUnitId = null)
+        string contentTargetUnitId = null,
+        bool contentIsRepeatable = false)
     {
         InitializeContent(contentId);
         displayName = contentDisplayName;
@@ -29,5 +32,6 @@ public class UpgradeDef : ContentDef
         effectType = contentEffectType;
         effectValue = contentEffectValue;
         targetUnitId = contentTargetUnitId;
+        isRepeatable = contentIsRepeatable;
     }
 }

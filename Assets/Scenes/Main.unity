@@ -1110,6 +1110,8 @@ MonoBehaviour:
   targetSurvivedDays: 5
   showIntroScreenOnStartup: 1
   titleScreenFadeDuration: 1.25
+  firstRunTutorialBellId: bell_small
+  firstRunTutorialEnemyId: en1
 --- !u!4 &153453487
 Transform:
   m_ObjectHideFlags: 0
@@ -1801,11 +1803,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8100010000000000001, guid: 0e4cfa4384344d4c84e7c6cbf77878a4, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -7.33
+      value: -7.569
       objectReference: {fileID: 0}
     - target: {fileID: 8100010000000000001, guid: 0e4cfa4384344d4c84e7c6cbf77878a4, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -3.49
+      value: -1.907
       objectReference: {fileID: 0}
     - target: {fileID: 8100010000000000001, guid: 0e4cfa4384344d4c84e7c6cbf77878a4, type: 3}
       propertyPath: m_LocalPosition.z
@@ -7928,9 +7930,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1790472965}
   - component: {fileID: 1790472960}
-  - component: {fileID: 1790472964}
   - component: {fileID: 1790472963}
-  - component: {fileID: 1790472962}
   - component: {fileID: 1790472961}
   m_Layer: 0
   m_Name: HUD_Camera
@@ -8014,22 +8014,6 @@ MonoBehaviour:
   m_CropFrameX: 0
   m_CropFrameY: 0
   m_StretchFill: 0
---- !u!114 &1790472962
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1790472959}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 56666c5a40171f54783dd416a44f42bf, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.Physics2DRaycaster
-  m_EventMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_MaxRayIntersections: 0
 --- !u!114 &1790472963
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8074,14 +8058,6 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!81 &1790472964
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1790472959}
-  m_Enabled: 1
 --- !u!4 &1790472965
 Transform:
   m_ObjectHideFlags: 0

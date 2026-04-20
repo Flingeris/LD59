@@ -111,6 +111,7 @@ Assets/Game/Code/Gameplay/Runtime/KeeperActivityState.cs
 Assets/Game/Code/Gameplay/Runtime/KeeperInteractionState.cs
 Assets/Game/Code/Gameplay/Runtime/KeeperState.cs
 Assets/Game/Code/Gameplay/Runtime/RunState.cs
+Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs
 Assets/Game/Code/Gameplay/Upgrade/UpgradePurchaseResult.cs
 Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs
 Assets/Game/Code/Gameplay/Wave/WaveSpawnEntry.cs
@@ -126,6 +127,7 @@ Assets/Game/Code/UI/DefeatScreenView.cs
 Assets/Game/Code/UI/HUD.cs
 Assets/Game/Code/UI/PhaseTransitionView.cs
 Assets/Game/Code/UI/ScreenFader.cs
+Assets/Game/Code/UI/TutorialOverlayView.cs
 Assets/Game/Code/UI/UI.cs
 Assets/Game/Code/UI/WaveProgressView.cs
 Assets/Game/Code/UI/WinScreenView.cs
@@ -136,6 +138,623 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs">
+using System;
+using System.Collections;
+using UnityEngine;
+public sealed class FirstRunTutorialController : IDisposable
+{
+    private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
+    private const float IntroFadeDuration = 0.45f;
+    private const float TutorialEnemySpawnOffsetX = -1.75f;
+    private readonly Main main;
+    private readonly string tutorialBellId;
+    private readonly string tutorialEnemyId;
+    private TutorialOverlayView overlayView;
+    private LaneEnemy tutorialEnemy;
+    private bool isDisposed;
+    private bool isRunning;
+    private bool bellSummoned;
+    private bool tutorialEnemyKilled;
+    private bool faithCollected;
+    public FirstRunTutorialController(Main main, string tutorialBellId, string tutorialEnemyId)
+    {
+        this.main = main;
+        this.tutorialBellId = tutorialBellId;
+        this.tutorialEnemyId = tutorialEnemyId;
+        if (main != null)
+        {
+            main.BellSummoned += HandleBellSummoned;
+            main.FaithCollected += HandleFaithCollected;
+            main.EnemyKilled += HandleEnemyKilled;
+        }
+    }
+    public bool ShouldRunFirstRunTutorial => PlayerPrefs.GetInt(TutorialCompletedKey, 0) == 0;
+    public bool BlocksWaveProgress { get; private set; }
+    public bool BlocksNightCompletion { get; private set; }
+    public IEnumerator PlayStartupIntroSequence()
+    {
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        overlay.ShowBlackBackdropImmediate();
+        yield return overlay.PlayTypedMessage("The old keeper, Gravey Jones, is dead.", true);
+        yield return overlay.PlayTypedMessage("Without him, the cemetery stands unguarded.", true);
+    }
+    public IEnumerator FadeIntoGameplaySequence()
+    {
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        overlay.HideMessage();
+        yield return overlay.FadeBackdropTo(0f, IntroFadeDuration);
+        overlay.HideImmediate();
+    }
+    public IEnumerator RunNightTutorialSequence()
+    {
+        if (!ShouldRunFirstRunTutorial)
+        {
+            yield break;
+        }
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        isRunning = true;
+        BlocksWaveProgress = true;
+        BlocksNightCompletion = true;
+        bellSummoned = false;
+        tutorialEnemyKilled = false;
+        faithCollected = false;
+        tutorialEnemy = null;
+        yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
+        var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
+        if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        tutorialEnemy = enemySpawnResult.SpawnedEnemy;
+        tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
+        yield return new WaitForSeconds(1f);
+        SetTutorialEnemyPaused(true);
+        yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
+        if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        overlay.ShowWorldMarker(bellWorldObject.transform, "RING BELL", new Color(1f, 0.86f, 0.36f, 1f));
+        yield return overlay.PlayTypedMessage("Ring the bells to signal the graveyard's defenders.", false);
+        while (!bellSummoned)
+        {
+            yield return null;
+        }
+        overlay.HideWorldMarker();
+        SetTutorialEnemyPaused(false);
+        yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
+        yield return overlay.PlayTypedMessage(
+            "Each defender has limited <color=#F2D35E>time</color> to serve this holy ground", false);
+        while (!tutorialEnemyKilled)
+        {
+            yield return null;
+        }
+        yield return overlay.PlayTypedMessage(
+            "Raising undead defenders costs faith.",
+            false);
+        yield return overlay.PlayTypedMessage(
+            "To get it you must pray at sacred place, but it can take time.",
+            false);
+        if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        overlay.ShowWorldMarker(faithPointPoi.transform, "COLLECT FAITH", new Color(0.56f, 0.9f, 1f, 1f));
+        while (!faithCollected)
+        {
+            yield return null;
+        }
+        overlay.HideWorldMarker();
+        yield return overlay.PlayTypedMessage(
+            "Survive to the final night, and take Gravey Jones's place.",
+            false);
+        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
+        PlayerPrefs.Save();
+        ReleaseTutorialLocks();
+    }
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+        isDisposed = true;
+        if (main != null)
+        {
+            main.BellSummoned -= HandleBellSummoned;
+            main.FaithCollected -= HandleFaithCollected;
+            main.EnemyKilled -= HandleEnemyKilled;
+        }
+        overlayView?.HideImmediate();
+    }
+    private TutorialOverlayView ResolveOverlay()
+    {
+        if (overlayView != null)
+        {
+            return overlayView;
+        }
+        overlayView = G.ui != null ? G.ui.EnsureTutorialOverlay() : null;
+        return overlayView;
+    }
+    private void ReleaseTutorialLocks()
+    {
+        SetTutorialEnemyPaused(false);
+        overlayView?.HideWorldMarker();
+        overlayView?.HideImmediate();
+        BlocksWaveProgress = false;
+        BlocksNightCompletion = false;
+        isRunning = false;
+    }
+    private void HandleBellSummoned(string bellId, LaneUnit spawnedUnit)
+    {
+        if (!isRunning || string.IsNullOrWhiteSpace(bellId) || spawnedUnit == null)
+        {
+            return;
+        }
+        if (!string.Equals(bellId, tutorialBellId, StringComparison.Ordinal))
+        {
+            return;
+        }
+        bellSummoned = true;
+    }
+    private void HandleFaithCollected(int collectedFaith)
+    {
+        if (!isRunning || collectedFaith <= 0)
+        {
+            return;
+        }
+        faithCollected = true;
+    }
+    private void HandleEnemyKilled(LaneEnemy laneEnemy)
+    {
+        if (!isRunning || laneEnemy == null || tutorialEnemy == null)
+        {
+            return;
+        }
+        if (!ReferenceEquals(laneEnemy, tutorialEnemy))
+        {
+            return;
+        }
+        tutorialEnemyKilled = true;
+    }
+    private void SetTutorialEnemyPaused(bool paused)
+    {
+        if (tutorialEnemy == null)
+        {
+            return;
+        }
+        tutorialEnemy.enabled = !paused;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/TutorialOverlayView.cs">
+using System.Collections;
+using DG.Tweening;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+[DisallowMultipleComponent]
+public class TutorialOverlayView : MonoBehaviour
+{
+    private const float TypeCharacterInterval = 0.022f;
+    private const float IntroFontSize = 14f;
+    private const float GameplayFontSize = 10f;
+    [SerializeField] private Image inputBlockerImage;
+    [SerializeField] private Image backdropImage;
+    [SerializeField] private RectTransform messagePanelRect;
+    [SerializeField] private Image messagePanelImage;
+    [SerializeField] private TMP_Text messageText;
+    [SerializeField] private RectTransform markerRootRect;
+    [SerializeField] private RectTransform markerVisualRect;
+    [SerializeField] private Image markerBackgroundImage;
+    [SerializeField] private TMP_Text markerText;
+    private RectTransform rootRect;
+    private Canvas ownerCanvas;
+    private Transform markerTarget;
+    private Tween markerTween;
+    public static TutorialOverlayView CreateUnder(Transform parent, TMP_Text textTemplate = null)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+        var layer = parent.gameObject.layer;
+        var rootObject = new GameObject(
+            "TutorialOverlayView",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Image),
+            typeof(TutorialOverlayView));
+        rootObject.layer = layer;
+        rootObject.transform.SetParent(parent, false);
+        var rootRect = rootObject.GetComponent<RectTransform>();
+        rootRect.anchorMin = Vector2.zero;
+        rootRect.anchorMax = Vector2.one;
+        rootRect.offsetMin = Vector2.zero;
+        rootRect.offsetMax = Vector2.zero;
+        var blockerImage = rootObject.GetComponent<Image>();
+        blockerImage.color = new Color(0f, 0f, 0f, 0f);
+        blockerImage.raycastTarget = false;
+        var view = rootObject.GetComponent<TutorialOverlayView>();
+        view.inputBlockerImage = blockerImage;
+        view.backdropImage = CreateFullscreenImage(
+            rootObject.transform,
+            "Backdrop",
+            new Color(0.02f, 0.02f, 0.03f, 0f),
+            false);
+        view.messagePanelRect = CreatePanel(rootObject.transform, "MessagePanel");
+        view.messagePanelImage = view.messagePanelRect.GetComponent<Image>();
+        view.messageText = CreateText(
+            view.messagePanelRect,
+            "MessageText",
+            textTemplate,
+            GameplayFontSize,
+            TextAlignmentOptions.Center,
+            new Color(0.95f, 0.95f, 0.92f, 1f));
+        view.markerRootRect = CreateContainer(rootObject.transform, "MarkerRoot");
+        view.markerVisualRect = CreatePanel(view.markerRootRect, "MarkerVisual", new Vector2(128f, 24f));
+        view.markerBackgroundImage = view.markerVisualRect.GetComponent<Image>();
+        view.markerBackgroundImage.color = new Color(0.1f, 0.13f, 0.18f, 0.92f);
+        view.markerText = CreateText(
+            view.markerVisualRect,
+            "MarkerText",
+            textTemplate,
+            8f,
+            TextAlignmentOptions.Center,
+            new Color(0.98f, 0.96f, 0.9f, 1f));
+        view.HideImmediate();
+        return view;
+    }
+    private void Awake()
+    {
+        rootRect = transform as RectTransform;
+        ownerCanvas = GetComponentInParent<Canvas>();
+        gameObject.SetActive(false);
+    }
+    private void OnDestroy()
+    {
+        markerTween?.Kill();
+        markerTween = null;
+    }
+    private void LateUpdate()
+    {
+        UpdateMarkerPosition();
+    }
+    public void ShowBlackBackdropImmediate()
+    {
+        EnsureReferences();
+        ShowRoot();
+        SetBackdropAlpha(1f);
+    }
+    public IEnumerator FadeBackdropTo(float targetAlpha, float duration)
+    {
+        EnsureReferences();
+        ShowRoot();
+        var currentColor = backdropImage.color;
+        var fromAlpha = currentColor.a;
+        if (duration <= 0f)
+        {
+            SetBackdropAlpha(targetAlpha);
+            UpdateVisibility();
+            yield break;
+        }
+        var elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            var progress = Mathf.Clamp01(elapsed / duration);
+            SetBackdropAlpha(Mathf.Lerp(fromAlpha, targetAlpha, progress));
+            yield return null;
+        }
+        SetBackdropAlpha(targetAlpha);
+        UpdateVisibility();
+    }
+    public IEnumerator PlayTypedMessage(string text, bool centered)
+    {
+        EnsureReferences();
+        ShowRoot();
+        ConfigureMessageLayout(centered);
+        messagePanelRect.gameObject.SetActive(true);
+        inputBlockerImage.raycastTarget = true;
+        messageText.text = string.Empty;
+        yield return WaitForInputRelease();
+        var safeText = text ?? string.Empty;
+        for (var i = 1; i <= safeText.Length; i++)
+        {
+            if (IsAdvancePressed())
+            {
+                messageText.text = safeText;
+                break;
+            }
+            messageText.text = safeText.Substring(0, i);
+            yield return new WaitForSecondsRealtime(TypeCharacterInterval);
+        }
+        if (messageText.text != safeText)
+        {
+            messageText.text = safeText;
+        }
+        yield return WaitForInputRelease();
+        while (!IsAdvancePressed())
+        {
+            yield return null;
+        }
+        yield return WaitForInputRelease();
+        HideMessage();
+    }
+    public void HideMessage()
+    {
+        EnsureReferences();
+        messagePanelRect.gameObject.SetActive(false);
+        inputBlockerImage.raycastTarget = false;
+        UpdateVisibility();
+    }
+    public void ShowWorldMarker(Transform target, string label, Color color)
+    {
+        EnsureReferences();
+        markerTarget = target;
+        markerText.text = label ?? string.Empty;
+        markerText.color = color;
+        markerBackgroundImage.color = new Color(color.r * 0.18f, color.g * 0.18f, color.b * 0.2f, 0.94f);
+        markerRootRect.gameObject.SetActive(true);
+        ShowRoot();
+        markerTween?.Kill();
+        markerVisualRect.localScale = Vector3.one;
+        markerTween = markerVisualRect
+            .DOScale(1.08f, 0.55f)
+            .SetEase(Ease.InOutSine)
+            .SetLoops(-1, LoopType.Yoyo)
+            .SetUpdate(true);
+        UpdateMarkerPosition();
+        UpdateVisibility();
+    }
+    public void HideWorldMarker()
+    {
+        EnsureReferences();
+        markerTween?.Kill();
+        markerTween = null;
+        markerTarget = null;
+        markerVisualRect.localScale = Vector3.one;
+        markerRootRect.gameObject.SetActive(false);
+        UpdateVisibility();
+    }
+    public void HideImmediate()
+    {
+        EnsureReferences();
+        markerTween?.Kill();
+        markerTween = null;
+        markerTarget = null;
+        inputBlockerImage.raycastTarget = false;
+        messagePanelRect.gameObject.SetActive(false);
+        markerRootRect.gameObject.SetActive(false);
+        SetBackdropAlpha(0f);
+        gameObject.SetActive(false);
+    }
+    private void EnsureReferences()
+    {
+        rootRect ??= transform as RectTransform;
+        ownerCanvas ??= GetComponentInParent<Canvas>();
+    }
+    private void ConfigureMessageLayout(bool centered)
+    {
+        if (centered)
+        {
+            messagePanelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            messagePanelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            messagePanelRect.pivot = new Vector2(0.5f, 0.5f);
+            messagePanelRect.anchoredPosition = Vector2.zero;
+            messagePanelRect.sizeDelta = new Vector2(340f, 82f);
+            messagePanelImage.color = new Color(0.04f, 0.05f, 0.07f, 0.9f);
+            messageText.fontSize = IntroFontSize;
+        }
+        else
+        {
+            messagePanelRect.anchorMin = new Vector2(0.5f, 0f);
+            messagePanelRect.anchorMax = new Vector2(0.5f, 0f);
+            messagePanelRect.pivot = new Vector2(0.5f, 0f);
+            messagePanelRect.anchoredPosition = new Vector2(0f, 26f);
+            messagePanelRect.sizeDelta = new Vector2(360f, 56f);
+            messagePanelImage.color = new Color(0.07f, 0.08f, 0.11f, 0.92f);
+            messageText.fontSize = GameplayFontSize;
+        }
+        messageText.alignment = TextAlignmentOptions.Center;
+    }
+    private void UpdateMarkerPosition()
+    {
+        if (markerTarget == null || markerRootRect == null || !markerRootRect.gameObject.activeSelf)
+        {
+            return;
+        }
+        var renderCamera = GetRenderCamera();
+        if (renderCamera == null)
+        {
+            return;
+        }
+        var worldPosition = markerTarget.position + Vector3.up * 0.95f;
+        var viewportPoint = renderCamera.WorldToViewportPoint(worldPosition);
+        if (viewportPoint.z < 0f)
+        {
+            markerRootRect.gameObject.SetActive(false);
+            return;
+        }
+        var screenPoint = RectTransformUtility.WorldToScreenPoint(renderCamera, worldPosition);
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rootRect,
+                screenPoint,
+                GetUiCamera(),
+                out var localPoint))
+        {
+            return;
+        }
+        markerRootRect.gameObject.SetActive(true);
+        markerRootRect.anchoredPosition = localPoint;
+    }
+    private void ShowRoot()
+    {
+        if (!gameObject.activeSelf)
+        {
+            gameObject.SetActive(true);
+        }
+        transform.SetAsLastSibling();
+    }
+    private void UpdateVisibility()
+    {
+        var shouldStayVisible =
+            messagePanelRect.gameObject.activeSelf ||
+            markerRootRect.gameObject.activeSelf ||
+            backdropImage.color.a > 0.001f;
+        if (shouldStayVisible)
+        {
+            ShowRoot();
+            return;
+        }
+        gameObject.SetActive(false);
+    }
+    private void SetBackdropAlpha(float alpha)
+    {
+        var color = backdropImage.color;
+        color.a = Mathf.Clamp01(alpha);
+        backdropImage.color = color;
+    }
+    private static IEnumerator WaitForInputRelease()
+    {
+        yield return null;
+        while (Input.GetMouseButton(0) || HasActiveTouch())
+        {
+            yield return null;
+        }
+    }
+    private static bool IsAdvancePressed()
+    {
+        return Input.GetMouseButtonDown(0) || HasTouchBegan();
+    }
+    private static bool HasTouchBegan()
+    {
+        for (var i = 0; i < Input.touchCount; i++)
+        {
+            if (Input.GetTouch(i).phase == TouchPhase.Began)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    private static bool HasActiveTouch()
+    {
+        for (var i = 0; i < Input.touchCount; i++)
+        {
+            var phase = Input.GetTouch(i).phase;
+            if (phase != TouchPhase.Canceled && phase != TouchPhase.Ended)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    private Camera GetRenderCamera()
+    {
+        return ownerCanvas != null && ownerCanvas.worldCamera != null
+            ? ownerCanvas.worldCamera
+            : Camera.main;
+    }
+    private Camera GetUiCamera()
+    {
+        if (ownerCanvas == null || ownerCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
+        {
+            return null;
+        }
+        return ownerCanvas.worldCamera != null ? ownerCanvas.worldCamera : Camera.main;
+    }
+    private static Image CreateFullscreenImage(Transform parent, string objectName, Color color, bool raycastTarget)
+    {
+        var imageObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        imageObject.layer = parent.gameObject.layer;
+        imageObject.transform.SetParent(parent, false);
+        var rectTransform = imageObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = Vector2.zero;
+        rectTransform.anchorMax = Vector2.one;
+        rectTransform.offsetMin = Vector2.zero;
+        rectTransform.offsetMax = Vector2.zero;
+        var image = imageObject.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = raycastTarget;
+        return image;
+    }
+    private static RectTransform CreatePanel(Transform parent, string objectName, Vector2? size = null)
+    {
+        var panelObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        panelObject.layer = parent.gameObject.layer;
+        panelObject.transform.SetParent(parent, false);
+        var rectTransform = panelObject.GetComponent<RectTransform>();
+        rectTransform.sizeDelta = size ?? new Vector2(320f, 56f);
+        var image = panelObject.GetComponent<Image>();
+        image.color = new Color(0.07f, 0.08f, 0.11f, 0.92f);
+        image.raycastTarget = false;
+        return rectTransform;
+    }
+    private static RectTransform CreateContainer(Transform parent, string objectName)
+    {
+        var containerObject = new GameObject(objectName, typeof(RectTransform));
+        containerObject.layer = parent.gameObject.layer;
+        containerObject.transform.SetParent(parent, false);
+        var rectTransform = containerObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        rectTransform.anchoredPosition = Vector2.zero;
+        rectTransform.sizeDelta = Vector2.zero;
+        return rectTransform;
+    }
+    private static TMP_Text CreateText(
+        Transform parent,
+        string objectName,
+        TMP_Text textTemplate,
+        float fontSize,
+        TextAlignmentOptions alignment,
+        Color color)
+    {
+        var textObject = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.layer = parent.gameObject.layer;
+        textObject.transform.SetParent(parent, false);
+        var rectTransform = textObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = Vector2.zero;
+        rectTransform.anchorMax = Vector2.one;
+        rectTransform.offsetMin = new Vector2(10f, 8f);
+        rectTransform.offsetMax = new Vector2(-10f, -8f);
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        if (textTemplate != null)
+        {
+            text.font = textTemplate.font;
+            text.fontSharedMaterial = textTemplate.fontSharedMaterial;
+        }
+        text.fontSize = fontSize;
+        text.alignment = alignment;
+        text.color = color;
+        text.raycastTarget = false;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.text = string.Empty;
+        return text;
+    }
+}
+</file>
 
 <file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
 using GameAnalyticsSDK;
@@ -988,361 +1607,6 @@ public class JsonDataService : IDataService
         string result = reader.ReadToEnd();
         Debug.Log($"Decrypted result (if the following is not legible, probably wrong key or iv): {result}");
         return JsonConvert.DeserializeObject<T>(result);
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/DefaultSystems/SettingsUI/PauseManager.cs">
-using TMPro;
-using UnityEngine;
-using UnityEngine.Rendering.Universal;
-using UnityEngine.UI;
-public class PauseManager : MonoBehaviour
-{
-    private static readonly Color PanelColor = new(0.08f, 0.09f, 0.13f, 0.92f);
-    private static readonly Color PanelOutlineColor = new(0.63f, 0.72f, 0.95f, 0.85f);
-    private static readonly Color ButtonColor = new(0.17f, 0.2f, 0.28f, 0.96f);
-    private static readonly Color SliderBackgroundColor = new(0.19f, 0.2f, 0.28f, 1f);
-    private static readonly Color SliderFillColor = new(0.72f, 0.81f, 1f, 1f);
-    private static readonly Color ToggleBackgroundColor = new(0.19f, 0.2f, 0.28f, 1f);
-    private static readonly Color ToggleCheckColor = new(0.78f, 0.88f, 1f, 1f);
-    private static readonly Color TextColor = new(0.95f, 0.97f, 1f, 1f);
-    [SerializeField] private Slider slider_SFX;
-    [SerializeField] private Slider slider_Music;
-    [SerializeField] private Toggle toggle_PostFx;
-    [SerializeField] private GameObject pausePanel;
-    [SerializeField] private Button toggleButton;
-    [SerializeField] private TMP_FontAsset fontAsset;
-    [SerializeField] private Camera targetCamera;
-    public bool IsOpen { get; private set; } = false;
-    private void Awake()
-    {
-        EnsureUiBuilt();
-    }
-    private void Start()
-    {
-        Init();
-    }
-    private void Init()
-    {
-        EnsureUiBuilt();
-        if (slider_Music != null)
-        {
-            slider_Music.SetValueWithoutNotify(G.audioSystem != null ? G.audioSystem.MusicVolume : 1f);
-        }
-        if (slider_SFX != null)
-        {
-            slider_SFX.SetValueWithoutNotify(G.audioSystem != null ? G.audioSystem.SfxVolume : 1f);
-        }
-        if (toggle_PostFx != null)
-        {
-            toggle_PostFx.SetIsOnWithoutNotify(IsPostFxEnabled());
-        }
-        SetToggle(false);
-    }
-    public void SetMusicVolume(float volume)
-    {
-        if (G.audioSystem == null) return;
-        G.audioSystem.SetMusicVolume(volume);
-        G.audioSystem.SetAmbientVolume(volume);
-    }
-    public void SetSFXVolume(float volume)
-    {
-        if (G.audioSystem == null) return;
-        G.audioSystem.SetSFXVolume(volume);
-    }
-    public void SetPostFxEnabled(bool enabled)
-    {
-        var cameraToConfigure = ResolveTargetCamera();
-        if (cameraToConfigure == null)
-        {
-            return;
-        }
-        var additionalCameraData = cameraToConfigure.GetUniversalAdditionalCameraData();
-        additionalCameraData.renderPostProcessing = enabled;
-    }
-    public void SetToggle(bool toggle)
-    {
-        IsOpen = toggle;
-        if (pausePanel != null)
-        {
-            pausePanel.SetActive(IsOpen);
-        }
-    }
-    public void Toggle()
-    {
-        bool b = !IsOpen;
-        SetToggle(b);
-    }
-    private void EnsureUiBuilt()
-    {
-        ResolveFontAsset();
-        if (toggleButton == null)
-        {
-            toggleButton = CreateMenuButton();
-        }
-        if (pausePanel == null)
-        {
-            pausePanel = CreatePanel();
-        }
-        BindGeneratedReferences();
-    }
-    private void ResolveFontAsset()
-    {
-        if (fontAsset != null)
-        {
-            return;
-        }
-        var sampleText = GetComponentInChildren<TMP_Text>(true);
-        if (sampleText != null)
-        {
-            fontAsset = sampleText.font;
-        }
-    }
-    private void BindGeneratedReferences()
-    {
-        if (pausePanel == null)
-        {
-            return;
-        }
-        if (slider_Music == null)
-        {
-            slider_Music = pausePanel.transform.Find("MusicRow/Slider")?.GetComponent<Slider>();
-        }
-        if (slider_SFX == null)
-        {
-            slider_SFX = pausePanel.transform.Find("SfxRow/Slider")?.GetComponent<Slider>();
-        }
-        if (toggle_PostFx == null)
-        {
-            toggle_PostFx = pausePanel.transform.Find("PostFxRow/Toggle")?.GetComponent<Toggle>();
-        }
-        if (slider_Music != null)
-        {
-            slider_Music.onValueChanged.RemoveListener(SetMusicVolume);
-            slider_Music.onValueChanged.AddListener(SetMusicVolume);
-        }
-        if (slider_SFX != null)
-        {
-            slider_SFX.onValueChanged.RemoveListener(SetSFXVolume);
-            slider_SFX.onValueChanged.AddListener(SetSFXVolume);
-        }
-        if (toggle_PostFx != null)
-        {
-            toggle_PostFx.onValueChanged.RemoveListener(SetPostFxEnabled);
-            toggle_PostFx.onValueChanged.AddListener(SetPostFxEnabled);
-        }
-    }
-    private Button CreateMenuButton()
-    {
-        var buttonRoot = CreateUiObject("SettingsButton", transform);
-        var buttonRect = buttonRoot.GetComponent<RectTransform>();
-        buttonRect.anchorMin = new Vector2(1f, 1f);
-        buttonRect.anchorMax = new Vector2(1f, 1f);
-        buttonRect.pivot = new Vector2(1f, 1f);
-        buttonRect.anchoredPosition = new Vector2(-6f, -6f);
-        buttonRect.sizeDelta = new Vector2(24f, 16f);
-        var image = buttonRoot.AddComponent<Image>();
-        image.color = ButtonColor;
-        AddOutline(buttonRoot, PanelOutlineColor, 1f);
-        var button = buttonRoot.AddComponent<Button>();
-        button.onClick.AddListener(Toggle);
-        var label = CreateText("Label", buttonRoot.transform, "SET", 5f, TextAlignmentOptions.Center);
-        var labelRect = label.rectTransform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
-        return button;
-    }
-    private GameObject CreatePanel()
-    {
-        var panelRoot = CreateUiObject("SettingsPanel", transform);
-        var panelRect = panelRoot.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(1f, 1f);
-        panelRect.anchorMax = new Vector2(1f, 1f);
-        panelRect.pivot = new Vector2(1f, 1f);
-        panelRect.anchoredPosition = new Vector2(-6f, -26f);
-        panelRect.sizeDelta = new Vector2(114f, 72f);
-        var background = panelRoot.AddComponent<Image>();
-        background.color = PanelColor;
-        AddOutline(panelRoot, PanelOutlineColor, 1f);
-        CreateText("Title", panelRoot.transform, "SETTINGS", 5f, TextAlignmentOptions.Center);
-        var titleRect = panelRoot.transform.Find("Title").GetComponent<RectTransform>();
-        titleRect.anchorMin = new Vector2(0.5f, 1f);
-        titleRect.anchorMax = new Vector2(0.5f, 1f);
-        titleRect.pivot = new Vector2(0.5f, 1f);
-        titleRect.anchoredPosition = new Vector2(0f, -6f);
-        titleRect.sizeDelta = new Vector2(96f, 10f);
-        CreateSliderRow(panelRoot.transform, "MusicRow", "MUSIC", new Vector2(8f, -22f));
-        CreateSliderRow(panelRoot.transform, "SfxRow", "SFX", new Vector2(8f, -40f));
-        CreateToggleRow(panelRoot.transform, "PostFxRow", "POST FX", new Vector2(8f, -58f));
-        panelRoot.SetActive(false);
-        return panelRoot;
-    }
-    private void CreateSliderRow(Transform parent, string rowName, string labelText, Vector2 anchoredPosition)
-    {
-        var row = CreateUiObject(rowName, parent);
-        var rowRect = row.GetComponent<RectTransform>();
-        rowRect.anchorMin = new Vector2(0f, 1f);
-        rowRect.anchorMax = new Vector2(0f, 1f);
-        rowRect.pivot = new Vector2(0f, 1f);
-        rowRect.anchoredPosition = anchoredPosition;
-        rowRect.sizeDelta = new Vector2(98f, 14f);
-        var label = CreateText("Label", row.transform, labelText, 4f, TextAlignmentOptions.MidlineLeft);
-        var labelRect = label.rectTransform;
-        labelRect.anchorMin = new Vector2(0f, 0.5f);
-        labelRect.anchorMax = new Vector2(0f, 0.5f);
-        labelRect.pivot = new Vector2(0f, 0.5f);
-        labelRect.anchoredPosition = new Vector2(0f, 0f);
-        labelRect.sizeDelta = new Vector2(38f, 12f);
-        var sliderObject = CreateUiObject("Slider", row.transform);
-        var sliderRect = sliderObject.GetComponent<RectTransform>();
-        sliderRect.anchorMin = new Vector2(1f, 0.5f);
-        sliderRect.anchorMax = new Vector2(1f, 0.5f);
-        sliderRect.pivot = new Vector2(1f, 0.5f);
-        sliderRect.anchoredPosition = new Vector2(0f, 0f);
-        sliderRect.sizeDelta = new Vector2(56f, 12f);
-        var slider = sliderObject.AddComponent<Slider>();
-        slider.minValue = 0f;
-        slider.maxValue = 1f;
-        slider.wholeNumbers = false;
-        slider.direction = Slider.Direction.LeftToRight;
-        var background = CreateUiObject("Background", sliderObject.transform);
-        var backgroundRect = background.GetComponent<RectTransform>();
-        backgroundRect.anchorMin = new Vector2(0f, 0.5f);
-        backgroundRect.anchorMax = new Vector2(1f, 0.5f);
-        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
-        backgroundRect.offsetMin = new Vector2(0f, -2f);
-        backgroundRect.offsetMax = new Vector2(0f, 2f);
-        var backgroundImage = background.AddComponent<Image>();
-        backgroundImage.color = SliderBackgroundColor;
-        var fillArea = CreateUiObject("Fill Area", sliderObject.transform);
-        var fillAreaRect = fillArea.GetComponent<RectTransform>();
-        fillAreaRect.anchorMin = new Vector2(0f, 0f);
-        fillAreaRect.anchorMax = new Vector2(1f, 1f);
-        fillAreaRect.offsetMin = new Vector2(1f, 0f);
-        fillAreaRect.offsetMax = new Vector2(-1f, 0f);
-        var fill = CreateUiObject("Fill", fillArea.transform);
-        var fillRect = fill.GetComponent<RectTransform>();
-        fillRect.anchorMin = new Vector2(0f, 0f);
-        fillRect.anchorMax = new Vector2(1f, 1f);
-        fillRect.offsetMin = Vector2.zero;
-        fillRect.offsetMax = Vector2.zero;
-        var fillImage = fill.AddComponent<Image>();
-        fillImage.color = SliderFillColor;
-        var handle = CreateUiObject("Handle", sliderObject.transform);
-        var handleRect = handle.GetComponent<RectTransform>();
-        handleRect.anchorMin = new Vector2(0f, 0.5f);
-        handleRect.anchorMax = new Vector2(0f, 0.5f);
-        handleRect.pivot = new Vector2(0.5f, 0.5f);
-        handleRect.sizeDelta = new Vector2(5f, 10f);
-        var handleImage = handle.AddComponent<Image>();
-        handleImage.color = TextColor;
-        AddOutline(handle, PanelOutlineColor, 1f);
-        slider.fillRect = fillRect;
-        slider.handleRect = handleRect;
-        slider.targetGraphic = handleImage;
-    }
-    private void CreateToggleRow(Transform parent, string rowName, string labelText, Vector2 anchoredPosition)
-    {
-        var row = CreateUiObject(rowName, parent);
-        var rowRect = row.GetComponent<RectTransform>();
-        rowRect.anchorMin = new Vector2(0f, 1f);
-        rowRect.anchorMax = new Vector2(0f, 1f);
-        rowRect.pivot = new Vector2(0f, 1f);
-        rowRect.anchoredPosition = anchoredPosition;
-        rowRect.sizeDelta = new Vector2(98f, 12f);
-        var label = CreateText("Label", row.transform, labelText, 4f, TextAlignmentOptions.MidlineLeft);
-        var labelRect = label.rectTransform;
-        labelRect.anchorMin = new Vector2(0f, 0.5f);
-        labelRect.anchorMax = new Vector2(0f, 0.5f);
-        labelRect.pivot = new Vector2(0f, 0.5f);
-        labelRect.anchoredPosition = new Vector2(0f, 0f);
-        labelRect.sizeDelta = new Vector2(48f, 12f);
-        var toggleObject = CreateUiObject("Toggle", row.transform);
-        var toggleRect = toggleObject.GetComponent<RectTransform>();
-        toggleRect.anchorMin = new Vector2(1f, 0.5f);
-        toggleRect.anchorMax = new Vector2(1f, 0.5f);
-        toggleRect.pivot = new Vector2(1f, 0.5f);
-        toggleRect.anchoredPosition = new Vector2(-2f, 0f);
-        toggleRect.sizeDelta = new Vector2(12f, 12f);
-        var toggle = toggleObject.AddComponent<Toggle>();
-        var background = CreateUiObject("Background", toggleObject.transform);
-        var backgroundRect = background.GetComponent<RectTransform>();
-        backgroundRect.anchorMin = new Vector2(0.5f, 0.5f);
-        backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
-        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
-        backgroundRect.anchoredPosition = Vector2.zero;
-        backgroundRect.sizeDelta = new Vector2(10f, 10f);
-        var backgroundImage = background.AddComponent<Image>();
-        backgroundImage.color = ToggleBackgroundColor;
-        AddOutline(background, PanelOutlineColor, 1f);
-        var checkmark = CreateUiObject("Checkmark", background.transform);
-        var checkmarkRect = checkmark.GetComponent<RectTransform>();
-        checkmarkRect.anchorMin = new Vector2(0.5f, 0.5f);
-        checkmarkRect.anchorMax = new Vector2(0.5f, 0.5f);
-        checkmarkRect.pivot = new Vector2(0.5f, 0.5f);
-        checkmarkRect.anchoredPosition = Vector2.zero;
-        checkmarkRect.sizeDelta = new Vector2(6f, 6f);
-        var checkmarkImage = checkmark.AddComponent<Image>();
-        checkmarkImage.color = ToggleCheckColor;
-        toggle.targetGraphic = backgroundImage;
-        toggle.graphic = checkmarkImage;
-    }
-    private TMP_Text CreateText(
-        string objectName,
-        Transform parent,
-        string textValue,
-        float fontSize,
-        TextAlignmentOptions alignment)
-    {
-        var textObject = CreateUiObject(objectName, parent);
-        var text = textObject.AddComponent<TextMeshProUGUI>();
-        text.text = textValue;
-        text.fontSize = fontSize;
-        text.alignment = alignment;
-        text.color = TextColor;
-        text.raycastTarget = false;
-        if (fontAsset != null)
-        {
-            text.font = fontAsset;
-        }
-        return text;
-    }
-    private static GameObject CreateUiObject(string objectName, Transform parent)
-    {
-        var uiObject = new GameObject(objectName, typeof(RectTransform));
-        uiObject.transform.SetParent(parent, false);
-        return uiObject;
-    }
-    private static void AddOutline(GameObject targetObject, Color outlineColor, float effectDistance)
-    {
-        var outline = targetObject.AddComponent<Outline>();
-        outline.effectColor = outlineColor;
-        outline.effectDistance = new Vector2(effectDistance, -effectDistance);
-    }
-    private Camera ResolveTargetCamera()
-    {
-        if (targetCamera != null)
-        {
-            return targetCamera;
-        }
-        targetCamera = Camera.main;
-        if (targetCamera == null)
-        {
-            targetCamera = FindFirstObjectByType<Camera>();
-        }
-        return targetCamera;
-    }
-    private bool IsPostFxEnabled()
-    {
-        var cameraToCheck = ResolveTargetCamera();
-        if (cameraToCheck == null)
-        {
-            return false;
-        }
-        return cameraToCheck.GetUniversalAdditionalCameraData().renderPostProcessing;
     }
 }
 </file>
@@ -3661,6 +3925,361 @@ public class SoundsLibrary : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/DefaultSystems/SettingsUI/PauseManager.cs">
+using TMPro;
+using UnityEngine;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.UI;
+public class PauseManager : MonoBehaviour
+{
+    private static readonly Color PanelColor = new(0.08f, 0.09f, 0.13f, 0.92f);
+    private static readonly Color PanelOutlineColor = new(0.63f, 0.72f, 0.95f, 0.85f);
+    private static readonly Color ButtonColor = new(0.17f, 0.2f, 0.28f, 0.96f);
+    private static readonly Color SliderBackgroundColor = new(0.19f, 0.2f, 0.28f, 1f);
+    private static readonly Color SliderFillColor = new(0.72f, 0.81f, 1f, 1f);
+    private static readonly Color ToggleBackgroundColor = new(0.19f, 0.2f, 0.28f, 1f);
+    private static readonly Color ToggleCheckColor = new(0.78f, 0.88f, 1f, 1f);
+    private static readonly Color TextColor = new(0.95f, 0.97f, 1f, 1f);
+    [SerializeField] private Slider slider_SFX;
+    [SerializeField] private Slider slider_Music;
+    [SerializeField] private Toggle toggle_PostFx;
+    [SerializeField] private GameObject pausePanel;
+    [SerializeField] private Button toggleButton;
+    [SerializeField] private TMP_FontAsset fontAsset;
+    [SerializeField] private Camera targetCamera;
+    public bool IsOpen { get; private set; } = false;
+    private void Awake()
+    {
+        EnsureUiBuilt();
+    }
+    private void Start()
+    {
+        Init();
+    }
+    private void Init()
+    {
+        EnsureUiBuilt();
+        if (slider_Music != null)
+        {
+            slider_Music.SetValueWithoutNotify(G.audioSystem != null ? G.audioSystem.MusicVolume : 1f);
+        }
+        if (slider_SFX != null)
+        {
+            slider_SFX.SetValueWithoutNotify(G.audioSystem != null ? G.audioSystem.SfxVolume : 1f);
+        }
+        if (toggle_PostFx != null)
+        {
+            toggle_PostFx.SetIsOnWithoutNotify(IsPostFxEnabled());
+        }
+        SetToggle(false);
+    }
+    public void SetMusicVolume(float volume)
+    {
+        if (G.audioSystem == null) return;
+        G.audioSystem.SetMusicVolume(volume);
+        G.audioSystem.SetAmbientVolume(volume);
+    }
+    public void SetSFXVolume(float volume)
+    {
+        if (G.audioSystem == null) return;
+        G.audioSystem.SetSFXVolume(volume);
+    }
+    public void SetPostFxEnabled(bool enabled)
+    {
+        var cameraToConfigure = ResolveTargetCamera();
+        if (cameraToConfigure == null)
+        {
+            return;
+        }
+        var additionalCameraData = cameraToConfigure.GetUniversalAdditionalCameraData();
+        additionalCameraData.renderPostProcessing = enabled;
+    }
+    public void SetToggle(bool toggle)
+    {
+        IsOpen = toggle;
+        if (pausePanel != null)
+        {
+            pausePanel.SetActive(IsOpen);
+        }
+    }
+    public void Toggle()
+    {
+        bool b = !IsOpen;
+        SetToggle(b);
+    }
+    private void EnsureUiBuilt()
+    {
+        ResolveFontAsset();
+        if (toggleButton == null)
+        {
+            toggleButton = CreateMenuButton();
+        }
+        if (pausePanel == null)
+        {
+            pausePanel = CreatePanel();
+        }
+        BindGeneratedReferences();
+    }
+    private void ResolveFontAsset()
+    {
+        if (fontAsset != null)
+        {
+            return;
+        }
+        var sampleText = GetComponentInChildren<TMP_Text>(true);
+        if (sampleText != null)
+        {
+            fontAsset = sampleText.font;
+        }
+    }
+    private void BindGeneratedReferences()
+    {
+        if (pausePanel == null)
+        {
+            return;
+        }
+        if (slider_Music == null)
+        {
+            slider_Music = pausePanel.transform.Find("MusicRow/Slider")?.GetComponent<Slider>();
+        }
+        if (slider_SFX == null)
+        {
+            slider_SFX = pausePanel.transform.Find("SfxRow/Slider")?.GetComponent<Slider>();
+        }
+        if (toggle_PostFx == null)
+        {
+            toggle_PostFx = pausePanel.transform.Find("PostFxRow/Toggle")?.GetComponent<Toggle>();
+        }
+        if (slider_Music != null)
+        {
+            slider_Music.onValueChanged.RemoveListener(SetMusicVolume);
+            slider_Music.onValueChanged.AddListener(SetMusicVolume);
+        }
+        if (slider_SFX != null)
+        {
+            slider_SFX.onValueChanged.RemoveListener(SetSFXVolume);
+            slider_SFX.onValueChanged.AddListener(SetSFXVolume);
+        }
+        if (toggle_PostFx != null)
+        {
+            toggle_PostFx.onValueChanged.RemoveListener(SetPostFxEnabled);
+            toggle_PostFx.onValueChanged.AddListener(SetPostFxEnabled);
+        }
+    }
+    private Button CreateMenuButton()
+    {
+        var buttonRoot = CreateUiObject("SettingsButton", transform);
+        var buttonRect = buttonRoot.GetComponent<RectTransform>();
+        buttonRect.anchorMin = new Vector2(1f, 1f);
+        buttonRect.anchorMax = new Vector2(1f, 1f);
+        buttonRect.pivot = new Vector2(1f, 1f);
+        buttonRect.anchoredPosition = new Vector2(-6f, -6f);
+        buttonRect.sizeDelta = new Vector2(24f, 16f);
+        var image = buttonRoot.AddComponent<Image>();
+        image.color = ButtonColor;
+        AddOutline(buttonRoot, PanelOutlineColor, 1f);
+        var button = buttonRoot.AddComponent<Button>();
+        button.onClick.AddListener(Toggle);
+        var label = CreateText("Label", buttonRoot.transform, "SET", 5f, TextAlignmentOptions.Center);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        return button;
+    }
+    private GameObject CreatePanel()
+    {
+        var panelRoot = CreateUiObject("SettingsPanel", transform);
+        var panelRect = panelRoot.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(1f, 1f);
+        panelRect.anchorMax = new Vector2(1f, 1f);
+        panelRect.pivot = new Vector2(1f, 1f);
+        panelRect.anchoredPosition = new Vector2(-6f, -26f);
+        panelRect.sizeDelta = new Vector2(114f, 72f);
+        var background = panelRoot.AddComponent<Image>();
+        background.color = PanelColor;
+        AddOutline(panelRoot, PanelOutlineColor, 1f);
+        CreateText("Title", panelRoot.transform, "SETTINGS", 5f, TextAlignmentOptions.Center);
+        var titleRect = panelRoot.transform.Find("Title").GetComponent<RectTransform>();
+        titleRect.anchorMin = new Vector2(0.5f, 1f);
+        titleRect.anchorMax = new Vector2(0.5f, 1f);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.anchoredPosition = new Vector2(0f, -6f);
+        titleRect.sizeDelta = new Vector2(96f, 10f);
+        CreateSliderRow(panelRoot.transform, "MusicRow", "MUSIC", new Vector2(8f, -22f));
+        CreateSliderRow(panelRoot.transform, "SfxRow", "SFX", new Vector2(8f, -40f));
+        CreateToggleRow(panelRoot.transform, "PostFxRow", "POST FX", new Vector2(8f, -58f));
+        panelRoot.SetActive(false);
+        return panelRoot;
+    }
+    private void CreateSliderRow(Transform parent, string rowName, string labelText, Vector2 anchoredPosition)
+    {
+        var row = CreateUiObject(rowName, parent);
+        var rowRect = row.GetComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0f, 1f);
+        rowRect.anchorMax = new Vector2(0f, 1f);
+        rowRect.pivot = new Vector2(0f, 1f);
+        rowRect.anchoredPosition = anchoredPosition;
+        rowRect.sizeDelta = new Vector2(98f, 14f);
+        var label = CreateText("Label", row.transform, labelText, 4f, TextAlignmentOptions.MidlineLeft);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = new Vector2(0f, 0.5f);
+        labelRect.anchorMax = new Vector2(0f, 0.5f);
+        labelRect.pivot = new Vector2(0f, 0.5f);
+        labelRect.anchoredPosition = new Vector2(0f, 0f);
+        labelRect.sizeDelta = new Vector2(38f, 12f);
+        var sliderObject = CreateUiObject("Slider", row.transform);
+        var sliderRect = sliderObject.GetComponent<RectTransform>();
+        sliderRect.anchorMin = new Vector2(1f, 0.5f);
+        sliderRect.anchorMax = new Vector2(1f, 0.5f);
+        sliderRect.pivot = new Vector2(1f, 0.5f);
+        sliderRect.anchoredPosition = new Vector2(0f, 0f);
+        sliderRect.sizeDelta = new Vector2(56f, 12f);
+        var slider = sliderObject.AddComponent<Slider>();
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.wholeNumbers = false;
+        slider.direction = Slider.Direction.LeftToRight;
+        var background = CreateUiObject("Background", sliderObject.transform);
+        var backgroundRect = background.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = new Vector2(0f, 0.5f);
+        backgroundRect.anchorMax = new Vector2(1f, 0.5f);
+        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+        backgroundRect.offsetMin = new Vector2(0f, -2f);
+        backgroundRect.offsetMax = new Vector2(0f, 2f);
+        var backgroundImage = background.AddComponent<Image>();
+        backgroundImage.color = SliderBackgroundColor;
+        var fillArea = CreateUiObject("Fill Area", sliderObject.transform);
+        var fillAreaRect = fillArea.GetComponent<RectTransform>();
+        fillAreaRect.anchorMin = new Vector2(0f, 0f);
+        fillAreaRect.anchorMax = new Vector2(1f, 1f);
+        fillAreaRect.offsetMin = new Vector2(1f, 0f);
+        fillAreaRect.offsetMax = new Vector2(-1f, 0f);
+        var fill = CreateUiObject("Fill", fillArea.transform);
+        var fillRect = fill.GetComponent<RectTransform>();
+        fillRect.anchorMin = new Vector2(0f, 0f);
+        fillRect.anchorMax = new Vector2(1f, 1f);
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+        var fillImage = fill.AddComponent<Image>();
+        fillImage.color = SliderFillColor;
+        var handle = CreateUiObject("Handle", sliderObject.transform);
+        var handleRect = handle.GetComponent<RectTransform>();
+        handleRect.anchorMin = new Vector2(0f, 0.5f);
+        handleRect.anchorMax = new Vector2(0f, 0.5f);
+        handleRect.pivot = new Vector2(0.5f, 0.5f);
+        handleRect.sizeDelta = new Vector2(5f, 10f);
+        var handleImage = handle.AddComponent<Image>();
+        handleImage.color = TextColor;
+        AddOutline(handle, PanelOutlineColor, 1f);
+        slider.fillRect = fillRect;
+        slider.handleRect = handleRect;
+        slider.targetGraphic = handleImage;
+    }
+    private void CreateToggleRow(Transform parent, string rowName, string labelText, Vector2 anchoredPosition)
+    {
+        var row = CreateUiObject(rowName, parent);
+        var rowRect = row.GetComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0f, 1f);
+        rowRect.anchorMax = new Vector2(0f, 1f);
+        rowRect.pivot = new Vector2(0f, 1f);
+        rowRect.anchoredPosition = anchoredPosition;
+        rowRect.sizeDelta = new Vector2(98f, 12f);
+        var label = CreateText("Label", row.transform, labelText, 4f, TextAlignmentOptions.MidlineLeft);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = new Vector2(0f, 0.5f);
+        labelRect.anchorMax = new Vector2(0f, 0.5f);
+        labelRect.pivot = new Vector2(0f, 0.5f);
+        labelRect.anchoredPosition = new Vector2(0f, 0f);
+        labelRect.sizeDelta = new Vector2(48f, 12f);
+        var toggleObject = CreateUiObject("Toggle", row.transform);
+        var toggleRect = toggleObject.GetComponent<RectTransform>();
+        toggleRect.anchorMin = new Vector2(1f, 0.5f);
+        toggleRect.anchorMax = new Vector2(1f, 0.5f);
+        toggleRect.pivot = new Vector2(1f, 0.5f);
+        toggleRect.anchoredPosition = new Vector2(-2f, 0f);
+        toggleRect.sizeDelta = new Vector2(12f, 12f);
+        var toggle = toggleObject.AddComponent<Toggle>();
+        var background = CreateUiObject("Background", toggleObject.transform);
+        var backgroundRect = background.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = new Vector2(0.5f, 0.5f);
+        backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
+        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+        backgroundRect.anchoredPosition = Vector2.zero;
+        backgroundRect.sizeDelta = new Vector2(10f, 10f);
+        var backgroundImage = background.AddComponent<Image>();
+        backgroundImage.color = ToggleBackgroundColor;
+        AddOutline(background, PanelOutlineColor, 1f);
+        var checkmark = CreateUiObject("Checkmark", background.transform);
+        var checkmarkRect = checkmark.GetComponent<RectTransform>();
+        checkmarkRect.anchorMin = new Vector2(0.5f, 0.5f);
+        checkmarkRect.anchorMax = new Vector2(0.5f, 0.5f);
+        checkmarkRect.pivot = new Vector2(0.5f, 0.5f);
+        checkmarkRect.anchoredPosition = Vector2.zero;
+        checkmarkRect.sizeDelta = new Vector2(6f, 6f);
+        var checkmarkImage = checkmark.AddComponent<Image>();
+        checkmarkImage.color = ToggleCheckColor;
+        toggle.targetGraphic = backgroundImage;
+        toggle.graphic = checkmarkImage;
+    }
+    private TMP_Text CreateText(
+        string objectName,
+        Transform parent,
+        string textValue,
+        float fontSize,
+        TextAlignmentOptions alignment)
+    {
+        var textObject = CreateUiObject(objectName, parent);
+        var text = textObject.AddComponent<TextMeshProUGUI>();
+        text.text = textValue;
+        text.fontSize = fontSize;
+        text.alignment = alignment;
+        text.color = TextColor;
+        text.raycastTarget = false;
+        if (fontAsset != null)
+        {
+            text.font = fontAsset;
+        }
+        return text;
+    }
+    private static GameObject CreateUiObject(string objectName, Transform parent)
+    {
+        var uiObject = new GameObject(objectName, typeof(RectTransform));
+        uiObject.transform.SetParent(parent, false);
+        return uiObject;
+    }
+    private static void AddOutline(GameObject targetObject, Color outlineColor, float effectDistance)
+    {
+        var outline = targetObject.AddComponent<Outline>();
+        outline.effectColor = outlineColor;
+        outline.effectDistance = new Vector2(effectDistance, -effectDistance);
+    }
+    private Camera ResolveTargetCamera()
+    {
+        if (targetCamera != null)
+        {
+            return targetCamera;
+        }
+        targetCamera = Camera.main;
+        if (targetCamera == null)
+        {
+            targetCamera = FindFirstObjectByType<Camera>();
+        }
+        return targetCamera;
+    }
+    private bool IsPostFxEnabled()
+    {
+        var cameraToCheck = ResolveTargetCamera();
+        if (cameraToCheck == null)
+        {
+            return false;
+        }
+        return cameraToCheck.GetUniversalAdditionalCameraData().renderPostProcessing;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/DefaultSystems/VFX/TextPopup/Popups.cs">
 using UnityEngine;
 public static class Popups
@@ -4695,13 +5314,6 @@ public class ScreenFader : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/UI/UI.cs">
-using UnityEngine;
-public class UI : MonoBehaviour
-{
-}
-</file>
-
 <file path="Assets/Game/Code/UI/WinScreenView.cs">
 using System;
 using TMPro;
@@ -5010,87 +5622,6 @@ public class KeeperActor : MonoBehaviour
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         }
         return spriteRenderer;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
-using System.Collections.Generic;
-public class Night1 : NightDefinition
-{
-    public override string Id => "night_1";
-    public override float DurationSeconds => 30f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(12f, Spawn("en1", 1)),
-        };
-    }
-}
-public class Night2 : NightDefinition
-{
-    public override string Id => "night_2";
-    public override float DurationSeconds => 60f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(10f, Spawn("en1", 1)),
-            Wave(20f, Spawn("en1", 2)),
-            Wave(32f, Spawn("en1", 2)),
-            Wave(44f, Spawn("en1", 2)),
-            Wave(54f, Spawn("en1", 3)),
-        };
-    }
-}
-public class Night3 : NightDefinition
-{
-    public override string Id => "night_3";
-    public override float DurationSeconds => 66f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(8f, Spawn("en1", 1)),
-            Wave(18f, Spawn("en1", 2)),
-            Wave(30f, Spawn("en1", 3)),
-            Wave(42f, Spawn("en1", 3)),
-            Wave(56f, Spawn("en1", 3)),
-        };
-    }
-}
-public class Night4 : NightDefinition
-{
-    public override string Id => "night_4";
-    public override float DurationSeconds => 72f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(8f, Spawn("en1", 2)),
-            Wave(20f, Spawn("en1", 2)),
-            Wave(32f, Spawn("en1", 3)),
-            Wave(44f, Spawn("en1", 3)),
-            Wave(58f, Spawn("en1", 4)),
-        };
-    }
-}
-public class Night5 : NightDefinition
-{
-    public override string Id => "night_5";
-    public override float DurationSeconds => 78f;
-    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
-    {
-        return new List<NightWaveEntry>
-        {
-            Wave(8f, Spawn("en1", 2)),
-            Wave(18f, Spawn("en1", 3)),
-            Wave(30f, Spawn("en1", 3)),
-            Wave(42f, Spawn("en1", 3)),
-            Wave(54f, Spawn("en1", 3)),
-            Wave(66f, Spawn("en1", 2)),
-        };
     }
 }
 </file>
@@ -5427,6 +5958,215 @@ public class DayUpgradeItemView : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/UI/UI.cs">
+using System;
+using DG.Tweening;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+public class UI : MonoBehaviour
+{
+    [SerializeField] private GameObject titleScreen;
+    [SerializeField] private TMP_Text clickToStartText;
+    private Tween clickToStartTween;
+    private TutorialOverlayView tutorialOverlayView;
+    public Image TitleScreenImage
+    {
+        get
+        {
+            ResolveReferences();
+            return titleScreen != null ? titleScreen.GetComponent<Image>() : null;
+        }
+    }
+    public static UI EnsureInstance()
+    {
+        var existingUi = FindFirstObjectByType<UI>(FindObjectsInactive.Include);
+        if (existingUi != null)
+        {
+            existingUi.ResolveReferences();
+            if (G.ui != existingUi)
+            {
+                G.ui = existingUi;
+            }
+            return existingUi;
+        }
+        var host = FindSceneObject("UI_Canvas");
+        if (host == null)
+        {
+            var discoveredTitleScreen = FindSceneObject("TitleScreen");
+            host = discoveredTitleScreen != null && discoveredTitleScreen.transform.parent != null
+                ? discoveredTitleScreen.transform.parent.gameObject
+                : null;
+        }
+        if (host == null)
+        {
+            return null;
+        }
+        var createdUi = host.AddComponent<UI>();
+        createdUi.ResolveReferences();
+        G.ui = createdUi;
+        return createdUi;
+    }
+    private void Awake()
+    {
+        G.ui = this;
+        ResolveReferences();
+    }
+    private void OnDestroy()
+    {
+        StopTitlePromptPulse();
+        if (G.ui == this)
+        {
+            G.ui = null;
+        }
+    }
+    public void ToggleTitle(bool visible)
+    {
+        ResolveReferences();
+        if (titleScreen == null)
+        {
+            return;
+        }
+        if (visible)
+        {
+            ResetTitleScreenAlpha();
+            titleScreen.SetActive(true);
+            PlayTitlePromptPulse();
+            titleScreen.transform.SetAsLastSibling();
+            return;
+        }
+        StopTitlePromptPulse();
+        titleScreen.SetActive(false);
+    }
+    public void PlayTitlePromptPulse()
+    {
+        ResolveReferences();
+        if (clickToStartText == null)
+        {
+            return;
+        }
+        StopTitlePromptPulse();
+        clickToStartText.gameObject.SetActive(true);
+        clickToStartText.rectTransform.localScale = Vector3.one;
+        SetClickPromptAlpha(1f);
+        clickToStartTween = DOTween.Sequence()
+            .SetUpdate(true)
+            .Append(clickToStartText.rectTransform.DOScale(1.08f, 0.75f).SetEase(Ease.InOutSine))
+            .Join(clickToStartText.DOFade(0.45f, 0.75f).SetEase(Ease.InOutSine))
+            .Append(clickToStartText.rectTransform.DOScale(1f, 0.75f).SetEase(Ease.InOutSine))
+            .Join(clickToStartText.DOFade(1f, 0.75f).SetEase(Ease.InOutSine))
+            .SetLoops(-1, LoopType.Restart);
+    }
+    public void StopTitlePromptPulse()
+    {
+        if (clickToStartTween != null && clickToStartTween.IsActive())
+        {
+            clickToStartTween.Kill();
+        }
+        clickToStartTween = null;
+        if (clickToStartText == null)
+        {
+            return;
+        }
+        clickToStartText.rectTransform.localScale = Vector3.one;
+        SetClickPromptAlpha(1f);
+    }
+    public TutorialOverlayView EnsureTutorialOverlay()
+    {
+        if (tutorialOverlayView != null)
+        {
+            return tutorialOverlayView;
+        }
+        tutorialOverlayView = GetComponentInChildren<TutorialOverlayView>(true);
+        if (tutorialOverlayView != null)
+        {
+            return tutorialOverlayView;
+        }
+        tutorialOverlayView = TutorialOverlayView.CreateUnder(transform, GetTextTemplate());
+        return tutorialOverlayView;
+    }
+    private void ResolveReferences()
+    {
+        if (titleScreen == null)
+        {
+            titleScreen = FindSceneObject("TitleScreen");
+        }
+        if (clickToStartText != null || titleScreen == null)
+        {
+            return;
+        }
+        var texts = titleScreen.GetComponentsInChildren<TMP_Text>(true);
+        for (var i = 0; i < texts.Length; i++)
+        {
+            var candidate = texts[i];
+            if (candidate == null)
+            {
+                continue;
+            }
+            if (candidate.text.IndexOf("click", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                clickToStartText = candidate;
+                break;
+            }
+        }
+        if (clickToStartText == null && texts.Length > 0)
+        {
+            clickToStartText = texts[0];
+        }
+    }
+    private void ResetTitleScreenAlpha()
+    {
+        var titleImage = TitleScreenImage;
+        if (titleImage == null)
+        {
+            return;
+        }
+        var color = titleImage.color;
+        color.a = 1f;
+        titleImage.color = color;
+    }
+    private void SetClickPromptAlpha(float alpha)
+    {
+        if (clickToStartText == null)
+        {
+            return;
+        }
+        var color = clickToStartText.color;
+        color.a = alpha;
+        clickToStartText.color = color;
+    }
+    private TMP_Text GetTextTemplate()
+    {
+        if (clickToStartText != null)
+        {
+            return clickToStartText;
+        }
+        return GetComponentInChildren<TMP_Text>(true);
+    }
+    private static GameObject FindSceneObject(string objectName)
+    {
+        if (string.IsNullOrWhiteSpace(objectName))
+        {
+            return null;
+        }
+        var transforms = Resources.FindObjectsOfTypeAll<Transform>();
+        for (var i = 0; i < transforms.Length; i++)
+        {
+            var candidate = transforms[i];
+            if (candidate == null ||
+                candidate.hideFlags != HideFlags.None ||
+                !candidate.gameObject.scene.IsValid() ||
+                !string.Equals(candidate.name, objectName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            return candidate.gameObject;
+        }
+        return null;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
 using System.Collections;
 using UnityEngine;
@@ -5556,174 +6296,6 @@ public class LaneCombatFeedbackView : MonoBehaviour
             if (lt != null)
                 lifetimeBar = lt.GetComponent<WorldBarFillShrink>();
         }
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
-using System;
-using UnityEngine;
-public class LaneEnemy : MonoBehaviour
-{
-    private const int SortingPrecision = 100;
-    public event Action<LaneEnemy> CemeteryAttackTriggered;
-    public EnemyDef EnemyDef { get; private set; }
-    public Vector3 Position => transform.position;
-    public int CurrentHp { get; private set; }
-    public LaneUnit TargetUnit { get; private set; }
-    public bool HasTarget => TargetUnit != null;
-    public bool IsInCombat => TargetUnit != null;
-    public bool IsAttackingCemetery { get; private set; }
-    private Vector3 forwardTargetPosition;
-    private Vector3 cemeteryAttackPosition;
-    private float attackCooldown;
-    private LaneCombatFeedbackView combatFeedbackView;
-    private SpriteRenderer spriteRenderer;
-    private void Update()
-    {
-        if (EnemyDef == null)
-        {
-            return;
-        }
-        UpdateBehavior(Time.deltaTime);
-    }
-    private void LateUpdate()
-    {
-        UpdateSortingOrder();
-    }
-    public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
-    {
-        EnemyDef = enemyDef;
-        CurrentHp = enemyDef.Hp;
-        forwardTargetPosition = targetPosition;
-        cemeteryAttackPosition = targetPosition;
-        TargetUnit = null;
-        attackCooldown = enemyDef.AttackInterval;
-        IsAttackingCemetery = false;
-        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
-        if (combatFeedbackView == null)
-        {
-            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
-        }
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-        combatFeedbackView.Bind(enemyDef.Hp, true);
-        UpdateSortingOrder();
-    }
-    public void SetTargetUnit(LaneUnit laneUnit)
-    {
-        if (laneUnit == null)
-        {
-            return;
-        }
-        TargetUnit = laneUnit;
-    }
-    public void ClearTargetUnit()
-    {
-        TargetUnit = null;
-    }
-    public void ApplyDamage(int damage)
-    {
-        if (damage <= 0)
-        {
-            return;
-        }
-        CurrentHp -= damage;
-        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
-    }
-    private void OnDestroy()
-    {
-        combatFeedbackView?.Cleanup();
-    }
-    public bool IsDead()
-    {
-        return CurrentHp <= 0;
-    }
-    public bool IsWithinAttackRange(LaneUnit laneUnit, float attackDistance)
-    {
-        if (laneUnit == null)
-        {
-            return false;
-        }
-        return Vector3.Distance(Position, laneUnit.Position) <= attackDistance;
-    }
-    public bool HasReachedBreakthrough(float breakthroughX)
-    {
-        return Position.x <= breakthroughX;
-    }
-    public void EnterCemeteryAttackState(Vector3 attackPosition)
-    {
-        IsAttackingCemetery = true;
-        cemeteryAttackPosition = attackPosition;
-        forwardTargetPosition = attackPosition;
-        TargetUnit = null;
-        attackCooldown = EnemyDef != null ? EnemyDef.AttackInterval : 0f;
-        transform.position = attackPosition;
-    }
-    private void UpdateBehavior(float deltaTime)
-    {
-        if (TargetUnit == null || TargetUnit.IsDead())
-        {
-            TargetUnit = null;
-            if (IsAttackingCemetery)
-            {
-                UpdateCemeteryAttack(deltaTime);
-                return;
-            }
-            MoveForward(deltaTime);
-            return;
-        }
-        attackCooldown -= deltaTime;
-        if (attackCooldown > 0f)
-        {
-            return;
-        }
-        TargetUnit.ApplyDamage(EnemyDef.Damage);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
-        attackCooldown = EnemyDef.AttackInterval;
-    }
-    private void UpdateCemeteryAttack(float deltaTime)
-    {
-        attackCooldown -= deltaTime;
-        if (attackCooldown > 0f)
-        {
-            return;
-        }
-        CemeteryAttackTriggered?.Invoke(this);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
-        attackCooldown = EnemyDef.AttackInterval;
-        transform.position = cemeteryAttackPosition;
-    }
-    private void MoveForward(float deltaTime)
-    {
-        var offset = forwardTargetPosition - transform.position;
-        if (offset.sqrMagnitude <= 0.0001f)
-        {
-            transform.position = forwardTargetPosition;
-            return;
-        }
-        var direction = offset.normalized;
-        var moveStep = EnemyDef.MoveSpeed * deltaTime;
-        if (offset.magnitude <= moveStep)
-        {
-            transform.position = forwardTargetPosition;
-            return;
-        }
-        transform.position += direction * moveStep;
-    }
-    private void UpdateSortingOrder()
-    {
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-        if (spriteRenderer == null)
-        {
-            return;
-        }
-        spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
     }
 }
 </file>
@@ -6237,6 +6809,87 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
     private float GetIdleMicroRetargetDelay()
     {
         return laneHost != null ? laneHost.AlliedIdleMicroRetargetDelay : 1f;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
+using System.Collections.Generic;
+public class Night1 : NightDefinition
+{
+    public override string Id => "night_1";
+    public override float DurationSeconds => 30f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(12f, Spawn("en1", 1)),
+        };
+    }
+}
+public class Night2 : NightDefinition
+{
+    public override string Id => "night_2";
+    public override float DurationSeconds => 60f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(10f, Spawn("en1", 1)),
+            Wave(20f, Spawn("en1", 2)),
+            Wave(32f, Spawn("en1", 2)),
+            Wave(44f, Spawn("en1", 2)),
+            Wave(54f, Spawn("en1", 3)),
+        };
+    }
+}
+public class Night3 : NightDefinition
+{
+    public override string Id => "night_3";
+    public override float DurationSeconds => 66f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(8f, Spawn("en1", 1)),
+            Wave(18f, Spawn("en1", 2)),
+            Wave(30f, Spawn("en1", 3)),
+            Wave(42f, Spawn("en1", 3)),
+            Wave(56f, Spawn("en1", 3)),
+        };
+    }
+}
+public class Night4 : NightDefinition
+{
+    public override string Id => "night_4";
+    public override float DurationSeconds => 72f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(8f, Spawn("en1", 2)),
+            Wave(20f, Spawn("en1", 2)),
+            Wave(32f, Spawn("en1", 3)),
+            Wave(44f, Spawn("en1", 3)),
+            Wave(58f, Spawn("en1", 4)),
+        };
+    }
+}
+public class Night5 : NightDefinition
+{
+    public override string Id => "night_5";
+    public override float DurationSeconds => 78f;
+    protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
+    {
+        return new List<NightWaveEntry>
+        {
+            Wave(8f, Spawn("en1", 2)),
+            Wave(18f, Spawn("en1", 3)),
+            Wave(30f, Spawn("en1", 3)),
+            Wave(42f, Spawn("en1", 3)),
+            Wave(54f, Spawn("en1", 3)),
+            Wave(66f, Spawn("en1", 2)),
+        };
     }
 }
 </file>
@@ -6812,6 +7465,174 @@ public class DayScreenView : MonoBehaviour
         panelImage.raycastTarget = false;
         panelImage.type = Image.Type.Sliced;
         return panelRect;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
+using System;
+using UnityEngine;
+public class LaneEnemy : MonoBehaviour
+{
+    private const int SortingPrecision = 100;
+    public event Action<LaneEnemy> CemeteryAttackTriggered;
+    public EnemyDef EnemyDef { get; private set; }
+    public Vector3 Position => transform.position;
+    public int CurrentHp { get; private set; }
+    public LaneUnit TargetUnit { get; private set; }
+    public bool HasTarget => TargetUnit != null;
+    public bool IsInCombat => TargetUnit != null;
+    public bool IsAttackingCemetery { get; private set; }
+    private Vector3 forwardTargetPosition;
+    private Vector3 cemeteryAttackPosition;
+    private float attackCooldown;
+    private LaneCombatFeedbackView combatFeedbackView;
+    private SpriteRenderer spriteRenderer;
+    private void Update()
+    {
+        if (EnemyDef == null)
+        {
+            return;
+        }
+        UpdateBehavior(Time.deltaTime);
+    }
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
+    }
+    public void Initialize(EnemyDef enemyDef, Vector3 targetPosition)
+    {
+        EnemyDef = enemyDef;
+        CurrentHp = enemyDef.Hp;
+        forwardTargetPosition = targetPosition;
+        cemeteryAttackPosition = targetPosition;
+        TargetUnit = null;
+        attackCooldown = enemyDef.AttackInterval;
+        IsAttackingCemetery = false;
+        combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
+        if (combatFeedbackView == null)
+        {
+            combatFeedbackView = gameObject.AddComponent<LaneCombatFeedbackView>();
+        }
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        combatFeedbackView.Bind(enemyDef.Hp, true);
+        UpdateSortingOrder();
+    }
+    public void SetTargetUnit(LaneUnit laneUnit)
+    {
+        if (laneUnit == null)
+        {
+            return;
+        }
+        TargetUnit = laneUnit;
+    }
+    public void ClearTargetUnit()
+    {
+        TargetUnit = null;
+    }
+    public void ApplyDamage(int damage)
+    {
+        if (damage <= 0)
+        {
+            return;
+        }
+        CurrentHp -= damage;
+        combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
+    }
+    private void OnDestroy()
+    {
+        combatFeedbackView?.Cleanup();
+    }
+    public bool IsDead()
+    {
+        return CurrentHp <= 0;
+    }
+    public bool IsWithinAttackRange(LaneUnit laneUnit, float attackDistance)
+    {
+        if (laneUnit == null)
+        {
+            return false;
+        }
+        return Vector3.Distance(Position, laneUnit.Position) <= attackDistance;
+    }
+    public bool HasReachedBreakthrough(float breakthroughX)
+    {
+        return Position.x <= breakthroughX;
+    }
+    public void EnterCemeteryAttackState(Vector3 attackPosition)
+    {
+        IsAttackingCemetery = true;
+        cemeteryAttackPosition = attackPosition;
+        forwardTargetPosition = attackPosition;
+        TargetUnit = null;
+        attackCooldown = EnemyDef != null ? EnemyDef.AttackInterval : 0f;
+        transform.position = attackPosition;
+    }
+    private void UpdateBehavior(float deltaTime)
+    {
+        if (TargetUnit == null || TargetUnit.IsDead())
+        {
+            TargetUnit = null;
+            if (IsAttackingCemetery)
+            {
+                UpdateCemeteryAttack(deltaTime);
+                return;
+            }
+            MoveForward(deltaTime);
+            return;
+        }
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+        TargetUnit.ApplyDamage(EnemyDef.Damage);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
+        attackCooldown = EnemyDef.AttackInterval;
+    }
+    private void UpdateCemeteryAttack(float deltaTime)
+    {
+        attackCooldown -= deltaTime;
+        if (attackCooldown > 0f)
+        {
+            return;
+        }
+        CemeteryAttackTriggered?.Invoke(this);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
+        attackCooldown = EnemyDef.AttackInterval;
+        transform.position = cemeteryAttackPosition;
+    }
+    private void MoveForward(float deltaTime)
+    {
+        var offset = forwardTargetPosition - transform.position;
+        if (offset.sqrMagnitude <= 0.0001f)
+        {
+            transform.position = forwardTargetPosition;
+            return;
+        }
+        var direction = offset.normalized;
+        var moveStep = EnemyDef.MoveSpeed * deltaTime;
+        if (offset.magnitude <= moveStep)
+        {
+            transform.position = forwardTargetPosition;
+            return;
+        }
+        transform.position += direction * moveStep;
+    }
+    private void UpdateSortingOrder()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+        spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
     }
 }
 </file>
@@ -8383,6 +9204,7 @@ public class FaithPickupVfxController : MonoBehaviour
 
 <file path="Assets/Game/Code/Service/Main.cs">
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -8405,6 +9227,10 @@ public class Main : MonoBehaviour
     [Min(0.01f)] [SerializeField] private float initialNightCemeteryRepairIntervalSeconds = 1f;
     [FormerlySerializedAs("targetSurvivedNights")]
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
+    [SerializeField] private bool showIntroScreenOnStartup = true;
+    [Min(0f)] [SerializeField] private float titleScreenFadeDuration = 1.25f;
+    [SerializeField] private string firstRunTutorialBellId = "bell_small";
+    [SerializeField] private string firstRunTutorialEnemyId = "en1";
     private BellSystem bellSystem;
     private CemeteryStateSystem cemeteryStateSystem;
     private FaithCollectionSystem faithCollectionSystem;
@@ -8420,9 +9246,14 @@ public class Main : MonoBehaviour
     private bool laneSetupWarningShown;
     private bool keeperBindingWarningShown;
     private bool keeperSceneBindingInitialized;
+    private bool startupSequenceInProgress;
+    private FirstRunTutorialController firstRunTutorialController;
     private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
     public RunState RunState { get; private set; }
+    public event Action<string, LaneUnit> BellSummoned;
+    public event Action<int> FaithCollected;
+    public event Action<LaneEnemy> EnemyKilled;
     public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night &&
                                      waveSystem != null && waveSystem.IsRunning;
     public float CurrentNightElapsedSeconds => waveSystem != null ? waveSystem.ElapsedTime : 0f;
@@ -8452,6 +9283,7 @@ public class Main : MonoBehaviour
         keeperMovementSystem = new KeeperMovementSystem();
         nightPoiSystem = new NightPoiSystem();
         nightDefinitions = BuildNightDefinitions();
+        firstRunTutorialController = new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
         if (laneEncounterCoordinator != null)
         {
             laneEncounterCoordinator.OnEnemyBreakthrough = HandleEnemyBreakthrough;
@@ -8466,15 +9298,20 @@ public class Main : MonoBehaviour
         G.audioSystem.Play(SoundId.Ambient_Forest);
         G.audioSystem.Play(SoundId.Music_Main);
         BindHud();
-        EnterNight();
-        ValidateLanePrototypeSetup();
+        BeginStartupSequence();
     }
     private void OnDestroy()
     {
+        firstRunTutorialController?.Dispose();
         UnbindHud();
     }
     private void Update()
     {
+        if (startupSequenceInProgress)
+        {
+            HandleDebugInput();
+            return;
+        }
         UpdateLoseCondition();
         if (RunState == null || RunState.CurrentPhase == GamePhase.Defeat || RunState.CurrentPhase == GamePhase.Win)
         {
@@ -8676,6 +9513,7 @@ public class Main : MonoBehaviour
         {
             bellWorldObject.StartCooldown(bellResult.BellDef.CooldownSeconds);
             PublishBellFaithSpendEffect(bellWorldObject, bellResult);
+            BellSummoned?.Invoke(bellId, bellResult.SpawnResult.SpawnedUnit);
         }
         PublishBellFeedback(bellWorldObject, bellResult);
         return bellResult.IsSuccess && bellResult.SpawnResult != null && bellResult.SpawnResult.IsSuccess;
@@ -8727,6 +9565,7 @@ public class Main : MonoBehaviour
             Debug.LogWarning("Enemy kill reward failed: EnemyDef is missing");
             return;
         }
+        EnemyKilled?.Invoke(laneEnemy);
         var goldReward = Mathf.Max(0, laneEnemy.EnemyDef.GoldReward);
         if (goldReward <= 0)
         {
@@ -8853,6 +9692,10 @@ public class Main : MonoBehaviour
         RegisterEnemyOnLane(spawnResult.SpawnedEnemy);
         return spawnResult;
     }
+    public EnemySpawnResult TrySpawnScriptedEnemy(string enemyId)
+    {
+        return TrySpawnEnemyById(enemyId);
+    }
     private void RegisterPlayerUnitOnLane(LaneUnit laneUnit)
     {
         if (laneEncounterCoordinator == null)
@@ -8904,6 +9747,10 @@ public class Main : MonoBehaviour
         {
             return;
         }
+        if (firstRunTutorialController != null && firstRunTutorialController.BlocksWaveProgress)
+        {
+            return;
+        }
         readyWaveSpawnEnemyIds.Clear();
         waveSystem.CollectReadySpawns(Time.deltaTime, readyWaveSpawnEnemyIds);
         for (var i = 0; i < readyWaveSpawnEnemyIds.Count; i++)
@@ -8914,6 +9761,10 @@ public class Main : MonoBehaviour
     private void UpdateNightCompletion()
     {
         if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+        if (firstRunTutorialController != null && firstRunTutorialController.BlocksNightCompletion)
         {
             return;
         }
@@ -8992,6 +9843,7 @@ public class Main : MonoBehaviour
         {
             return;
         }
+        FaithCollected?.Invoke(collectedFaith);
         PublishFaithPickupFeedback(collectedFaith);
     }
     private void UpdateNightCemeteryRepair()
@@ -9120,6 +9972,10 @@ public class Main : MonoBehaviour
         }
         return nightPoiSystem.TryGetPoiByType(poiType, out poi);
     }
+    public bool TryGetNightPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
+    {
+        return TryResolveNightPoiByType(poiType, out poi);
+    }
     private void ValidateNightPoiClickSetup(IReadOnlyList<NightPointOfInterest> scenePois)
     {
         if (scenePois == null || scenePois.Count == 0)
@@ -9180,6 +10036,11 @@ public class Main : MonoBehaviour
         bellWorldObjectsById.TryGetValue(bellId, out var bellWorldObject);
         return bellWorldObject;
     }
+    public bool TryGetBellWorldObject(string bellId, out BellWorldObject bellWorldObject)
+    {
+        bellWorldObject = ResolveBellWorldObject(bellId);
+        return bellWorldObject != null;
+    }
     private void BindHud()
     {
         if (G.HUD == null)
@@ -9194,6 +10055,78 @@ public class Main : MonoBehaviour
         G.HUD.DefeatScreenRestartRequested += HandleDefeatScreenRestartRequested;
         G.HUD.WinScreenRestartRequested -= HandleWinScreenRestartRequested;
         G.HUD.WinScreenRestartRequested += HandleWinScreenRestartRequested;
+    }
+    private void BeginStartupSequence()
+    {
+        startupSequenceInProgress = true;
+        UI.EnsureInstance();
+        var shouldRunFirstRunTutorial = firstRunTutorialController != null &&
+                                        firstRunTutorialController.ShouldRunFirstRunTutorial;
+        var canShowTitleScreen = showIntroScreenOnStartup && G.ui != null && G.ui.TitleScreenImage != null;
+        if (!canShowTitleScreen && !shouldRunFirstRunTutorial)
+        {
+            G.ui?.ToggleTitle(false);
+            CompleteStartupSequence();
+            return;
+        }
+        StartCoroutine(PlayStartupSequence(canShowTitleScreen, shouldRunFirstRunTutorial));
+    }
+    private IEnumerator PlayStartupSequence(bool useTitleScreen, bool runFirstRunTutorial)
+    {
+        if (useTitleScreen)
+        {
+            G.ui.ToggleTitle(true);
+            while (!IsTitleScreenStartRequested())
+            {
+                yield return null;
+            }
+            G.ui.StopTitlePromptPulse();
+            var titleScreenImage = G.ui.TitleScreenImage;
+            if (titleScreenImage != null && G.ScreenFader != null)
+            {
+                var fadeCompleted = false;
+                G.ScreenFader.FadeOutCustom(
+                    titleScreenImage,
+                    Mathf.Max(0f, titleScreenFadeDuration),
+                    () => { fadeCompleted = true; });
+                while (!fadeCompleted)
+                {
+                    yield return null;
+                }
+            }
+            else
+            {
+                G.ui.ToggleTitle(false);
+            }
+        }
+        else
+        {
+            G.ui?.ToggleTitle(false);
+        }
+        if (!runFirstRunTutorial || firstRunTutorialController == null)
+        {
+            CompleteStartupSequence();
+            yield break;
+        }
+        yield return firstRunTutorialController.PlayStartupIntroSequence();
+        G.ui?.ToggleTitle(false);
+        EnterNight();
+        ValidateLanePrototypeSetup();
+        yield return firstRunTutorialController.FadeIntoGameplaySequence();
+        startupSequenceInProgress = false;
+        StartCoroutine(firstRunTutorialController.RunNightTutorialSequence());
+    }
+    private void CompleteStartupSequence()
+    {
+        G.ui?.ToggleTitle(false);
+        EnterNight();
+        ValidateLanePrototypeSetup();
+        startupSequenceInProgress = false;
+    }
+    private static bool IsTitleScreenStartRequested()
+    {
+        return Input.GetMouseButtonDown(0) ||
+               (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began);
     }
     private void UnbindHud()
     {

@@ -29,6 +29,8 @@ public class Main : MonoBehaviour
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
     [SerializeField] private bool showIntroScreenOnStartup = true;
     [Min(0f)] [SerializeField] private float titleScreenFadeDuration = 1.25f;
+    [SerializeField] private string firstRunTutorialBellId = "bell_small";
+    [SerializeField] private string firstRunTutorialEnemyId = "en1";
 
     private BellSystem bellSystem;
     private CemeteryStateSystem cemeteryStateSystem;
@@ -46,10 +48,14 @@ public class Main : MonoBehaviour
     private bool keeperBindingWarningShown;
     private bool keeperSceneBindingInitialized;
     private bool startupSequenceInProgress;
+    private FirstRunTutorialController firstRunTutorialController;
     private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
 
     public RunState RunState { get; private set; }
+    public event Action<string, LaneUnit> BellSummoned;
+    public event Action<int> FaithCollected;
+    public event Action<LaneEnemy> EnemyKilled;
 
     public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night &&
                                      waveSystem != null && waveSystem.IsRunning;
@@ -82,6 +88,7 @@ public class Main : MonoBehaviour
         keeperMovementSystem = new KeeperMovementSystem();
         nightPoiSystem = new NightPoiSystem();
         nightDefinitions = BuildNightDefinitions();
+        firstRunTutorialController = new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
 
         if (laneEncounterCoordinator != null)
         {
@@ -103,6 +110,7 @@ public class Main : MonoBehaviour
 
     private void OnDestroy()
     {
+        firstRunTutorialController?.Dispose();
         UnbindHud();
     }
 
@@ -350,6 +358,7 @@ public class Main : MonoBehaviour
         {
             bellWorldObject.StartCooldown(bellResult.BellDef.CooldownSeconds);
             PublishBellFaithSpendEffect(bellWorldObject, bellResult);
+            BellSummoned?.Invoke(bellId, bellResult.SpawnResult.SpawnedUnit);
         }
 
         PublishBellFeedback(bellWorldObject, bellResult);
@@ -412,6 +421,7 @@ public class Main : MonoBehaviour
             return;
         }
 
+        EnemyKilled?.Invoke(laneEnemy);
         var goldReward = Mathf.Max(0, laneEnemy.EnemyDef.GoldReward);
         if (goldReward <= 0)
         {
@@ -564,6 +574,11 @@ public class Main : MonoBehaviour
         return spawnResult;
     }
 
+    public EnemySpawnResult TrySpawnScriptedEnemy(string enemyId)
+    {
+        return TrySpawnEnemyById(enemyId);
+    }
+
     private void RegisterPlayerUnitOnLane(LaneUnit laneUnit)
     {
         if (laneEncounterCoordinator == null)
@@ -626,6 +641,11 @@ public class Main : MonoBehaviour
             return;
         }
 
+        if (firstRunTutorialController != null && firstRunTutorialController.BlocksWaveProgress)
+        {
+            return;
+        }
+
         readyWaveSpawnEnemyIds.Clear();
         waveSystem.CollectReadySpawns(Time.deltaTime, readyWaveSpawnEnemyIds);
 
@@ -638,6 +658,11 @@ public class Main : MonoBehaviour
     private void UpdateNightCompletion()
     {
         if (RunState == null || RunState.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+
+        if (firstRunTutorialController != null && firstRunTutorialController.BlocksNightCompletion)
         {
             return;
         }
@@ -733,6 +758,7 @@ public class Main : MonoBehaviour
             return;
         }
 
+        FaithCollected?.Invoke(collectedFaith);
         PublishFaithPickupFeedback(collectedFaith);
     }
 
@@ -891,6 +917,11 @@ public class Main : MonoBehaviour
         return nightPoiSystem.TryGetPoiByType(poiType, out poi);
     }
 
+    public bool TryGetNightPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
+    {
+        return TryResolveNightPoiByType(poiType, out poi);
+    }
+
     private void ValidateNightPoiClickSetup(IReadOnlyList<NightPointOfInterest> scenePois)
     {
         if (scenePois == null || scenePois.Count == 0)
@@ -963,6 +994,12 @@ public class Main : MonoBehaviour
         return bellWorldObject;
     }
 
+    public bool TryGetBellWorldObject(string bellId, out BellWorldObject bellWorldObject)
+    {
+        bellWorldObject = ResolveBellWorldObject(bellId);
+        return bellWorldObject != null;
+    }
+
     private void BindHud()
     {
         if (G.HUD == null)
@@ -984,47 +1021,69 @@ public class Main : MonoBehaviour
     {
         startupSequenceInProgress = true;
         UI.EnsureInstance();
+        var shouldRunFirstRunTutorial = firstRunTutorialController != null &&
+                                        firstRunTutorialController.ShouldRunFirstRunTutorial;
+        var canShowTitleScreen = showIntroScreenOnStartup && G.ui != null && G.ui.TitleScreenImage != null;
 
-        if (!showIntroScreenOnStartup || G.ui == null || G.ui.TitleScreenImage == null)
+        if (!canShowTitleScreen && !shouldRunFirstRunTutorial)
         {
             G.ui?.ToggleTitle(false);
             CompleteStartupSequence();
             return;
         }
 
-        StartCoroutine(PlayStartupSequence());
+        StartCoroutine(PlayStartupSequence(canShowTitleScreen, shouldRunFirstRunTutorial));
     }
 
-    private IEnumerator PlayStartupSequence()
+    private IEnumerator PlayStartupSequence(bool useTitleScreen, bool runFirstRunTutorial)
     {
-        G.ui.ToggleTitle(true);
-
-        while (!IsTitleScreenStartRequested())
+        if (useTitleScreen)
         {
-            yield return null;
-        }
+            G.ui.ToggleTitle(true);
 
-        G.ui.StopTitlePromptPulse();
-        var titleScreenImage = G.ui.TitleScreenImage;
-        if (titleScreenImage != null && G.ScreenFader != null)
-        {
-            var fadeCompleted = false;
-            G.ScreenFader.FadeOutCustom(
-                titleScreenImage,
-                Mathf.Max(0f, titleScreenFadeDuration),
-                () => { fadeCompleted = true; });
-
-            while (!fadeCompleted)
+            while (!IsTitleScreenStartRequested())
             {
                 yield return null;
+            }
+
+            G.ui.StopTitlePromptPulse();
+            var titleScreenImage = G.ui.TitleScreenImage;
+            if (titleScreenImage != null && G.ScreenFader != null)
+            {
+                var fadeCompleted = false;
+                G.ScreenFader.FadeOutCustom(
+                    titleScreenImage,
+                    Mathf.Max(0f, titleScreenFadeDuration),
+                    () => { fadeCompleted = true; });
+
+                while (!fadeCompleted)
+                {
+                    yield return null;
+                }
+            }
+            else
+            {
+                G.ui.ToggleTitle(false);
             }
         }
         else
         {
-            G.ui.ToggleTitle(false);
+            G.ui?.ToggleTitle(false);
         }
 
-        CompleteStartupSequence();
+        if (!runFirstRunTutorial || firstRunTutorialController == null)
+        {
+            CompleteStartupSequence();
+            yield break;
+        }
+
+        yield return firstRunTutorialController.PlayStartupIntroSequence();
+        G.ui?.ToggleTitle(false);
+        EnterNight();
+        ValidateLanePrototypeSetup();
+        yield return firstRunTutorialController.FadeIntoGameplaySequence();
+        startupSequenceInProgress = false;
+        StartCoroutine(firstRunTutorialController.RunNightTutorialSequence());
     }
 
     private void CompleteStartupSequence()

@@ -10,6 +10,7 @@ public class UI : MonoBehaviour
     [SerializeField] private TMP_Text clickToStartText;
 
     private Tween clickToStartTween;
+    private TutorialOverlayView tutorialOverlayView;
 
     public Image TitleScreenImage
     {
@@ -131,6 +132,23 @@ public class UI : MonoBehaviour
         SetClickPromptAlpha(1f);
     }
 
+    public TutorialOverlayView EnsureTutorialOverlay()
+    {
+        if (tutorialOverlayView != null)
+        {
+            return tutorialOverlayView;
+        }
+
+        tutorialOverlayView = GetComponentInChildren<TutorialOverlayView>(true);
+        if (tutorialOverlayView != null)
+        {
+            return tutorialOverlayView;
+        }
+
+        tutorialOverlayView = TutorialOverlayView.CreateUnder(transform, GetTextTemplate());
+        return tutorialOverlayView;
+    }
+
     private void ResolveReferences()
     {
         if (titleScreen == null)
@@ -188,6 +206,16 @@ public class UI : MonoBehaviour
         var color = clickToStartText.color;
         color.a = alpha;
         clickToStartText.color = color;
+    }
+
+    private TMP_Text GetTextTemplate()
+    {
+        if (clickToStartText != null)
+        {
+            return clickToStartText;
+        }
+
+        return GetComponentInChildren<TMP_Text>(true);
     }
 
     private static GameObject FindSceneObject(string objectName)

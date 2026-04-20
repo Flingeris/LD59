@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class KeeperActor : MonoBehaviour
 {
@@ -6,6 +7,7 @@ public class KeeperActor : MonoBehaviour
     private const int SortingPrecision = 100;
 
     private SpriteRenderer spriteRenderer;
+    private SortingGroup sortingGroup;
 
     private void LateUpdate()
     {
@@ -23,6 +25,17 @@ public class KeeperActor : MonoBehaviour
         var currentPosition = transform.position;
         UpdateFacing(new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y));
         transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
+    }
+
+    public void SetFacingDirection(PoiKeeperFacingDirection facingDirection)
+    {
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+
+        targetRenderer.flipX = facingDirection == PoiKeeperFacingDirection.Left;
     }
 
     private void UpdateFacing(Vector2 movementOffset)
@@ -43,6 +56,17 @@ public class KeeperActor : MonoBehaviour
 
     private void UpdateSortingOrder()
     {
+        if (sortingGroup == null)
+        {
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+        }
+
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+            return;
+        }
+
         var targetRenderer = GetSpriteRenderer();
         if (targetRenderer == null)
         {

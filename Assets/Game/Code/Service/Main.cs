@@ -1275,6 +1275,7 @@ public class Main : MonoBehaviour
 
         RunState.Keeper.CurrentPoiId = poi.Id;
         RunState.Keeper.InteractionState = interactionState;
+        keeperActor?.SetFacingDirection(poi.KeeperFacingDirection);
     }
 
     private void StopKeeperMovement()

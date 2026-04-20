@@ -5,13 +5,13 @@ public static class BellgraveBalance
 {
     public static class Run
     {
-        public const int InitialCemeteryState = 60;
-        public const float InitialKeeperMoveSpeed = 3f;
+        public const int InitialCemeteryState = 55;
+        public const float InitialKeeperMoveSpeed = 2.4f;
         public const float KeeperArrivalDistance = 0.05f;
 
-        public const int StartingNightFaith = 12;
+        public const int StartingNightFaith = 10;
         public const int FaithCollectionPayoutAmount = 4;
-        public const float FaithCollectionIntervalSeconds = 2.5f;
+        public const float FaithCollectionIntervalSeconds = 3f;
 
         public const int NightCemeteryRepairAmount = 1;
         public const float NightCemeteryRepairIntervalSeconds = 1f;
@@ -55,8 +55,8 @@ public static class BellgraveBalance
             def.InitializeRuntime(
                 "bell_small",
                 "Bone Bell",
-                6,
-                2.5f,
+                7,
+                2.75f,
                 "skel1",
                 null,
                 LoadRequired<GameObject>("ContentPrefabs/Bells/Bell1", "bell_small"));
@@ -69,8 +69,8 @@ public static class BellgraveBalance
             def.InitializeRuntime(
                 "bell_zombie",
                 "Grave Bell",
-                10,
-                5f,
+                14,
+                6f,
                 "zombie",
                 null,
                 LoadRequired<GameObject>("ContentPrefabs/Bells/Bell2", "bell_zombie"));
@@ -83,8 +83,8 @@ public static class BellgraveBalance
             def.InitializeRuntime(
                 "bell_vampire",
                 "Blood Bell",
-                16,
-                7f,
+                24,
+                10f,
                 "vampire",
                 null,
                 LoadRequired<GameObject>("ContentPrefabs/Bells/Bell3", "bell_vampire"));
@@ -97,10 +97,10 @@ public static class BellgraveBalance
             def.InitializeRuntime(
                 "skel1",
                 10,
-                3,
-                0.9f,
-                1.15f,
-                18f,
+                4,
+                0.95f,
+                1.1f,
+                17.5f,
                 LoadRequired<GameObject>("ContentPrefabs/Units/Skel", "skel1"));
             return def;
         }
@@ -110,11 +110,11 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<UnitDef>();
             def.InitializeRuntime(
                 "zombie",
-                26,
-                5,
-                1.25f,
-                0.8f,
-                24f,
+                30,
+                6,
+                1.45f,
+                0.7f,
+                20f,
                 LoadRequired<GameObject>("ContentPrefabs/Units/Zomb", "zombie"));
             return def;
         }
@@ -124,11 +124,11 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<UnitDef>();
             def.InitializeRuntime(
                 "vampire",
-                2,
-                999,
-                0.35f,
-                2.1f,
-                5f,
+                1,
+                12,
+                0.55f,
+                1.9f,
+                2.5f,
                 LoadRequired<GameObject>("ContentPrefabs/Units/Vamp", "vampire"));
             return def;
         }
@@ -138,11 +138,11 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<EnemyDef>();
             def.InitializeRuntime(
                 "en1",
-                8,
+                9,
                 2,
-                4,
-                1.15f,
-                1.8f,
+                5,
+                1.05f,
+                1.85f,
                 LoadRequired<GameObject>("ContentPrefabs/Enemies/En1", "en1"));
             return def;
         }
@@ -152,11 +152,11 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<EnemyDef>();
             def.InitializeRuntime(
                 "en_runner",
-                6,
+                7,
                 1,
-                5,
-                0.85f,
-                2.7f,
+                6,
+                0.8f,
+                2.8f,
                 LoadRequired<GameObject>("ContentPrefabs/Enemies/En2", "en_runner"));
             return def;
         }
@@ -166,11 +166,11 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<EnemyDef>();
             def.InitializeRuntime(
                 "en_brute",
-                24,
+                28,
                 4,
-                8,
-                1.4f,
-                0.9f,
+                10,
+                1.2f,
+                1.0f,
                 LoadRequired<GameObject>("ContentPrefabs/Enemies/En3", "en_brute"));
             return def;
         }
@@ -182,7 +182,7 @@ public static class BellgraveBalance
                 "Morning Prayers",
                 12,
                 UpgradeEffectType.StartingNightFaithBonus,
-                4);
+                3);
         }
 
         public static UpgradeDef CreateSacredRepairs()
@@ -190,9 +190,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_sacred_repairs",
                 "Sacred Repairs",
-                12,
+                16,
                 UpgradeEffectType.CemeteryRepair,
-                6);
+                5);
         }
 
         public static UpgradeDef CreateStoneBoundary()
@@ -200,9 +200,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_stone_boundary",
                 "Stone Boundary",
-                20,
+                24,
                 UpgradeEffectType.CemeteryMaxStateBonus,
-                12);
+                10);
         }
 
         public static UpgradeDef CreateVigilHymn()
@@ -210,9 +210,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_vigil_hymn",
                 "Vigil Hymn",
-                18,
+                22,
                 UpgradeEffectType.BellFaithCostModifier,
-                -2);
+                -1);
         }
 
         public static UpgradeDef CreateGraveOfferings()
@@ -220,9 +220,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_grave_offerings",
                 "Grave Offerings",
-                14,
+                16,
                 UpgradeEffectType.FaithIncomeBonus,
-                2);
+                1);
         }
 
         public static UpgradeDef CreateQuickenedBones()
@@ -230,9 +230,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_quickened_bones",
                 "Quickened Bones",
-                16,
+                18,
                 UpgradeEffectType.KeeperMoveSpeedBonus,
-                1);
+                0.5f);
         }
 
         public static UpgradeDef CreateLongerService()
@@ -240,9 +240,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_longer_service",
                 "Longer Service",
-                16,
+                20,
                 UpgradeEffectType.UnitLifetimeModifier,
-                4f,
+                3f,
                 "skel1");
         }
 
@@ -251,7 +251,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_sharpened_bones",
                 "Sharpened Bones",
-                18,
+                22,
                 UpgradeEffectType.UnitDamageModifier,
                 1f,
                 "skel1");
@@ -262,9 +262,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_vampiric_vigil",
                 "Vampiric Vigil",
-                18,
+                26,
                 UpgradeEffectType.UnitLifetimeModifier,
-                1.5f,
+                0.5f,
                 "vampire");
         }
 
@@ -273,9 +273,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_zombie_fortitude",
                 "Zombie Fortitude",
-                17,
+                22,
                 UpgradeEffectType.UnitHpModifier,
-                8f,
+                6f,
                 "zombie");
         }
 
@@ -284,9 +284,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_swifter_prayers",
                 "Swifter Prayers",
-                17,
+                18,
                 UpgradeEffectType.FaithCollectionIntervalModifier,
-                0.35f);
+                0.25f);
         }
 
         public static UpgradeDef CreateNightRepairRite()
@@ -294,9 +294,9 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_night_repair_rite",
                 "Night Repair Rite",
-                20,
+                24,
                 UpgradeEffectType.NightInstantRepairCharge,
-                8f);
+                6f);
         }
 
         private static UpgradeDef CreateUpgrade(
@@ -317,41 +317,41 @@ public static class BellgraveBalance
     {
         public static readonly NightWaveBalance Night1 = new(
             38f,
-            WaveAt(4f, Spawn("en1", 1)),
-            WaveAt(16f, Spawn("en1", 2)),
-            WaveAt(28f, Spawn("en1", 2)));
+            WaveAt(6f, Spawn("en1", 1)),
+            WaveAt(20f, Spawn("en1", 1)),
+            WaveAt(31f, Spawn("en1", 2)));
 
         public static readonly NightWaveBalance Night2 = new(
-            48f,
+            50f,
             WaveAt(6f, Spawn("en1", 2)),
             WaveAt(18f, Spawn("en_runner", 2)),
             WaveAt(30f, Spawn("en1", 2), Spawn("en_runner", 1)),
-            WaveAt(40f, Spawn("en1", 2)));
+            WaveAt(42f, Spawn("en1", 3)));
 
         public static readonly NightWaveBalance Night3 = new(
-            56f,
+            58f,
             WaveAt(6f, Spawn("en1", 2)),
             WaveAt(16f, Spawn("en_runner", 2)),
             WaveAt(28f, Spawn("en1", 3)),
             WaveAt(40f, Spawn("en_brute", 1), Spawn("en1", 2)),
-            WaveAt(50f, Spawn("en_runner", 2), Spawn("en1", 1)));
+            WaveAt(50f, Spawn("en_runner", 2), Spawn("en1", 2)));
 
         public static readonly NightWaveBalance Night4 = new(
-            60f,
+            64f,
             WaveAt(6f, Spawn("en_runner", 2)),
             WaveAt(18f, Spawn("en1", 3)),
             WaveAt(30f, Spawn("en_brute", 1)),
             WaveAt(42f, Spawn("en1", 2), Spawn("en_runner", 2)),
-            WaveAt(52f, Spawn("en1", 2)));
+            WaveAt(54f, Spawn("en_brute", 1), Spawn("en1", 1)));
 
         public static readonly NightWaveBalance Night5 = new(
-            72f,
+            74f,
             WaveAt(6f, Spawn("en1", 2)),
             WaveAt(16f, Spawn("en_runner", 2)),
             WaveAt(28f, Spawn("en_brute", 1), Spawn("en1", 2)),
-            WaveAt(40f, Spawn("en1", 3), Spawn("en_runner", 1)),
-            WaveAt(52f, Spawn("en_brute", 1), Spawn("en_runner", 2)),
-            WaveAt(64f, Spawn("en1", 3), Spawn("en_runner", 2)));
+            WaveAt(40f, Spawn("en1", 3), Spawn("en_runner", 2)),
+            WaveAt(54f, Spawn("en_brute", 1), Spawn("en_runner", 2)),
+            WaveAt(66f, Spawn("en1", 3), Spawn("en_runner", 2)));
 
         public static readonly NightWaveBalance Night6 = new(
             84f,

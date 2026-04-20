@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class LaneEnemy : MonoBehaviour
 {
@@ -20,6 +21,7 @@ public class LaneEnemy : MonoBehaviour
     private float attackCooldown;
     private LaneCombatFeedbackView combatFeedbackView;
     private SpriteRenderer spriteRenderer;
+    private SortingGroup sortingGroup;
     private bool hasPlayedDeathSfx;
 
     private void Update()
@@ -190,6 +192,17 @@ public class LaneEnemy : MonoBehaviour
 
     private void UpdateSortingOrder()
     {
+        if (sortingGroup == null)
+        {
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+        }
+
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+            return;
+        }
+
         if (spriteRenderer == null)
         {
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();

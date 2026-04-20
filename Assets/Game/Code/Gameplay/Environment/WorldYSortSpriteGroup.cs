@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [ExecuteAlways]
 [DisallowMultipleComponent]
@@ -9,6 +10,7 @@ public class WorldYSortSpriteGroup : MonoBehaviour
     [SerializeField] private bool includeInactiveChildren = true;
 
     private SpriteRenderer[] spriteRenderers = new SpriteRenderer[0];
+    private SortingGroup[] sortingGroups = new SortingGroup[0];
 
     private void Reset()
     {
@@ -42,6 +44,7 @@ public class WorldYSortSpriteGroup : MonoBehaviour
     private void RefreshSpriteRenderers()
     {
         spriteRenderers = GetComponentsInChildren<SpriteRenderer>(includeInactiveChildren);
+        sortingGroups = GetComponentsInChildren<SortingGroup>(includeInactiveChildren);
     }
 
     private void ApplySortingOrders()
@@ -51,10 +54,31 @@ public class WorldYSortSpriteGroup : MonoBehaviour
             RefreshSpriteRenderers();
         }
 
+        for (var i = 0; i < sortingGroups.Length; i++)
+        {
+            var sortingGroup = sortingGroups[i];
+            if (sortingGroup == null)
+            {
+                continue;
+            }
+
+            var sortingOrder = -Mathf.RoundToInt(sortingGroup.transform.position.y * SortingPrecision);
+            if (sortingGroup.sortingOrder != sortingOrder)
+            {
+                sortingGroup.sortingOrder = sortingOrder;
+            }
+        }
+
         for (var i = 0; i < spriteRenderers.Length; i++)
         {
             var spriteRenderer = spriteRenderers[i];
             if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            var parentSortingGroup = spriteRenderer.GetComponentInParent<SortingGroup>();
+            if (parentSortingGroup != null)
             {
                 continue;
             }

@@ -30,7 +30,7 @@ public class HUD : MonoBehaviour
     [SerializeField] private WinScreenView winScreenView;
     [SerializeField] private PhaseTransitionView phaseTransitionView;
     [SerializeField] private BellButtonBinding[] bellButtons;
-
+    [SerializeField] private TMP_Text cemeteryHpText;
     public event Action DayScreenStartNightRequested;
     public event Action<string> DayScreenUpgradePurchaseRequested;
     public event Action DefeatScreenRestartRequested;
@@ -39,6 +39,7 @@ public class HUD : MonoBehaviour
     private bool missingMainWarningShown;
     private FaithPickupVfxController faithPickupVfxController;
     private GoldPickupVfxController goldPickupVfxController;
+
     private void Awake()
     {
         G.HUD = this;
@@ -103,7 +104,7 @@ public class HUD : MonoBehaviour
 
         if (cemeteryStateText != null)
         {
-            cemeteryStateText.text = $"Cemetery: {runState.CemeteryState}";
+            cemeteryStateText.text = $"Cemetery: {runState.CemeteryState}/{runState.CemeteryMaxState}";
         }
 
         if (phaseText != null)

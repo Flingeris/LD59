@@ -1,19 +1,10 @@
 fileFormatVersion: 2
-guid: baf29ebf02218e54cb64118a670bf6d6
+guid: a59f20ac1d378254e8477d6f0297ecbe
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -1153483614663224896
-    second: graves_0
-  - first:
-      213: 6115271499341235507
-    second: graves_1
-  - first:
-      213: 3988702646374483555
-    second: graves_2
-  - first:
-      213: 7546387748406409121
-    second: graves_3
+      213: -6732344358882479484
+    second: statua_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -55,7 +46,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 2
+  spriteMode: 1
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -122,89 +113,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: graves_0
+      name: statua_0
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 4
-        height: 8
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 0c1d3cd83c00effe0800000000000000
-      internalID: -1153483614663224896
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: graves_1
-      rect:
-        serializedVersion: 2
-        x: 5
-        y: 0
-        width: 5
-        height: 7
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 3350e4f470fcdd450800000000000000
-      internalID: 6115271499341235507
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: graves_2
-      rect:
-        serializedVersion: 2
-        x: 17
-        y: 0
-        width: 5
-        height: 7
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 366cfcf7ce7ba5730800000000000000
-      internalID: 3988702646374483555
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: graves_4
-      rect:
-        serializedVersion: 2
-        x: 11
-        y: 0
-        width: 5
-        height: 7
+        width: 26
+        height: 25
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
-      tessellationDetail: 0
+      tessellationDetail: -1
       bones: []
-      spriteID: 9ff6518e9aa3c00469304e046ddf49a4
-      internalID: -1361509164
+      spriteID: 482743f9978e192a0800000000000000
+      internalID: -6732344358882479484
       vertices: []
       indices: 
       edges: []
@@ -213,7 +138,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 73e6ff7772e803446be41819322c9b52
+    spriteID: 5e97eb03825dee720800000000000000
     internalID: 0
     vertices: []
     indices: 
@@ -223,11 +148,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      graves_0: -1153483614663224896
-      graves_1: 6115271499341235507
-      graves_2: 3988702646374483555
-      graves_3: 7546387748406409121
-      graves_4: -1361509164
+      statua_0: -6732344358882479484
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

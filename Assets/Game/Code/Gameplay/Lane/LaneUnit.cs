@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class LaneUnit : MonoBehaviour
 {
@@ -33,6 +34,7 @@ public class LaneUnit : MonoBehaviour
     private int idleMicroRetargetIndex;
     private LaneCombatFeedbackView combatFeedbackView;
     private SpriteRenderer spriteRenderer;
+    private SortingGroup sortingGroup;
     private float remainingLifetime = -1f;
     private bool hasPlayedDeathSfx;
     private int maxHp;
@@ -379,6 +381,17 @@ public class LaneUnit : MonoBehaviour
 
     private void UpdateSortingOrder()
     {
+        if (sortingGroup == null)
+        {
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+        }
+
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+            return;
+        }
+
         if (spriteRenderer == null)
         {
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();

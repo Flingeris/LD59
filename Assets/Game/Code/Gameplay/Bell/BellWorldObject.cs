@@ -1,8 +1,11 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 
 public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 {
+    private const int SortingPrecision = 100;
+
     [SerializeField] private string bellId;
     [SerializeField] private WorldBarFillShrink cooldownBar;
     [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
@@ -10,6 +13,7 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
     private float cooldownRemainingSeconds;
     private float cooldownDurationSeconds;
     private SpriteRenderer spriteRenderer;
+    private SortingGroup sortingGroup;
 
     public string BellId => bellId;
     public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
@@ -31,6 +35,11 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 
         cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
         RefreshCooldownPresentation();
+    }
+
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
     }
 
     public bool TryGetWorldInteractionValidationError(out string validationError)
@@ -133,8 +142,28 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
         if (spriteRenderer == null)
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
 
+        if (sortingGroup == null)
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+
         if (cooldownBar == null)
             cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
+    }
+
+    private void UpdateSortingOrder()
+    {
+        EnsureReferences();
+
+        var sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingOrder = sortingOrder;
+            return;
+        }
+
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.sortingOrder = sortingOrder;
+        }
     }
 
     private float GetPopupOffsetY()

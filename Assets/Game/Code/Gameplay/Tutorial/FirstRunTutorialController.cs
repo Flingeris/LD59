@@ -13,6 +13,7 @@ public sealed class FirstRunTutorialController : IDisposable
     private const string FaithMarkup = "<color=#7EDBFF>faith</color>";
     private const string LimitedTimeMarkup = "<color=#F2D35E>limited time</color>";
     private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred places</color>";
+    private const string RepairCemeteryMarkup = "<color=#C8E1BA>repair cemetery</color>";
 
     private readonly Main main;
     private readonly string tutorialBellId;
@@ -25,6 +26,8 @@ public sealed class FirstRunTutorialController : IDisposable
     private bool bellSummoned;
     private bool tutorialEnemyKilled;
     private bool faithCollected;
+    private bool cemeteryDamaged;
+    private bool cemeteryRepaired;
 
     public FirstRunTutorialController(Main main, string tutorialBellId, string tutorialEnemyId)
     {
@@ -37,6 +40,8 @@ public sealed class FirstRunTutorialController : IDisposable
             main.BellSummoned += HandleBellSummoned;
             main.FaithCollected += HandleFaithCollected;
             main.EnemyKilled += HandleEnemyKilled;
+            main.CemeteryDamaged += HandleCemeteryDamaged;
+            main.CemeteryRepaired += HandleCemeteryRepaired;
         }
     }
 
@@ -89,6 +94,8 @@ public sealed class FirstRunTutorialController : IDisposable
         bellSummoned = false;
         tutorialEnemyKilled = false;
         faithCollected = false;
+        cemeteryDamaged = false;
+        cemeteryRepaired = false;
         tutorialEnemy = null;
 
         yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
@@ -113,7 +120,11 @@ public sealed class FirstRunTutorialController : IDisposable
             yield break;
         }
 
-        overlay.ShowWorldMarker(bellWorldObject.transform, "RING BELL", new Color(1f, 0.86f, 0.36f, 1f));
+        overlay.ShowWorldMarker(
+            bellWorldObject.transform,
+            "RING BELL",
+            new Color(1f, 0.86f, 0.36f, 1f),
+            TutorialWorldMarkerAnchor.BellPosition);
         yield return overlay.PlayTypedMessage(
             $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
             false);
@@ -148,7 +159,11 @@ public sealed class FirstRunTutorialController : IDisposable
             yield break;
         }
 
-        overlay.ShowWorldMarker(faithPointPoi.transform, "COLLECT FAITH", new Color(0.56f, 0.9f, 1f, 1f));
+        overlay.ShowWorldMarker(
+            faithPointPoi.transform,
+            "COLLECT FAITH",
+            new Color(0.56f, 0.9f, 1f, 1f),
+            TutorialWorldMarkerAnchor.FaithPosition);
         while (!faithCollected)
         {
             yield return null;
@@ -159,10 +174,35 @@ public sealed class FirstRunTutorialController : IDisposable
             $"Survive to the final night, and take {GraveyJonesPossessiveMarkup} place.",
             false);
 
-        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
-        PlayerPrefs.Save();
+        BlocksWaveProgress = false;
+        BlocksNightCompletion = false;
 
-        ReleaseTutorialLocks();
+        while (!cemeteryDamaged)
+        {
+            yield return null;
+        }
+
+        if (!main.TryGetNightPoiByType(NightPoiType.RepairPoint, out var repairPointPoi))
+        {
+            CompleteTutorial();
+            yield break;
+        }
+
+        overlay.ShowWorldMarker(
+            repairPointPoi.transform,
+            "REPAIR",
+            new Color(0.78f, 0.88f, 0.72f, 1f),
+            TutorialWorldMarkerAnchor.RepairPosition);
+        yield return overlay.PlayTypedMessage(
+            $"You can {RepairCemeteryMarkup}, but it can take a while.",
+            false);
+
+        while (!cemeteryRepaired)
+        {
+            yield return null;
+        }
+
+        CompleteTutorial();
     }
 
     public void Dispose()
@@ -178,6 +218,8 @@ public sealed class FirstRunTutorialController : IDisposable
             main.BellSummoned -= HandleBellSummoned;
             main.FaithCollected -= HandleFaithCollected;
             main.EnemyKilled -= HandleEnemyKilled;
+            main.CemeteryDamaged -= HandleCemeteryDamaged;
+            main.CemeteryRepaired -= HandleCemeteryRepaired;
         }
 
         overlayView?.HideImmediate();
@@ -202,6 +244,13 @@ public sealed class FirstRunTutorialController : IDisposable
         BlocksWaveProgress = false;
         BlocksNightCompletion = false;
         isRunning = false;
+    }
+
+    private void CompleteTutorial()
+    {
+        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
+        PlayerPrefs.Save();
+        ReleaseTutorialLocks();
     }
 
     private void HandleBellSummoned(string bellId, LaneUnit spawnedUnit)
@@ -242,6 +291,26 @@ public sealed class FirstRunTutorialController : IDisposable
         }
 
         tutorialEnemyKilled = true;
+    }
+
+    private void HandleCemeteryDamaged(int damageAmount)
+    {
+        if (!isRunning || damageAmount <= 0)
+        {
+            return;
+        }
+
+        cemeteryDamaged = true;
+    }
+
+    private void HandleCemeteryRepaired(int repairedAmount)
+    {
+        if (!isRunning || repairedAmount <= 0)
+        {
+            return;
+        }
+
+        cemeteryRepaired = true;
     }
 
     private void SetTutorialEnemyPaused(bool paused)

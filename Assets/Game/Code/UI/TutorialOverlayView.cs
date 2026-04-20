@@ -1,5 +1,4 @@
 using System.Collections;
-using DG.Tweening;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -25,9 +24,14 @@ public class TutorialOverlayView : MonoBehaviour
     private RectTransform rootRect;
     private Canvas ownerCanvas;
     private Transform markerTarget;
-    private Tween markerTween;
+    private Transform markerAnchorWorldTarget;
+    private TutorialWorldMarkerTemplate markerTemplateSettings;
+    private bool usesMarkerTemplate;
 
-    public static TutorialOverlayView CreateUnder(Transform parent, TMP_Text textTemplate = null)
+    public static TutorialOverlayView CreateUnder(
+        Transform parent,
+        TMP_Text textTemplate = null,
+        RectTransform markerTemplate = null)
     {
         if (parent == null)
         {
@@ -79,17 +83,7 @@ public class TutorialOverlayView : MonoBehaviour
         view.messageWaveAnimation.textMesh = view.messageText;
         view.messageWaveAnimation.frequency = 3.5f;
         view.messageWaveAnimation.amplitude = 1.4f;
-        view.markerRootRect = CreateContainer(rootObject.transform, "MarkerRoot");
-        view.markerVisualRect = CreatePanel(view.markerRootRect, "MarkerVisual", new Vector2(128f, 24f));
-        view.markerBackgroundImage = view.markerVisualRect.GetComponent<Image>();
-        view.markerBackgroundImage.color = new Color(0.1f, 0.13f, 0.18f, 0.92f);
-        view.markerText = CreateText(
-            view.markerVisualRect,
-            "MarkerText",
-            textTemplate,
-            8f,
-            TextAlignmentOptions.Center,
-            new Color(0.98f, 0.96f, 0.9f, 1f));
+        view.InitializeMarker(markerTemplate, textTemplate);
         view.HideImmediate();
         return view;
     }
@@ -99,12 +93,6 @@ public class TutorialOverlayView : MonoBehaviour
         rootRect = transform as RectTransform;
         ownerCanvas = GetComponentInParent<Canvas>();
         gameObject.SetActive(false);
-    }
-
-    private void OnDestroy()
-    {
-        markerTween?.Kill();
-        markerTween = null;
     }
 
     private void LateUpdate()
@@ -195,22 +183,35 @@ public class TutorialOverlayView : MonoBehaviour
         UpdateVisibility();
     }
 
-    public void ShowWorldMarker(Transform target, string label, Color color)
+    public void ShowWorldMarker(
+        Transform target,
+        string label,
+        Color color,
+        TutorialWorldMarkerAnchor anchor = TutorialWorldMarkerAnchor.Default)
     {
         EnsureReferences();
+        if (markerRootRect == null)
+        {
+            return;
+        }
+
         markerTarget = target;
-        markerText.text = label ?? string.Empty;
-        markerText.color = color;
-        markerBackgroundImage.color = new Color(color.r * 0.18f, color.g * 0.18f, color.b * 0.2f, 0.94f);
-        markerRootRect.gameObject.SetActive(true);
+        markerAnchorWorldTarget = markerTemplateSettings != null
+            ? markerTemplateSettings.GetWorldAnchor(anchor)
+            : null;
+        if (markerText != null)
+        {
+            markerText.text = label ?? string.Empty;
+            markerText.color = color;
+        }
+
+        if (!usesMarkerTemplate && markerBackgroundImage != null)
+        {
+            markerBackgroundImage.color = new Color(color.r * 0.18f, color.g * 0.18f, color.b * 0.2f, 0.94f);
+        }
+
+        SetMarkerVisible(true);
         ShowRoot();
-        markerTween?.Kill();
-        markerVisualRect.localScale = Vector3.one;
-        markerTween = markerVisualRect
-            .DOScale(1.08f, 0.55f)
-            .SetEase(Ease.InOutSine)
-            .SetLoops(-1, LoopType.Yoyo)
-            .SetUpdate(true);
         UpdateMarkerPosition();
         UpdateVisibility();
     }
@@ -218,23 +219,33 @@ public class TutorialOverlayView : MonoBehaviour
     public void HideWorldMarker()
     {
         EnsureReferences();
-        markerTween?.Kill();
-        markerTween = null;
         markerTarget = null;
-        markerVisualRect.localScale = Vector3.one;
-        markerRootRect.gameObject.SetActive(false);
+        markerAnchorWorldTarget = null;
+        if (markerVisualRect != null)
+        {
+            markerVisualRect.localScale = Vector3.one;
+        }
+
+        if (markerRootRect != null)
+        {
+            SetMarkerVisible(false);
+        }
+
         UpdateVisibility();
     }
 
     public void HideImmediate()
     {
         EnsureReferences();
-        markerTween?.Kill();
-        markerTween = null;
         markerTarget = null;
+        markerAnchorWorldTarget = null;
         inputBlockerImage.raycastTarget = false;
         messagePanelRect.gameObject.SetActive(false);
-        markerRootRect.gameObject.SetActive(false);
+        if (markerRootRect != null)
+        {
+            SetMarkerVisible(false);
+        }
+
         SetBackdropAlpha(0f);
         gameObject.SetActive(false);
     }
@@ -271,6 +282,78 @@ public class TutorialOverlayView : MonoBehaviour
         messageText.alignment = TextAlignmentOptions.Center;
     }
 
+    private void InitializeMarker(RectTransform markerTemplate, TMP_Text textTemplate)
+    {
+        markerTemplateSettings = markerTemplate != null
+            ? markerTemplate.GetComponent<TutorialWorldMarkerTemplate>()
+            : null;
+
+        markerRootRect = CreateContainer(transform, "MarkerRoot");
+
+        if (markerTemplate != null)
+        {
+            var markerInstance = Instantiate(markerTemplate, markerRootRect);
+            markerInstance.name = markerTemplate.name;
+            markerInstance.gameObject.SetActive(false);
+
+            markerVisualRect = markerInstance;
+            markerBackgroundImage = markerInstance.GetComponent<Image>();
+            if (markerBackgroundImage == null)
+            {
+                markerBackgroundImage = markerInstance.GetComponentInChildren<Image>(true);
+            }
+
+            markerText = markerInstance.GetComponentInChildren<TMP_Text>(true);
+            usesMarkerTemplate = true;
+            return;
+        }
+
+        usesMarkerTemplate = false;
+        markerVisualRect = CreatePanel(markerRootRect, "MarkerVisual", new Vector2(128f, 24f));
+        markerBackgroundImage = markerVisualRect.GetComponent<Image>();
+        markerBackgroundImage.color = new Color(0.1f, 0.13f, 0.18f, 0.92f);
+        markerText = CreateText(
+            markerVisualRect,
+            "MarkerText",
+            textTemplate,
+            8f,
+            TextAlignmentOptions.Center,
+            new Color(0.98f, 0.96f, 0.9f, 1f));
+    }
+
+    private void SetMarkerVisible(bool visible)
+    {
+        if (markerRootRect == null)
+        {
+            return;
+        }
+
+        markerRootRect.gameObject.SetActive(visible);
+        if (markerVisualRect != null)
+        {
+            markerVisualRect.gameObject.SetActive(visible);
+        }
+
+        if (!visible)
+        {
+            return;
+        }
+
+        var floatAnimations = markerVisualRect != null
+            ? markerVisualRect.GetComponentsInChildren<FloatUpDownAnimation>(true)
+            : markerRootRect.GetComponentsInChildren<FloatUpDownAnimation>(true);
+        for (var i = 0; i < floatAnimations.Length; i++)
+        {
+            var animation = floatAnimations[i];
+            if (animation == null)
+            {
+                continue;
+            }
+
+            animation.Play();
+        }
+    }
+
     private void UpdateMarkerPosition()
     {
         if (markerTarget == null || markerRootRect == null || !markerRootRect.gameObject.activeSelf)
@@ -284,7 +367,9 @@ public class TutorialOverlayView : MonoBehaviour
             return;
         }
 
-        var worldPosition = markerTarget.position + Vector3.up * 0.95f;
+        var worldPosition = markerAnchorWorldTarget != null
+            ? markerAnchorWorldTarget.position
+            : markerTarget.position + Vector3.up * 0.95f;
         var viewportPoint = renderCamera.WorldToViewportPoint(worldPosition);
         if (viewportPoint.z < 0f)
         {

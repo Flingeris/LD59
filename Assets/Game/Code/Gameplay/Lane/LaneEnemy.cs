@@ -20,6 +20,7 @@ public class LaneEnemy : MonoBehaviour
     private float attackCooldown;
     private LaneCombatFeedbackView combatFeedbackView;
     private SpriteRenderer spriteRenderer;
+    private bool hasPlayedDeathSfx;
 
     private void Update()
     {
@@ -45,6 +46,7 @@ public class LaneEnemy : MonoBehaviour
         TargetUnit = null;
         attackCooldown = enemyDef.AttackInterval;
         IsAttackingCemetery = false;
+        hasPlayedDeathSfx = false;
         combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
         if (combatFeedbackView == null)
         {
@@ -84,6 +86,10 @@ public class LaneEnemy : MonoBehaviour
 
         CurrentHp -= damage;
         combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
+        if (CurrentHp <= 0)
+        {
+            PlayDeathSfxIfNeeded();
+        }
     }
 
     private void OnDestroy()
@@ -195,5 +201,19 @@ public class LaneEnemy : MonoBehaviour
         }
 
         spriteRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+    }
+
+    private void PlayDeathSfxIfNeeded()
+    {
+        if (hasPlayedDeathSfx)
+        {
+            return;
+        }
+
+        hasPlayedDeathSfx = true;
+        if (G.audioSystem != null)
+        {
+            G.audioSystem.Play(SoundId.SFX_EnDying);
+        }
     }
 }

@@ -8,6 +8,7 @@ public class UI : MonoBehaviour
 {
     [SerializeField] private GameObject titleScreen;
     [SerializeField] private TMP_Text clickToStartText;
+    [SerializeField] private RectTransform tutorialWorldMarkerTemplate;
 
     private Tween clickToStartTween;
     private TutorialOverlayView tutorialOverlayView;
@@ -145,7 +146,7 @@ public class UI : MonoBehaviour
             return tutorialOverlayView;
         }
 
-        tutorialOverlayView = TutorialOverlayView.CreateUnder(transform, GetTextTemplate());
+        tutorialOverlayView = TutorialOverlayView.CreateUnder(transform, GetTextTemplate(), tutorialWorldMarkerTemplate);
         return tutorialOverlayView;
     }
 

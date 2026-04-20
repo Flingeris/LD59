@@ -56,6 +56,8 @@ public class Main : MonoBehaviour
     public event Action<string, LaneUnit> BellSummoned;
     public event Action<int> FaithCollected;
     public event Action<LaneEnemy> EnemyKilled;
+    public event Action<int> CemeteryDamaged;
+    public event Action<int> CemeteryRepaired;
 
     public bool IsNightWaveActive => RunState != null && RunState.CurrentPhase == GamePhase.Night &&
                                      waveSystem != null && waveSystem.IsRunning;
@@ -238,9 +240,16 @@ public class Main : MonoBehaviour
             return;
         }
 
+        var previousCemeteryState = RunState.CemeteryState;
         var didChangeState = cemeteryStateSystem.ApplyBreakthroughDamage(RunState, amount);
         if (didChangeState)
         {
+            var damageApplied = Mathf.Max(0, previousCemeteryState - RunState.CemeteryState);
+            if (damageApplied > 0)
+            {
+                CemeteryDamaged?.Invoke(damageApplied);
+            }
+
             RefreshPresentation();
         }
 
@@ -780,6 +789,7 @@ public class Main : MonoBehaviour
             return;
         }
 
+        CemeteryRepaired?.Invoke(repairedAmount);
         RefreshPresentation();
     }
 

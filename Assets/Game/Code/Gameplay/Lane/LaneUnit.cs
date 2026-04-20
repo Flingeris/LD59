@@ -34,6 +34,7 @@ public class LaneUnit : MonoBehaviour
     private LaneCombatFeedbackView combatFeedbackView;
     private SpriteRenderer spriteRenderer;
     private float remainingLifetime = -1f;
+    private bool hasPlayedDeathSfx;
 
     private void Update()
     {
@@ -63,6 +64,7 @@ public class LaneUnit : MonoBehaviour
         TargetEnemy = null;
         attackCooldown = unitDef.AttackInterval;
         remainingLifetime = unitDef.LifetimeSeconds > 0f ? unitDef.LifetimeSeconds : -1f;
+        hasPlayedDeathSfx = false;
         combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
         if (combatFeedbackView == null)
         {
@@ -150,6 +152,10 @@ public class LaneUnit : MonoBehaviour
 
         CurrentHp -= damage;
         combatFeedbackView?.PlayDamageFeedback(damage, CurrentHp);
+        if (CurrentHp <= 0)
+        {
+            PlayDeathSfxIfNeeded();
+        }
     }
 
     private void OnDestroy()
@@ -399,7 +405,22 @@ public class LaneUnit : MonoBehaviour
             return false;
         }
 
+        PlayDeathSfxIfNeeded();
         Destroy(gameObject);
         return true;
+    }
+
+    private void PlayDeathSfxIfNeeded()
+    {
+        if (hasPlayedDeathSfx)
+        {
+            return;
+        }
+
+        hasPlayedDeathSfx = true;
+        if (G.audioSystem != null)
+        {
+            G.audioSystem.Play(SoundId.SFX_SkelDying);
+        }
     }
 }

@@ -8,6 +8,8 @@
     SFX_LevelTransition = 3,
     SFX_BellRing = 4,
     SFX_CombatHit = 5,
+    SFX_SkelDying = 6,
+    SFX_EnDying = 7,
 
 
     //Music

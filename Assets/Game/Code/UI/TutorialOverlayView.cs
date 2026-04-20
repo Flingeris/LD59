@@ -20,6 +20,7 @@ public class TutorialOverlayView : MonoBehaviour
     [SerializeField] private RectTransform markerVisualRect;
     [SerializeField] private Image markerBackgroundImage;
     [SerializeField] private TMP_Text markerText;
+    [SerializeField] private SineWaveTextAnimation messageWaveAnimation;
 
     private RectTransform rootRect;
     private Canvas ownerCanvas;
@@ -69,6 +70,15 @@ public class TutorialOverlayView : MonoBehaviour
             GameplayFontSize,
             TextAlignmentOptions.Center,
             new Color(0.95f, 0.95f, 0.92f, 1f));
+        view.messageWaveAnimation = view.messageText.GetComponent<SineWaveTextAnimation>();
+        if (view.messageWaveAnimation == null)
+        {
+            view.messageWaveAnimation = view.messageText.gameObject.AddComponent<SineWaveTextAnimation>();
+        }
+
+        view.messageWaveAnimation.textMesh = view.messageText;
+        view.messageWaveAnimation.frequency = 3.5f;
+        view.messageWaveAnimation.amplitude = 1.4f;
         view.markerRootRect = CreateContainer(rootObject.transform, "MarkerRoot");
         view.markerVisualRect = CreatePanel(view.markerRootRect, "MarkerVisual", new Vector2(128f, 24f));
         view.markerBackgroundImage = view.markerVisualRect.GetComponent<Image>();
@@ -148,7 +158,8 @@ public class TutorialOverlayView : MonoBehaviour
         yield return WaitForInputRelease();
 
         var safeText = text ?? string.Empty;
-        for (var i = 1; i <= safeText.Length; i++)
+        var visibleLength = TextUtils.GetVisibleLength(safeText);
+        for (var i = 1; i <= visibleLength; i++)
         {
             if (IsAdvancePressed())
             {
@@ -156,7 +167,8 @@ public class TutorialOverlayView : MonoBehaviour
                 break;
             }
 
-            messageText.text = safeText.Substring(0, i);
+            messageText.text = TextUtils.CutSmart(safeText, i);
+            NotifyTextRevealDelta(safeText, i);
             yield return new WaitForSecondsRealtime(TypeCharacterInterval);
         }
 
@@ -328,6 +340,19 @@ public class TutorialOverlayView : MonoBehaviour
         backdropImage.color = color;
     }
 
+    private void NotifyTextRevealDelta(string fullText, int visibleCharIndex)
+    {
+        if (messageText == null || string.IsNullOrEmpty(fullText) || visibleCharIndex <= 0)
+        {
+            return;
+        }
+
+        messageText.gameObject.BroadcastMessage(
+            "TextWriterDelta",
+            TextUtils.CharSmart(fullText, visibleCharIndex),
+            SendMessageOptions.DontRequireReceiver);
+    }
+
     private static IEnumerator WaitForInputRelease()
     {
         yield return null;
@@ -463,6 +488,7 @@ public class TutorialOverlayView : MonoBehaviour
         text.fontSize = fontSize;
         text.alignment = alignment;
         text.color = color;
+        text.richText = true;
         text.raycastTarget = false;
         text.enableWordWrapping = true;
         text.overflowMode = TextOverflowModes.Overflow;

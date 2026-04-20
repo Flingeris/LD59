@@ -51,11 +51,9 @@ public class TextUtils
                     else
                     {
                         // Opening tag: push to the stack
-                        int spaceIndex = tagContent.IndexOf(' ');
-                        spaceIndex = spaceIndex == -1 ? tagContent.Length - 1 : spaceIndex;
-                        string tagName = tagContent.Substring(1, spaceIndex - 1).TrimEnd('/');
+                        string tagName = GetTagName(tagContent);
 
-                        if (!tagName.EndsWith("/")) // Self-closing tag check
+                        if (!string.IsNullOrEmpty(tagName) && !tagContent.EndsWith("/>")) // Self-closing tag check
                             openTags.Push(tagName);
                     }
 
@@ -91,6 +89,29 @@ public class TextUtils
         }
 
         return output.ToString();
+    }
+
+    private static string GetTagName(string tagContent)
+    {
+        if (string.IsNullOrEmpty(tagContent) || tagContent.Length < 3)
+            return string.Empty;
+
+        int startIndex = tagContent.StartsWith("</") ? 2 : 1;
+        int endIndex = startIndex;
+
+        while (endIndex < tagContent.Length)
+        {
+            char current = tagContent[endIndex];
+            if (current == '>' || current == '/' || char.IsWhiteSpace(current) || current == '=')
+                break;
+
+            endIndex++;
+        }
+
+        if (endIndex <= startIndex)
+            return string.Empty;
+
+        return tagContent.Substring(startIndex, endIndex - startIndex);
     }
     
     public static int GetVisibleLength(string input)

@@ -64,6 +64,11 @@ Assets/Game/Code/DefaultSystems/SaveSystem/JSONDataService.cs
 Assets/Game/Code/DefaultSystems/SettingsUI/PauseManager.cs
 Assets/Game/Code/DefaultSystems/Utils/GameUtils.cs
 Assets/Game/Code/DefaultSystems/VFX/FloatAnimation.cs
+Assets/Game/Code/DefaultSystems/VFX/Text/ScaleTextAnimation.cs
+Assets/Game/Code/DefaultSystems/VFX/Text/ShakeTextAnimation.cs
+Assets/Game/Code/DefaultSystems/VFX/Text/SineWaveTextAnimation.cs
+Assets/Game/Code/DefaultSystems/VFX/Text/TextUtils.cs
+Assets/Game/Code/DefaultSystems/VFX/Text/TextWriter.cs
 Assets/Game/Code/DefaultSystems/VFX/TextPopup/Popups.cs
 Assets/Game/Code/DefaultSystems/VFX/TextPopup/TextPopupInstance.cs
 Assets/Game/Code/DefaultSystems/VFX/TextPopup/TextPopupService.cs
@@ -138,623 +143,6 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs">
-using System;
-using System.Collections;
-using UnityEngine;
-public sealed class FirstRunTutorialController : IDisposable
-{
-    private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
-    private const float IntroFadeDuration = 0.45f;
-    private const float TutorialEnemySpawnOffsetX = -1.75f;
-    private readonly Main main;
-    private readonly string tutorialBellId;
-    private readonly string tutorialEnemyId;
-    private TutorialOverlayView overlayView;
-    private LaneEnemy tutorialEnemy;
-    private bool isDisposed;
-    private bool isRunning;
-    private bool bellSummoned;
-    private bool tutorialEnemyKilled;
-    private bool faithCollected;
-    public FirstRunTutorialController(Main main, string tutorialBellId, string tutorialEnemyId)
-    {
-        this.main = main;
-        this.tutorialBellId = tutorialBellId;
-        this.tutorialEnemyId = tutorialEnemyId;
-        if (main != null)
-        {
-            main.BellSummoned += HandleBellSummoned;
-            main.FaithCollected += HandleFaithCollected;
-            main.EnemyKilled += HandleEnemyKilled;
-        }
-    }
-    public bool ShouldRunFirstRunTutorial => PlayerPrefs.GetInt(TutorialCompletedKey, 0) == 0;
-    public bool BlocksWaveProgress { get; private set; }
-    public bool BlocksNightCompletion { get; private set; }
-    public IEnumerator PlayStartupIntroSequence()
-    {
-        var overlay = ResolveOverlay();
-        if (overlay == null)
-        {
-            yield break;
-        }
-        overlay.ShowBlackBackdropImmediate();
-        yield return overlay.PlayTypedMessage("The old keeper, Gravey Jones, is dead.", true);
-        yield return overlay.PlayTypedMessage("Without him, the cemetery stands unguarded.", true);
-    }
-    public IEnumerator FadeIntoGameplaySequence()
-    {
-        var overlay = ResolveOverlay();
-        if (overlay == null)
-        {
-            yield break;
-        }
-        overlay.HideMessage();
-        yield return overlay.FadeBackdropTo(0f, IntroFadeDuration);
-        overlay.HideImmediate();
-    }
-    public IEnumerator RunNightTutorialSequence()
-    {
-        if (!ShouldRunFirstRunTutorial)
-        {
-            yield break;
-        }
-        var overlay = ResolveOverlay();
-        if (overlay == null)
-        {
-            yield break;
-        }
-        isRunning = true;
-        BlocksWaveProgress = true;
-        BlocksNightCompletion = true;
-        bellSummoned = false;
-        tutorialEnemyKilled = false;
-        faithCollected = false;
-        tutorialEnemy = null;
-        yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
-        var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
-        if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-        tutorialEnemy = enemySpawnResult.SpawnedEnemy;
-        tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
-        yield return new WaitForSeconds(1f);
-        SetTutorialEnemyPaused(true);
-        yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
-        if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-        overlay.ShowWorldMarker(bellWorldObject.transform, "RING BELL", new Color(1f, 0.86f, 0.36f, 1f));
-        yield return overlay.PlayTypedMessage("Ring the bells to signal the graveyard's defenders.", false);
-        while (!bellSummoned)
-        {
-            yield return null;
-        }
-        overlay.HideWorldMarker();
-        SetTutorialEnemyPaused(false);
-        yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
-        yield return overlay.PlayTypedMessage(
-            "Each defender has limited <color=#F2D35E>time</color> to serve this holy ground", false);
-        while (!tutorialEnemyKilled)
-        {
-            yield return null;
-        }
-        yield return overlay.PlayTypedMessage(
-            "Raising undead defenders costs faith.",
-            false);
-        yield return overlay.PlayTypedMessage(
-            "To get it you must pray at sacred place, but it can take time.",
-            false);
-        if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-        overlay.ShowWorldMarker(faithPointPoi.transform, "COLLECT FAITH", new Color(0.56f, 0.9f, 1f, 1f));
-        while (!faithCollected)
-        {
-            yield return null;
-        }
-        overlay.HideWorldMarker();
-        yield return overlay.PlayTypedMessage(
-            "Survive to the final night, and take Gravey Jones's place.",
-            false);
-        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
-        PlayerPrefs.Save();
-        ReleaseTutorialLocks();
-    }
-    public void Dispose()
-    {
-        if (isDisposed)
-        {
-            return;
-        }
-        isDisposed = true;
-        if (main != null)
-        {
-            main.BellSummoned -= HandleBellSummoned;
-            main.FaithCollected -= HandleFaithCollected;
-            main.EnemyKilled -= HandleEnemyKilled;
-        }
-        overlayView?.HideImmediate();
-    }
-    private TutorialOverlayView ResolveOverlay()
-    {
-        if (overlayView != null)
-        {
-            return overlayView;
-        }
-        overlayView = G.ui != null ? G.ui.EnsureTutorialOverlay() : null;
-        return overlayView;
-    }
-    private void ReleaseTutorialLocks()
-    {
-        SetTutorialEnemyPaused(false);
-        overlayView?.HideWorldMarker();
-        overlayView?.HideImmediate();
-        BlocksWaveProgress = false;
-        BlocksNightCompletion = false;
-        isRunning = false;
-    }
-    private void HandleBellSummoned(string bellId, LaneUnit spawnedUnit)
-    {
-        if (!isRunning || string.IsNullOrWhiteSpace(bellId) || spawnedUnit == null)
-        {
-            return;
-        }
-        if (!string.Equals(bellId, tutorialBellId, StringComparison.Ordinal))
-        {
-            return;
-        }
-        bellSummoned = true;
-    }
-    private void HandleFaithCollected(int collectedFaith)
-    {
-        if (!isRunning || collectedFaith <= 0)
-        {
-            return;
-        }
-        faithCollected = true;
-    }
-    private void HandleEnemyKilled(LaneEnemy laneEnemy)
-    {
-        if (!isRunning || laneEnemy == null || tutorialEnemy == null)
-        {
-            return;
-        }
-        if (!ReferenceEquals(laneEnemy, tutorialEnemy))
-        {
-            return;
-        }
-        tutorialEnemyKilled = true;
-    }
-    private void SetTutorialEnemyPaused(bool paused)
-    {
-        if (tutorialEnemy == null)
-        {
-            return;
-        }
-        tutorialEnemy.enabled = !paused;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/TutorialOverlayView.cs">
-using System.Collections;
-using DG.Tweening;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-[DisallowMultipleComponent]
-public class TutorialOverlayView : MonoBehaviour
-{
-    private const float TypeCharacterInterval = 0.022f;
-    private const float IntroFontSize = 14f;
-    private const float GameplayFontSize = 10f;
-    [SerializeField] private Image inputBlockerImage;
-    [SerializeField] private Image backdropImage;
-    [SerializeField] private RectTransform messagePanelRect;
-    [SerializeField] private Image messagePanelImage;
-    [SerializeField] private TMP_Text messageText;
-    [SerializeField] private RectTransform markerRootRect;
-    [SerializeField] private RectTransform markerVisualRect;
-    [SerializeField] private Image markerBackgroundImage;
-    [SerializeField] private TMP_Text markerText;
-    private RectTransform rootRect;
-    private Canvas ownerCanvas;
-    private Transform markerTarget;
-    private Tween markerTween;
-    public static TutorialOverlayView CreateUnder(Transform parent, TMP_Text textTemplate = null)
-    {
-        if (parent == null)
-        {
-            return null;
-        }
-        var layer = parent.gameObject.layer;
-        var rootObject = new GameObject(
-            "TutorialOverlayView",
-            typeof(RectTransform),
-            typeof(CanvasRenderer),
-            typeof(Image),
-            typeof(TutorialOverlayView));
-        rootObject.layer = layer;
-        rootObject.transform.SetParent(parent, false);
-        var rootRect = rootObject.GetComponent<RectTransform>();
-        rootRect.anchorMin = Vector2.zero;
-        rootRect.anchorMax = Vector2.one;
-        rootRect.offsetMin = Vector2.zero;
-        rootRect.offsetMax = Vector2.zero;
-        var blockerImage = rootObject.GetComponent<Image>();
-        blockerImage.color = new Color(0f, 0f, 0f, 0f);
-        blockerImage.raycastTarget = false;
-        var view = rootObject.GetComponent<TutorialOverlayView>();
-        view.inputBlockerImage = blockerImage;
-        view.backdropImage = CreateFullscreenImage(
-            rootObject.transform,
-            "Backdrop",
-            new Color(0.02f, 0.02f, 0.03f, 0f),
-            false);
-        view.messagePanelRect = CreatePanel(rootObject.transform, "MessagePanel");
-        view.messagePanelImage = view.messagePanelRect.GetComponent<Image>();
-        view.messageText = CreateText(
-            view.messagePanelRect,
-            "MessageText",
-            textTemplate,
-            GameplayFontSize,
-            TextAlignmentOptions.Center,
-            new Color(0.95f, 0.95f, 0.92f, 1f));
-        view.markerRootRect = CreateContainer(rootObject.transform, "MarkerRoot");
-        view.markerVisualRect = CreatePanel(view.markerRootRect, "MarkerVisual", new Vector2(128f, 24f));
-        view.markerBackgroundImage = view.markerVisualRect.GetComponent<Image>();
-        view.markerBackgroundImage.color = new Color(0.1f, 0.13f, 0.18f, 0.92f);
-        view.markerText = CreateText(
-            view.markerVisualRect,
-            "MarkerText",
-            textTemplate,
-            8f,
-            TextAlignmentOptions.Center,
-            new Color(0.98f, 0.96f, 0.9f, 1f));
-        view.HideImmediate();
-        return view;
-    }
-    private void Awake()
-    {
-        rootRect = transform as RectTransform;
-        ownerCanvas = GetComponentInParent<Canvas>();
-        gameObject.SetActive(false);
-    }
-    private void OnDestroy()
-    {
-        markerTween?.Kill();
-        markerTween = null;
-    }
-    private void LateUpdate()
-    {
-        UpdateMarkerPosition();
-    }
-    public void ShowBlackBackdropImmediate()
-    {
-        EnsureReferences();
-        ShowRoot();
-        SetBackdropAlpha(1f);
-    }
-    public IEnumerator FadeBackdropTo(float targetAlpha, float duration)
-    {
-        EnsureReferences();
-        ShowRoot();
-        var currentColor = backdropImage.color;
-        var fromAlpha = currentColor.a;
-        if (duration <= 0f)
-        {
-            SetBackdropAlpha(targetAlpha);
-            UpdateVisibility();
-            yield break;
-        }
-        var elapsed = 0f;
-        while (elapsed < duration)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            var progress = Mathf.Clamp01(elapsed / duration);
-            SetBackdropAlpha(Mathf.Lerp(fromAlpha, targetAlpha, progress));
-            yield return null;
-        }
-        SetBackdropAlpha(targetAlpha);
-        UpdateVisibility();
-    }
-    public IEnumerator PlayTypedMessage(string text, bool centered)
-    {
-        EnsureReferences();
-        ShowRoot();
-        ConfigureMessageLayout(centered);
-        messagePanelRect.gameObject.SetActive(true);
-        inputBlockerImage.raycastTarget = true;
-        messageText.text = string.Empty;
-        yield return WaitForInputRelease();
-        var safeText = text ?? string.Empty;
-        for (var i = 1; i <= safeText.Length; i++)
-        {
-            if (IsAdvancePressed())
-            {
-                messageText.text = safeText;
-                break;
-            }
-            messageText.text = safeText.Substring(0, i);
-            yield return new WaitForSecondsRealtime(TypeCharacterInterval);
-        }
-        if (messageText.text != safeText)
-        {
-            messageText.text = safeText;
-        }
-        yield return WaitForInputRelease();
-        while (!IsAdvancePressed())
-        {
-            yield return null;
-        }
-        yield return WaitForInputRelease();
-        HideMessage();
-    }
-    public void HideMessage()
-    {
-        EnsureReferences();
-        messagePanelRect.gameObject.SetActive(false);
-        inputBlockerImage.raycastTarget = false;
-        UpdateVisibility();
-    }
-    public void ShowWorldMarker(Transform target, string label, Color color)
-    {
-        EnsureReferences();
-        markerTarget = target;
-        markerText.text = label ?? string.Empty;
-        markerText.color = color;
-        markerBackgroundImage.color = new Color(color.r * 0.18f, color.g * 0.18f, color.b * 0.2f, 0.94f);
-        markerRootRect.gameObject.SetActive(true);
-        ShowRoot();
-        markerTween?.Kill();
-        markerVisualRect.localScale = Vector3.one;
-        markerTween = markerVisualRect
-            .DOScale(1.08f, 0.55f)
-            .SetEase(Ease.InOutSine)
-            .SetLoops(-1, LoopType.Yoyo)
-            .SetUpdate(true);
-        UpdateMarkerPosition();
-        UpdateVisibility();
-    }
-    public void HideWorldMarker()
-    {
-        EnsureReferences();
-        markerTween?.Kill();
-        markerTween = null;
-        markerTarget = null;
-        markerVisualRect.localScale = Vector3.one;
-        markerRootRect.gameObject.SetActive(false);
-        UpdateVisibility();
-    }
-    public void HideImmediate()
-    {
-        EnsureReferences();
-        markerTween?.Kill();
-        markerTween = null;
-        markerTarget = null;
-        inputBlockerImage.raycastTarget = false;
-        messagePanelRect.gameObject.SetActive(false);
-        markerRootRect.gameObject.SetActive(false);
-        SetBackdropAlpha(0f);
-        gameObject.SetActive(false);
-    }
-    private void EnsureReferences()
-    {
-        rootRect ??= transform as RectTransform;
-        ownerCanvas ??= GetComponentInParent<Canvas>();
-    }
-    private void ConfigureMessageLayout(bool centered)
-    {
-        if (centered)
-        {
-            messagePanelRect.anchorMin = new Vector2(0.5f, 0.5f);
-            messagePanelRect.anchorMax = new Vector2(0.5f, 0.5f);
-            messagePanelRect.pivot = new Vector2(0.5f, 0.5f);
-            messagePanelRect.anchoredPosition = Vector2.zero;
-            messagePanelRect.sizeDelta = new Vector2(340f, 82f);
-            messagePanelImage.color = new Color(0.04f, 0.05f, 0.07f, 0.9f);
-            messageText.fontSize = IntroFontSize;
-        }
-        else
-        {
-            messagePanelRect.anchorMin = new Vector2(0.5f, 0f);
-            messagePanelRect.anchorMax = new Vector2(0.5f, 0f);
-            messagePanelRect.pivot = new Vector2(0.5f, 0f);
-            messagePanelRect.anchoredPosition = new Vector2(0f, 26f);
-            messagePanelRect.sizeDelta = new Vector2(360f, 56f);
-            messagePanelImage.color = new Color(0.07f, 0.08f, 0.11f, 0.92f);
-            messageText.fontSize = GameplayFontSize;
-        }
-        messageText.alignment = TextAlignmentOptions.Center;
-    }
-    private void UpdateMarkerPosition()
-    {
-        if (markerTarget == null || markerRootRect == null || !markerRootRect.gameObject.activeSelf)
-        {
-            return;
-        }
-        var renderCamera = GetRenderCamera();
-        if (renderCamera == null)
-        {
-            return;
-        }
-        var worldPosition = markerTarget.position + Vector3.up * 0.95f;
-        var viewportPoint = renderCamera.WorldToViewportPoint(worldPosition);
-        if (viewportPoint.z < 0f)
-        {
-            markerRootRect.gameObject.SetActive(false);
-            return;
-        }
-        var screenPoint = RectTransformUtility.WorldToScreenPoint(renderCamera, worldPosition);
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                rootRect,
-                screenPoint,
-                GetUiCamera(),
-                out var localPoint))
-        {
-            return;
-        }
-        markerRootRect.gameObject.SetActive(true);
-        markerRootRect.anchoredPosition = localPoint;
-    }
-    private void ShowRoot()
-    {
-        if (!gameObject.activeSelf)
-        {
-            gameObject.SetActive(true);
-        }
-        transform.SetAsLastSibling();
-    }
-    private void UpdateVisibility()
-    {
-        var shouldStayVisible =
-            messagePanelRect.gameObject.activeSelf ||
-            markerRootRect.gameObject.activeSelf ||
-            backdropImage.color.a > 0.001f;
-        if (shouldStayVisible)
-        {
-            ShowRoot();
-            return;
-        }
-        gameObject.SetActive(false);
-    }
-    private void SetBackdropAlpha(float alpha)
-    {
-        var color = backdropImage.color;
-        color.a = Mathf.Clamp01(alpha);
-        backdropImage.color = color;
-    }
-    private static IEnumerator WaitForInputRelease()
-    {
-        yield return null;
-        while (Input.GetMouseButton(0) || HasActiveTouch())
-        {
-            yield return null;
-        }
-    }
-    private static bool IsAdvancePressed()
-    {
-        return Input.GetMouseButtonDown(0) || HasTouchBegan();
-    }
-    private static bool HasTouchBegan()
-    {
-        for (var i = 0; i < Input.touchCount; i++)
-        {
-            if (Input.GetTouch(i).phase == TouchPhase.Began)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    private static bool HasActiveTouch()
-    {
-        for (var i = 0; i < Input.touchCount; i++)
-        {
-            var phase = Input.GetTouch(i).phase;
-            if (phase != TouchPhase.Canceled && phase != TouchPhase.Ended)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    private Camera GetRenderCamera()
-    {
-        return ownerCanvas != null && ownerCanvas.worldCamera != null
-            ? ownerCanvas.worldCamera
-            : Camera.main;
-    }
-    private Camera GetUiCamera()
-    {
-        if (ownerCanvas == null || ownerCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
-        {
-            return null;
-        }
-        return ownerCanvas.worldCamera != null ? ownerCanvas.worldCamera : Camera.main;
-    }
-    private static Image CreateFullscreenImage(Transform parent, string objectName, Color color, bool raycastTarget)
-    {
-        var imageObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        imageObject.layer = parent.gameObject.layer;
-        imageObject.transform.SetParent(parent, false);
-        var rectTransform = imageObject.GetComponent<RectTransform>();
-        rectTransform.anchorMin = Vector2.zero;
-        rectTransform.anchorMax = Vector2.one;
-        rectTransform.offsetMin = Vector2.zero;
-        rectTransform.offsetMax = Vector2.zero;
-        var image = imageObject.GetComponent<Image>();
-        image.color = color;
-        image.raycastTarget = raycastTarget;
-        return image;
-    }
-    private static RectTransform CreatePanel(Transform parent, string objectName, Vector2? size = null)
-    {
-        var panelObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        panelObject.layer = parent.gameObject.layer;
-        panelObject.transform.SetParent(parent, false);
-        var rectTransform = panelObject.GetComponent<RectTransform>();
-        rectTransform.sizeDelta = size ?? new Vector2(320f, 56f);
-        var image = panelObject.GetComponent<Image>();
-        image.color = new Color(0.07f, 0.08f, 0.11f, 0.92f);
-        image.raycastTarget = false;
-        return rectTransform;
-    }
-    private static RectTransform CreateContainer(Transform parent, string objectName)
-    {
-        var containerObject = new GameObject(objectName, typeof(RectTransform));
-        containerObject.layer = parent.gameObject.layer;
-        containerObject.transform.SetParent(parent, false);
-        var rectTransform = containerObject.GetComponent<RectTransform>();
-        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        rectTransform.anchoredPosition = Vector2.zero;
-        rectTransform.sizeDelta = Vector2.zero;
-        return rectTransform;
-    }
-    private static TMP_Text CreateText(
-        Transform parent,
-        string objectName,
-        TMP_Text textTemplate,
-        float fontSize,
-        TextAlignmentOptions alignment,
-        Color color)
-    {
-        var textObject = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
-        textObject.layer = parent.gameObject.layer;
-        textObject.transform.SetParent(parent, false);
-        var rectTransform = textObject.GetComponent<RectTransform>();
-        rectTransform.anchorMin = Vector2.zero;
-        rectTransform.anchorMax = Vector2.one;
-        rectTransform.offsetMin = new Vector2(10f, 8f);
-        rectTransform.offsetMax = new Vector2(-10f, -8f);
-        var text = textObject.GetComponent<TextMeshProUGUI>();
-        if (textTemplate != null)
-        {
-            text.font = textTemplate.font;
-            text.fontSharedMaterial = textTemplate.fontSharedMaterial;
-        }
-        text.fontSize = fontSize;
-        text.alignment = alignment;
-        text.color = color;
-        text.raycastTarget = false;
-        text.enableWordWrapping = true;
-        text.overflowMode = TextOverflowModes.Overflow;
-        text.text = string.Empty;
-        return text;
-    }
-}
-</file>
 
 <file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
 using GameAnalyticsSDK;
@@ -1747,6 +1135,426 @@ public class FloatUpDownAnimation : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/DefaultSystems/VFX/Text/ScaleTextAnimation.cs">
+using UnityEngine;
+using TMPro;
+public class ScaleTextAnimation : MonoBehaviour
+{
+    public TMP_Text textMesh;
+    public float frequency = 5.0f;
+    public float scaleAmplitude = 0.5f;
+    private TMP_TextInfo textInfo;
+    private bool[] animateCharFlags;
+    void Awake()
+    {
+        if (textMesh == null)
+        {
+            textMesh = GetComponent<TMP_Text>();
+        }
+        textInfo = textMesh.textInfo;
+    }
+    void Update()
+    {
+        textMesh.ForceMeshUpdate();
+        textInfo = textMesh.textInfo;
+        int characterCount = textInfo.characterCount;
+        if (animateCharFlags == null || animateCharFlags.Length < characterCount)
+        {
+            animateCharFlags = new bool[characterCount];
+        }
+        for (int i = 0; i < animateCharFlags.Length; i++) animateCharFlags[i] = false;
+        DetectScalingLinks();
+        if (characterCount == 0) return;
+        for (int i = 0; i < characterCount; i++)
+        {
+            if (!animateCharFlags[i]) continue;
+            TMP_CharacterInfo charInfo = textInfo.characterInfo[i];
+            if (!charInfo.isVisible) continue;
+            int materialIndex = charInfo.materialReferenceIndex;
+            int vertexIndex = charInfo.vertexIndex;
+            Vector3[] vertices = textInfo.meshInfo[materialIndex].vertices;
+            Vector3 charMidBaseline = (vertices[vertexIndex] + vertices[vertexIndex + 2]) / 2;
+            float scale = 1 + Mathf.Sin(Time.time * frequency + i) * scaleAmplitude;
+            for (int j = 0; j < 4; j++)
+            {
+                Vector3 offset = vertices[vertexIndex + j] - charMidBaseline;
+                offset *= scale;
+                vertices[vertexIndex + j] = charMidBaseline + offset;
+            }
+        }
+        for (int i = 0; i < textInfo.meshInfo.Length; i++)
+        {
+            textInfo.meshInfo[i].mesh.vertices = textInfo.meshInfo[i].vertices;
+            textMesh.UpdateGeometry(textInfo.meshInfo[i].mesh, i);
+        }
+    }
+    void DetectScalingLinks()
+    {
+        string targetLink = "scale";
+        TMP_TextInfo textInfo = textMesh.textInfo;
+        for (int i = 0; i < textInfo.linkCount; i++)
+        {
+            TMP_LinkInfo linkInfo = textInfo.linkInfo[i];
+            if (linkInfo.GetLinkID() == targetLink)
+            {
+                for (int j = 0; j < linkInfo.linkTextLength; j++)
+                {
+                    int characterIndex = linkInfo.linkTextfirstCharacterIndex + j;
+                    if (characterIndex < animateCharFlags.Length)
+                    {
+                        animateCharFlags[characterIndex] = true;
+                    }
+                }
+            }
+        }
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/DefaultSystems/VFX/Text/ShakeTextAnimation.cs">
+using UnityEngine;
+using TMPro;
+public class ShakeTextAnimation : MonoBehaviour
+{
+    public TMP_Text textMesh;
+    public float maxShakeAmount = 0.5f;
+    public float decayRate = 1.0f;
+    private TMP_TextInfo textInfo;
+    private bool[] shakeCharFlags;
+    private float currentShakeAmount;
+    void Awake()
+    {
+        if (textMesh == null)
+        {
+            textMesh = GetComponent<TMP_Text>();
+        }
+        textInfo = textMesh.textInfo;
+        currentShakeAmount = maxShakeAmount;
+    }
+    void TextWriterDelta(string chr)
+    {
+        if (chr == " ") return;
+        currentShakeAmount = maxShakeAmount;
+    }
+    void Update()
+    {
+        DetectShakeLinks();
+        ApplyShakeEffect();
+        currentShakeAmount = Mathf.Max(0.0f, currentShakeAmount - decayRate * Time.deltaTime);
+    }
+    void DetectShakeLinks()
+    {
+        textMesh.ForceMeshUpdate();
+        string targetLink = "shake";
+        TMP_TextInfo textInfo = textMesh.textInfo;
+        shakeCharFlags = new bool[textInfo.characterCount];
+        for (int i = 0; i < textInfo.linkCount; i++)
+        {
+            TMP_LinkInfo linkInfo = textInfo.linkInfo[i];
+            if (linkInfo.GetLinkID() == targetLink)
+            {
+                for (int j = 0; j < linkInfo.linkTextLength; j++)
+                {
+                    int characterIndex = linkInfo.linkTextfirstCharacterIndex + j;
+                    if (characterIndex < shakeCharFlags.Length)
+                    {
+                        shakeCharFlags[characterIndex] = true;
+                    }
+                }
+            }
+        }
+    }
+    void ApplyShakeEffect()
+    {
+        textInfo = textMesh.textInfo;
+        int characterCount = textInfo.characterCount;
+        if (characterCount == 0 || currentShakeAmount <= 0.0f) return;
+        for (int i = 0; i < characterCount; i++)
+        {
+            if (!shakeCharFlags[i]) continue;
+            TMP_CharacterInfo charInfo = textInfo.characterInfo[i];
+            if (!charInfo.isVisible) continue;
+            int materialIndex = charInfo.materialReferenceIndex;
+            int vertexIndex = charInfo.vertexIndex;
+            Vector3[] vertices = textInfo.meshInfo[materialIndex].vertices;
+            Vector3 offset = Random.insideUnitCircle * currentShakeAmount;
+            vertices[vertexIndex + 0] += offset;
+            vertices[vertexIndex + 1] += offset;
+            vertices[vertexIndex + 2] += offset;
+            vertices[vertexIndex + 3] += offset;
+        }
+        for (int i = 0; i < textInfo.meshInfo.Length; i++)
+        {
+            textInfo.meshInfo[i].mesh.vertices = textInfo.meshInfo[i].vertices;
+            textMesh.UpdateGeometry(textInfo.meshInfo[i].mesh, i);
+        }
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/DefaultSystems/VFX/Text/SineWaveTextAnimation.cs">
+using UnityEngine;
+using TMPro;
+public class SineWaveTextAnimation : MonoBehaviour
+{
+    public TMP_Text textMesh;
+    public float frequency = 5.0f;
+    public float amplitude = 5.0f;
+    private TMP_TextInfo textInfo;
+    private bool[] animateCharFlags;
+    void Awake()
+    {
+        if (textMesh == null)
+        {
+            textMesh = GetComponent<TMP_Text>();
+        }
+        textInfo = textMesh.textInfo;
+    }
+    void Update()
+    {
+        textMesh.ForceMeshUpdate();
+        textInfo = textMesh.textInfo;
+        int characterCount = textInfo.characterCount;
+        if (animateCharFlags == null || animateCharFlags.Length < characterCount)
+        {
+            animateCharFlags = new bool[characterCount];
+        }
+        for (int i = 0; i < animateCharFlags.Length; i++) animateCharFlags[i] = false;
+        DetectWaveTags();
+        if (characterCount == 0) return;
+        for (int i = 0; i < characterCount; i++)
+        {
+            TMP_CharacterInfo charInfo = textInfo.characterInfo[i];
+            if (!charInfo.isVisible) continue;
+            if (!animateCharFlags[i]) continue;
+            int materialIndex = charInfo.materialReferenceIndex;
+            int vertexIndex = charInfo.vertexIndex;
+            Vector3[] vertices = textInfo.meshInfo[materialIndex].vertices;
+            float wave = Mathf.Sin(i + Time.time * frequency) * amplitude;
+            for (int j = 0; j < 4; j++)
+            {
+                Vector3 offset = vertices[vertexIndex + j];
+                offset.y += wave;
+                vertices[vertexIndex + j] = offset;
+            }
+        }
+        for (int i = 0; i < textInfo.meshInfo.Length; i++)
+        {
+            textInfo.meshInfo[i].mesh.vertices = textInfo.meshInfo[i].vertices;
+            textMesh.UpdateGeometry(textInfo.meshInfo[i].mesh, i);
+        }
+    }
+    private void DetectWaveTags()
+    {
+        if (animateCharFlags == null || animateCharFlags.Length < textMesh.textInfo.characterCount)
+        {
+            animateCharFlags = new bool[textMesh.textInfo.characterCount];
+        }
+        for (int i = 0; i < animateCharFlags.Length; i++)
+        {
+            animateCharFlags[i] = false;
+        }
+        TMP_TextInfo textInfo = textMesh.textInfo;
+        for (int i = 0; i < textInfo.linkCount; i++)
+        {
+            TMP_LinkInfo linkInfo = textInfo.linkInfo[i];
+            if (linkInfo.GetLinkID() == "wave")
+            {
+                for (int j = 0; j < linkInfo.linkTextLength; j++)
+                {
+                    int characterIndex = linkInfo.linkTextfirstCharacterIndex + j;
+                    if (characterIndex < animateCharFlags.Length)
+                    {
+                        animateCharFlags[characterIndex] = true;
+                    }
+                }
+            }
+        }
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/DefaultSystems/VFX/Text/TextUtils.cs">
+using System.Collections.Generic;
+using System.Text;
+using System.Text.RegularExpressions;
+using UnityEngine;
+public class TextUtils
+{
+    public static string CharSmart(string input, int charAt)
+    {
+        if (string.IsNullOrEmpty(input))
+            return "";
+        // Regular expression to match HTML-like tags
+        string tagPattern = "<[^>]*>";
+        // Remove tags from the input string
+        string textWithoutTags = Regex.Replace(input, tagPattern, "");
+        // Return the length of the string without tags
+        return textWithoutTags.Substring(charAt - 1, 1);
+    }
+    public static string CutSmart(string input, int maxLength)
+    {
+        if (string.IsNullOrEmpty(input) || maxLength <= 0)
+            return "";
+        StringBuilder output = new StringBuilder();
+        int visibleLength = 0; // Only counts visible characters
+        Stack<string> openTags = new Stack<string>();
+        bool inTag = false;
+        int i = 0;
+        while (i < input.Length && visibleLength < maxLength)
+        {
+            if (input[i] == '<')
+            {
+                int closeTagPos = input.IndexOf('>', i);
+                if (closeTagPos != -1)
+                {
+                    // Extract the tag content
+                    string tagContent = input.Substring(i, closeTagPos - i + 1);
+                    bool isClosingTag = tagContent.StartsWith("</");
+                    if (isClosingTag)
+                    {
+                        // Closing tag: pop from the stack
+                        if (openTags.Count > 0)
+                            openTags.Pop();
+                    }
+                    else
+                    {
+                        // Opening tag: push to the stack
+                        string tagName = GetTagName(tagContent);
+                        if (!string.IsNullOrEmpty(tagName) && !tagContent.EndsWith("/>")) // Self-closing tag check
+                            openTags.Push(tagName);
+                    }
+                    output.Append(tagContent);
+                    i = closeTagPos;
+                }
+            }
+            else if (char.IsHighSurrogate(input[i]) && i + 1 < input.Length && char.IsLowSurrogate(input[i + 1]))
+            {
+                // Handle surrogate pairs (for UTF-16 encoding of certain characters)
+                if (visibleLength < maxLength - 1)
+                {
+                    output.Append(input[i]);
+                    output.Append(input[i + 1]);
+                    visibleLength++;
+                    i++; // Skip the next character as it's part of the surrogate pair
+                }
+            }
+            else
+            {
+                output.Append(input[i]);
+                visibleLength++;
+            }
+            i++;
+        }
+        // Close any unclosed tags
+        while (openTags.Count > 0)
+        {
+            string tag = openTags.Pop();
+            output.Append($"</{tag}>");
+        }
+        return output.ToString();
+    }
+    private static string GetTagName(string tagContent)
+    {
+        if (string.IsNullOrEmpty(tagContent) || tagContent.Length < 3)
+            return string.Empty;
+        int startIndex = tagContent.StartsWith("</") ? 2 : 1;
+        int endIndex = startIndex;
+        while (endIndex < tagContent.Length)
+        {
+            char current = tagContent[endIndex];
+            if (current == '>' || current == '/' || char.IsWhiteSpace(current) || current == '=')
+                break;
+            endIndex++;
+        }
+        if (endIndex <= startIndex)
+            return string.Empty;
+        return tagContent.Substring(startIndex, endIndex - startIndex);
+    }
+    public static int GetVisibleLength(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return 0;
+        // Regular expression to match HTML-like tags
+        string tagPattern = "<[^>]*>";
+        // Remove tags from the input string
+        string textWithoutTags = Regex.Replace(input, tagPattern, "");
+        return textWithoutTags.Length;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/DefaultSystems/VFX/Text/TextWriter.cs">
+using JetBrains.Annotations;
+using TMPro;
+using UnityEngine;
+using UnityEngine.Events;
+public class TextWriter : MonoBehaviour
+{
+    public TMP_Text text;
+    public string target;
+    public int show;
+    public AudioClip snd;
+    public float autoShow = 0f;
+    public float autoHide = 0f;
+    public UnityAction<int> OnDelta;
+    public UnityAction OnComplete;
+    float clock;
+    void Start()
+    {
+        text ??= GetComponent<TMP_Text>();
+        if (string.IsNullOrEmpty(target))
+        {
+            target = text.text;
+            show = target.Length;
+        }
+        Update();
+    }
+    string _oldTarget;
+    int _oldShow;
+    void Update()
+    {
+        if (_oldShow != show || _oldTarget != target)
+        {
+            text.text = TextUtils.CutSmart(target, show);
+            _oldShow = show;
+            _oldTarget = target;
+        }
+        if (autoShow > 0 || autoHide > 0)
+        {
+            clock += Time.deltaTime;
+            if (autoShow > 0 && clock > autoShow)
+            {
+                var visibleLength = TextUtils.GetVisibleLength(target);
+                if (show < visibleLength)
+                {
+                    show++;
+                    clock = 0;
+                    OnDelta?.Invoke(1);
+                    var charSmart = TextUtils.CharSmart(target, show);
+                    gameObject.BroadcastMessage("TextWriterDelta", charSmart);
+                    if(charSmart != " ") if (snd != null) AudioSource.PlayClipAtPoint(snd, Vector3.zero);
+                    if (show == visibleLength)
+                        OnComplete?.Invoke();
+                }
+            }
+            if (autoHide < 0 && clock > autoHide)
+            {
+                if (show > 0)
+                {
+                    show--;
+                    clock = 0;
+                    OnDelta?.Invoke(-1);
+                    gameObject.BroadcastMessage("TextWriterDelta", TextUtils.CharSmart(target, show));
+                    if (show == 0)
+                        OnComplete?.Invoke();
+                }
+            }
+        }
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/DefaultSystems/VFX/TextPopup/TextPopupService.cs">
 using UnityEngine;
 public class TextPopupService : MonoBehaviour
@@ -2525,6 +2333,221 @@ public class KeeperState
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs">
+using System;
+using System.Collections;
+using UnityEngine;
+public sealed class FirstRunTutorialController : IDisposable
+{
+    private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
+    private const float IntroFadeDuration = 0.45f;
+    private const float TutorialEnemySpawnOffsetX = -1.75f;
+    private const string GraveyJonesMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones</color></link>";
+    private const string GraveyJonesPossessiveMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones's</color></link>";
+    private const string BellsMarkup = "<color=#F2D35E>bells</color>";
+    private const string FaithMarkup = "<color=#7EDBFF>faith</color>";
+    private const string LimitedTimeMarkup = "<color=#F2D35E>limited time</color>";
+    private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred places</color>";
+    private readonly Main main;
+    private readonly string tutorialBellId;
+    private readonly string tutorialEnemyId;
+    private TutorialOverlayView overlayView;
+    private LaneEnemy tutorialEnemy;
+    private bool isDisposed;
+    private bool isRunning;
+    private bool bellSummoned;
+    private bool tutorialEnemyKilled;
+    private bool faithCollected;
+    public FirstRunTutorialController(Main main, string tutorialBellId, string tutorialEnemyId)
+    {
+        this.main = main;
+        this.tutorialBellId = tutorialBellId;
+        this.tutorialEnemyId = tutorialEnemyId;
+        if (main != null)
+        {
+            main.BellSummoned += HandleBellSummoned;
+            main.FaithCollected += HandleFaithCollected;
+            main.EnemyKilled += HandleEnemyKilled;
+        }
+    }
+    public bool ShouldRunFirstRunTutorial => PlayerPrefs.GetInt(TutorialCompletedKey, 0) == 0;
+    public bool BlocksWaveProgress { get; private set; }
+    public bool BlocksNightCompletion { get; private set; }
+    public IEnumerator PlayStartupIntroSequence()
+    {
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        overlay.ShowBlackBackdropImmediate();
+        yield return overlay.PlayTypedMessage($"The old keeper, {GraveyJonesMarkup}, is dead.", true);
+        yield return overlay.PlayTypedMessage("Without him, the cemetery stands unguarded.", true);
+    }
+    public IEnumerator FadeIntoGameplaySequence()
+    {
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        overlay.HideMessage();
+        yield return overlay.FadeBackdropTo(0f, IntroFadeDuration);
+        overlay.HideImmediate();
+    }
+    public IEnumerator RunNightTutorialSequence()
+    {
+        if (!ShouldRunFirstRunTutorial)
+        {
+            yield break;
+        }
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        isRunning = true;
+        BlocksWaveProgress = true;
+        BlocksNightCompletion = true;
+        bellSummoned = false;
+        tutorialEnemyKilled = false;
+        faithCollected = false;
+        tutorialEnemy = null;
+        yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
+        var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
+        if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        tutorialEnemy = enemySpawnResult.SpawnedEnemy;
+        tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
+        yield return new WaitForSeconds(1f);
+        SetTutorialEnemyPaused(true);
+        yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
+        if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        overlay.ShowWorldMarker(bellWorldObject.transform, "RING BELL", new Color(1f, 0.86f, 0.36f, 1f));
+        yield return overlay.PlayTypedMessage(
+            $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
+            false);
+        while (!bellSummoned)
+        {
+            yield return null;
+        }
+        overlay.HideWorldMarker();
+        SetTutorialEnemyPaused(false);
+        yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
+        yield return overlay.PlayTypedMessage(
+            $"Each defender has {LimitedTimeMarkup} to serve this holy ground.",
+            false);
+        while (!tutorialEnemyKilled)
+        {
+            yield return null;
+        }
+        yield return overlay.PlayTypedMessage(
+            $"Raising undead defenders costs {FaithMarkup}.",
+            false);
+        yield return overlay.PlayTypedMessage(
+            $"To get it you must pray at {SacredPlacesMarkup}, but it can take time.",
+            false);
+        if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
+        {
+            ReleaseTutorialLocks();
+            yield break;
+        }
+        overlay.ShowWorldMarker(faithPointPoi.transform, "COLLECT FAITH", new Color(0.56f, 0.9f, 1f, 1f));
+        while (!faithCollected)
+        {
+            yield return null;
+        }
+        overlay.HideWorldMarker();
+        yield return overlay.PlayTypedMessage(
+            $"Survive to the final night, and take {GraveyJonesPossessiveMarkup} place.",
+            false);
+        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
+        PlayerPrefs.Save();
+        ReleaseTutorialLocks();
+    }
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+        isDisposed = true;
+        if (main != null)
+        {
+            main.BellSummoned -= HandleBellSummoned;
+            main.FaithCollected -= HandleFaithCollected;
+            main.EnemyKilled -= HandleEnemyKilled;
+        }
+        overlayView?.HideImmediate();
+    }
+    private TutorialOverlayView ResolveOverlay()
+    {
+        if (overlayView != null)
+        {
+            return overlayView;
+        }
+        overlayView = G.ui != null ? G.ui.EnsureTutorialOverlay() : null;
+        return overlayView;
+    }
+    private void ReleaseTutorialLocks()
+    {
+        SetTutorialEnemyPaused(false);
+        overlayView?.HideWorldMarker();
+        overlayView?.HideImmediate();
+        BlocksWaveProgress = false;
+        BlocksNightCompletion = false;
+        isRunning = false;
+    }
+    private void HandleBellSummoned(string bellId, LaneUnit spawnedUnit)
+    {
+        if (!isRunning || string.IsNullOrWhiteSpace(bellId) || spawnedUnit == null)
+        {
+            return;
+        }
+        if (!string.Equals(bellId, tutorialBellId, StringComparison.Ordinal))
+        {
+            return;
+        }
+        bellSummoned = true;
+    }
+    private void HandleFaithCollected(int collectedFaith)
+    {
+        if (!isRunning || collectedFaith <= 0)
+        {
+            return;
+        }
+        faithCollected = true;
+    }
+    private void HandleEnemyKilled(LaneEnemy laneEnemy)
+    {
+        if (!isRunning || laneEnemy == null || tutorialEnemy == null)
+        {
+            return;
+        }
+        if (!ReferenceEquals(laneEnemy, tutorialEnemy))
+        {
+            return;
+        }
+        tutorialEnemyKilled = true;
+    }
+    private void SetTutorialEnemyPaused(bool paused)
+    {
+        if (tutorialEnemy == null)
+        {
+            return;
+        }
+        tutorialEnemy.enabled = !paused;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Upgrade/UpgradePurchaseResult.cs">
 public enum UpgradePurchaseFailureReason
 {
@@ -2758,6 +2781,440 @@ public class PhaseTransitionView : MonoBehaviour
             GamePhase.Night => nightLabel,
             _ => string.Empty
         };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/TutorialOverlayView.cs">
+using System.Collections;
+using DG.Tweening;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+[DisallowMultipleComponent]
+public class TutorialOverlayView : MonoBehaviour
+{
+    private const float TypeCharacterInterval = 0.022f;
+    private const float IntroFontSize = 14f;
+    private const float GameplayFontSize = 10f;
+    [SerializeField] private Image inputBlockerImage;
+    [SerializeField] private Image backdropImage;
+    [SerializeField] private RectTransform messagePanelRect;
+    [SerializeField] private Image messagePanelImage;
+    [SerializeField] private TMP_Text messageText;
+    [SerializeField] private RectTransform markerRootRect;
+    [SerializeField] private RectTransform markerVisualRect;
+    [SerializeField] private Image markerBackgroundImage;
+    [SerializeField] private TMP_Text markerText;
+    [SerializeField] private SineWaveTextAnimation messageWaveAnimation;
+    private RectTransform rootRect;
+    private Canvas ownerCanvas;
+    private Transform markerTarget;
+    private Tween markerTween;
+    public static TutorialOverlayView CreateUnder(Transform parent, TMP_Text textTemplate = null)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+        var layer = parent.gameObject.layer;
+        var rootObject = new GameObject(
+            "TutorialOverlayView",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Image),
+            typeof(TutorialOverlayView));
+        rootObject.layer = layer;
+        rootObject.transform.SetParent(parent, false);
+        var rootRect = rootObject.GetComponent<RectTransform>();
+        rootRect.anchorMin = Vector2.zero;
+        rootRect.anchorMax = Vector2.one;
+        rootRect.offsetMin = Vector2.zero;
+        rootRect.offsetMax = Vector2.zero;
+        var blockerImage = rootObject.GetComponent<Image>();
+        blockerImage.color = new Color(0f, 0f, 0f, 0f);
+        blockerImage.raycastTarget = false;
+        var view = rootObject.GetComponent<TutorialOverlayView>();
+        view.inputBlockerImage = blockerImage;
+        view.backdropImage = CreateFullscreenImage(
+            rootObject.transform,
+            "Backdrop",
+            new Color(0.02f, 0.02f, 0.03f, 0f),
+            false);
+        view.messagePanelRect = CreatePanel(rootObject.transform, "MessagePanel");
+        view.messagePanelImage = view.messagePanelRect.GetComponent<Image>();
+        view.messageText = CreateText(
+            view.messagePanelRect,
+            "MessageText",
+            textTemplate,
+            GameplayFontSize,
+            TextAlignmentOptions.Center,
+            new Color(0.95f, 0.95f, 0.92f, 1f));
+        view.messageWaveAnimation = view.messageText.GetComponent<SineWaveTextAnimation>();
+        if (view.messageWaveAnimation == null)
+        {
+            view.messageWaveAnimation = view.messageText.gameObject.AddComponent<SineWaveTextAnimation>();
+        }
+        view.messageWaveAnimation.textMesh = view.messageText;
+        view.messageWaveAnimation.frequency = 3.5f;
+        view.messageWaveAnimation.amplitude = 1.4f;
+        view.markerRootRect = CreateContainer(rootObject.transform, "MarkerRoot");
+        view.markerVisualRect = CreatePanel(view.markerRootRect, "MarkerVisual", new Vector2(128f, 24f));
+        view.markerBackgroundImage = view.markerVisualRect.GetComponent<Image>();
+        view.markerBackgroundImage.color = new Color(0.1f, 0.13f, 0.18f, 0.92f);
+        view.markerText = CreateText(
+            view.markerVisualRect,
+            "MarkerText",
+            textTemplate,
+            8f,
+            TextAlignmentOptions.Center,
+            new Color(0.98f, 0.96f, 0.9f, 1f));
+        view.HideImmediate();
+        return view;
+    }
+    private void Awake()
+    {
+        rootRect = transform as RectTransform;
+        ownerCanvas = GetComponentInParent<Canvas>();
+        gameObject.SetActive(false);
+    }
+    private void OnDestroy()
+    {
+        markerTween?.Kill();
+        markerTween = null;
+    }
+    private void LateUpdate()
+    {
+        UpdateMarkerPosition();
+    }
+    public void ShowBlackBackdropImmediate()
+    {
+        EnsureReferences();
+        ShowRoot();
+        SetBackdropAlpha(1f);
+    }
+    public IEnumerator FadeBackdropTo(float targetAlpha, float duration)
+    {
+        EnsureReferences();
+        ShowRoot();
+        var currentColor = backdropImage.color;
+        var fromAlpha = currentColor.a;
+        if (duration <= 0f)
+        {
+            SetBackdropAlpha(targetAlpha);
+            UpdateVisibility();
+            yield break;
+        }
+        var elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            var progress = Mathf.Clamp01(elapsed / duration);
+            SetBackdropAlpha(Mathf.Lerp(fromAlpha, targetAlpha, progress));
+            yield return null;
+        }
+        SetBackdropAlpha(targetAlpha);
+        UpdateVisibility();
+    }
+    public IEnumerator PlayTypedMessage(string text, bool centered)
+    {
+        EnsureReferences();
+        ShowRoot();
+        ConfigureMessageLayout(centered);
+        messagePanelRect.gameObject.SetActive(true);
+        inputBlockerImage.raycastTarget = true;
+        messageText.text = string.Empty;
+        yield return WaitForInputRelease();
+        var safeText = text ?? string.Empty;
+        var visibleLength = TextUtils.GetVisibleLength(safeText);
+        for (var i = 1; i <= visibleLength; i++)
+        {
+            if (IsAdvancePressed())
+            {
+                messageText.text = safeText;
+                break;
+            }
+            messageText.text = TextUtils.CutSmart(safeText, i);
+            NotifyTextRevealDelta(safeText, i);
+            yield return new WaitForSecondsRealtime(TypeCharacterInterval);
+        }
+        if (messageText.text != safeText)
+        {
+            messageText.text = safeText;
+        }
+        yield return WaitForInputRelease();
+        while (!IsAdvancePressed())
+        {
+            yield return null;
+        }
+        yield return WaitForInputRelease();
+        HideMessage();
+    }
+    public void HideMessage()
+    {
+        EnsureReferences();
+        messagePanelRect.gameObject.SetActive(false);
+        inputBlockerImage.raycastTarget = false;
+        UpdateVisibility();
+    }
+    public void ShowWorldMarker(Transform target, string label, Color color)
+    {
+        EnsureReferences();
+        markerTarget = target;
+        markerText.text = label ?? string.Empty;
+        markerText.color = color;
+        markerBackgroundImage.color = new Color(color.r * 0.18f, color.g * 0.18f, color.b * 0.2f, 0.94f);
+        markerRootRect.gameObject.SetActive(true);
+        ShowRoot();
+        markerTween?.Kill();
+        markerVisualRect.localScale = Vector3.one;
+        markerTween = markerVisualRect
+            .DOScale(1.08f, 0.55f)
+            .SetEase(Ease.InOutSine)
+            .SetLoops(-1, LoopType.Yoyo)
+            .SetUpdate(true);
+        UpdateMarkerPosition();
+        UpdateVisibility();
+    }
+    public void HideWorldMarker()
+    {
+        EnsureReferences();
+        markerTween?.Kill();
+        markerTween = null;
+        markerTarget = null;
+        markerVisualRect.localScale = Vector3.one;
+        markerRootRect.gameObject.SetActive(false);
+        UpdateVisibility();
+    }
+    public void HideImmediate()
+    {
+        EnsureReferences();
+        markerTween?.Kill();
+        markerTween = null;
+        markerTarget = null;
+        inputBlockerImage.raycastTarget = false;
+        messagePanelRect.gameObject.SetActive(false);
+        markerRootRect.gameObject.SetActive(false);
+        SetBackdropAlpha(0f);
+        gameObject.SetActive(false);
+    }
+    private void EnsureReferences()
+    {
+        rootRect ??= transform as RectTransform;
+        ownerCanvas ??= GetComponentInParent<Canvas>();
+    }
+    private void ConfigureMessageLayout(bool centered)
+    {
+        if (centered)
+        {
+            messagePanelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            messagePanelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            messagePanelRect.pivot = new Vector2(0.5f, 0.5f);
+            messagePanelRect.anchoredPosition = Vector2.zero;
+            messagePanelRect.sizeDelta = new Vector2(340f, 82f);
+            messagePanelImage.color = new Color(0.04f, 0.05f, 0.07f, 0.9f);
+            messageText.fontSize = IntroFontSize;
+        }
+        else
+        {
+            messagePanelRect.anchorMin = new Vector2(0.5f, 0f);
+            messagePanelRect.anchorMax = new Vector2(0.5f, 0f);
+            messagePanelRect.pivot = new Vector2(0.5f, 0f);
+            messagePanelRect.anchoredPosition = new Vector2(0f, 26f);
+            messagePanelRect.sizeDelta = new Vector2(360f, 56f);
+            messagePanelImage.color = new Color(0.07f, 0.08f, 0.11f, 0.92f);
+            messageText.fontSize = GameplayFontSize;
+        }
+        messageText.alignment = TextAlignmentOptions.Center;
+    }
+    private void UpdateMarkerPosition()
+    {
+        if (markerTarget == null || markerRootRect == null || !markerRootRect.gameObject.activeSelf)
+        {
+            return;
+        }
+        var renderCamera = GetRenderCamera();
+        if (renderCamera == null)
+        {
+            return;
+        }
+        var worldPosition = markerTarget.position + Vector3.up * 0.95f;
+        var viewportPoint = renderCamera.WorldToViewportPoint(worldPosition);
+        if (viewportPoint.z < 0f)
+        {
+            markerRootRect.gameObject.SetActive(false);
+            return;
+        }
+        var screenPoint = RectTransformUtility.WorldToScreenPoint(renderCamera, worldPosition);
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rootRect,
+                screenPoint,
+                GetUiCamera(),
+                out var localPoint))
+        {
+            return;
+        }
+        markerRootRect.gameObject.SetActive(true);
+        markerRootRect.anchoredPosition = localPoint;
+    }
+    private void ShowRoot()
+    {
+        if (!gameObject.activeSelf)
+        {
+            gameObject.SetActive(true);
+        }
+        transform.SetAsLastSibling();
+    }
+    private void UpdateVisibility()
+    {
+        var shouldStayVisible =
+            messagePanelRect.gameObject.activeSelf ||
+            markerRootRect.gameObject.activeSelf ||
+            backdropImage.color.a > 0.001f;
+        if (shouldStayVisible)
+        {
+            ShowRoot();
+            return;
+        }
+        gameObject.SetActive(false);
+    }
+    private void SetBackdropAlpha(float alpha)
+    {
+        var color = backdropImage.color;
+        color.a = Mathf.Clamp01(alpha);
+        backdropImage.color = color;
+    }
+    private void NotifyTextRevealDelta(string fullText, int visibleCharIndex)
+    {
+        if (messageText == null || string.IsNullOrEmpty(fullText) || visibleCharIndex <= 0)
+        {
+            return;
+        }
+        messageText.gameObject.BroadcastMessage(
+            "TextWriterDelta",
+            TextUtils.CharSmart(fullText, visibleCharIndex),
+            SendMessageOptions.DontRequireReceiver);
+    }
+    private static IEnumerator WaitForInputRelease()
+    {
+        yield return null;
+        while (Input.GetMouseButton(0) || HasActiveTouch())
+        {
+            yield return null;
+        }
+    }
+    private static bool IsAdvancePressed()
+    {
+        return Input.GetMouseButtonDown(0) || HasTouchBegan();
+    }
+    private static bool HasTouchBegan()
+    {
+        for (var i = 0; i < Input.touchCount; i++)
+        {
+            if (Input.GetTouch(i).phase == TouchPhase.Began)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    private static bool HasActiveTouch()
+    {
+        for (var i = 0; i < Input.touchCount; i++)
+        {
+            var phase = Input.GetTouch(i).phase;
+            if (phase != TouchPhase.Canceled && phase != TouchPhase.Ended)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    private Camera GetRenderCamera()
+    {
+        return ownerCanvas != null && ownerCanvas.worldCamera != null
+            ? ownerCanvas.worldCamera
+            : Camera.main;
+    }
+    private Camera GetUiCamera()
+    {
+        if (ownerCanvas == null || ownerCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
+        {
+            return null;
+        }
+        return ownerCanvas.worldCamera != null ? ownerCanvas.worldCamera : Camera.main;
+    }
+    private static Image CreateFullscreenImage(Transform parent, string objectName, Color color, bool raycastTarget)
+    {
+        var imageObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        imageObject.layer = parent.gameObject.layer;
+        imageObject.transform.SetParent(parent, false);
+        var rectTransform = imageObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = Vector2.zero;
+        rectTransform.anchorMax = Vector2.one;
+        rectTransform.offsetMin = Vector2.zero;
+        rectTransform.offsetMax = Vector2.zero;
+        var image = imageObject.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = raycastTarget;
+        return image;
+    }
+    private static RectTransform CreatePanel(Transform parent, string objectName, Vector2? size = null)
+    {
+        var panelObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        panelObject.layer = parent.gameObject.layer;
+        panelObject.transform.SetParent(parent, false);
+        var rectTransform = panelObject.GetComponent<RectTransform>();
+        rectTransform.sizeDelta = size ?? new Vector2(320f, 56f);
+        var image = panelObject.GetComponent<Image>();
+        image.color = new Color(0.07f, 0.08f, 0.11f, 0.92f);
+        image.raycastTarget = false;
+        return rectTransform;
+    }
+    private static RectTransform CreateContainer(Transform parent, string objectName)
+    {
+        var containerObject = new GameObject(objectName, typeof(RectTransform));
+        containerObject.layer = parent.gameObject.layer;
+        containerObject.transform.SetParent(parent, false);
+        var rectTransform = containerObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        rectTransform.anchoredPosition = Vector2.zero;
+        rectTransform.sizeDelta = Vector2.zero;
+        return rectTransform;
+    }
+    private static TMP_Text CreateText(
+        Transform parent,
+        string objectName,
+        TMP_Text textTemplate,
+        float fontSize,
+        TextAlignmentOptions alignment,
+        Color color)
+    {
+        var textObject = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.layer = parent.gameObject.layer;
+        textObject.transform.SetParent(parent, false);
+        var rectTransform = textObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = Vector2.zero;
+        rectTransform.anchorMax = Vector2.one;
+        rectTransform.offsetMin = new Vector2(10f, 8f);
+        rectTransform.offsetMax = new Vector2(-10f, -8f);
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        if (textTemplate != null)
+        {
+            text.font = textTemplate.font;
+            text.fontSharedMaterial = textTemplate.fontSharedMaterial;
+        }
+        text.fontSize = fontSize;
+        text.alignment = alignment;
+        text.color = color;
+        text.richText = true;
+        text.raycastTarget = false;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.text = string.Empty;
+        return text;
     }
 }
 </file>
@@ -5958,215 +6415,6 @@ public class DayUpgradeItemView : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/UI/UI.cs">
-using System;
-using DG.Tweening;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-public class UI : MonoBehaviour
-{
-    [SerializeField] private GameObject titleScreen;
-    [SerializeField] private TMP_Text clickToStartText;
-    private Tween clickToStartTween;
-    private TutorialOverlayView tutorialOverlayView;
-    public Image TitleScreenImage
-    {
-        get
-        {
-            ResolveReferences();
-            return titleScreen != null ? titleScreen.GetComponent<Image>() : null;
-        }
-    }
-    public static UI EnsureInstance()
-    {
-        var existingUi = FindFirstObjectByType<UI>(FindObjectsInactive.Include);
-        if (existingUi != null)
-        {
-            existingUi.ResolveReferences();
-            if (G.ui != existingUi)
-            {
-                G.ui = existingUi;
-            }
-            return existingUi;
-        }
-        var host = FindSceneObject("UI_Canvas");
-        if (host == null)
-        {
-            var discoveredTitleScreen = FindSceneObject("TitleScreen");
-            host = discoveredTitleScreen != null && discoveredTitleScreen.transform.parent != null
-                ? discoveredTitleScreen.transform.parent.gameObject
-                : null;
-        }
-        if (host == null)
-        {
-            return null;
-        }
-        var createdUi = host.AddComponent<UI>();
-        createdUi.ResolveReferences();
-        G.ui = createdUi;
-        return createdUi;
-    }
-    private void Awake()
-    {
-        G.ui = this;
-        ResolveReferences();
-    }
-    private void OnDestroy()
-    {
-        StopTitlePromptPulse();
-        if (G.ui == this)
-        {
-            G.ui = null;
-        }
-    }
-    public void ToggleTitle(bool visible)
-    {
-        ResolveReferences();
-        if (titleScreen == null)
-        {
-            return;
-        }
-        if (visible)
-        {
-            ResetTitleScreenAlpha();
-            titleScreen.SetActive(true);
-            PlayTitlePromptPulse();
-            titleScreen.transform.SetAsLastSibling();
-            return;
-        }
-        StopTitlePromptPulse();
-        titleScreen.SetActive(false);
-    }
-    public void PlayTitlePromptPulse()
-    {
-        ResolveReferences();
-        if (clickToStartText == null)
-        {
-            return;
-        }
-        StopTitlePromptPulse();
-        clickToStartText.gameObject.SetActive(true);
-        clickToStartText.rectTransform.localScale = Vector3.one;
-        SetClickPromptAlpha(1f);
-        clickToStartTween = DOTween.Sequence()
-            .SetUpdate(true)
-            .Append(clickToStartText.rectTransform.DOScale(1.08f, 0.75f).SetEase(Ease.InOutSine))
-            .Join(clickToStartText.DOFade(0.45f, 0.75f).SetEase(Ease.InOutSine))
-            .Append(clickToStartText.rectTransform.DOScale(1f, 0.75f).SetEase(Ease.InOutSine))
-            .Join(clickToStartText.DOFade(1f, 0.75f).SetEase(Ease.InOutSine))
-            .SetLoops(-1, LoopType.Restart);
-    }
-    public void StopTitlePromptPulse()
-    {
-        if (clickToStartTween != null && clickToStartTween.IsActive())
-        {
-            clickToStartTween.Kill();
-        }
-        clickToStartTween = null;
-        if (clickToStartText == null)
-        {
-            return;
-        }
-        clickToStartText.rectTransform.localScale = Vector3.one;
-        SetClickPromptAlpha(1f);
-    }
-    public TutorialOverlayView EnsureTutorialOverlay()
-    {
-        if (tutorialOverlayView != null)
-        {
-            return tutorialOverlayView;
-        }
-        tutorialOverlayView = GetComponentInChildren<TutorialOverlayView>(true);
-        if (tutorialOverlayView != null)
-        {
-            return tutorialOverlayView;
-        }
-        tutorialOverlayView = TutorialOverlayView.CreateUnder(transform, GetTextTemplate());
-        return tutorialOverlayView;
-    }
-    private void ResolveReferences()
-    {
-        if (titleScreen == null)
-        {
-            titleScreen = FindSceneObject("TitleScreen");
-        }
-        if (clickToStartText != null || titleScreen == null)
-        {
-            return;
-        }
-        var texts = titleScreen.GetComponentsInChildren<TMP_Text>(true);
-        for (var i = 0; i < texts.Length; i++)
-        {
-            var candidate = texts[i];
-            if (candidate == null)
-            {
-                continue;
-            }
-            if (candidate.text.IndexOf("click", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                clickToStartText = candidate;
-                break;
-            }
-        }
-        if (clickToStartText == null && texts.Length > 0)
-        {
-            clickToStartText = texts[0];
-        }
-    }
-    private void ResetTitleScreenAlpha()
-    {
-        var titleImage = TitleScreenImage;
-        if (titleImage == null)
-        {
-            return;
-        }
-        var color = titleImage.color;
-        color.a = 1f;
-        titleImage.color = color;
-    }
-    private void SetClickPromptAlpha(float alpha)
-    {
-        if (clickToStartText == null)
-        {
-            return;
-        }
-        var color = clickToStartText.color;
-        color.a = alpha;
-        clickToStartText.color = color;
-    }
-    private TMP_Text GetTextTemplate()
-    {
-        if (clickToStartText != null)
-        {
-            return clickToStartText;
-        }
-        return GetComponentInChildren<TMP_Text>(true);
-    }
-    private static GameObject FindSceneObject(string objectName)
-    {
-        if (string.IsNullOrWhiteSpace(objectName))
-        {
-            return null;
-        }
-        var transforms = Resources.FindObjectsOfTypeAll<Transform>();
-        for (var i = 0; i < transforms.Length; i++)
-        {
-            var candidate = transforms[i];
-            if (candidate == null ||
-                candidate.hideFlags != HideFlags.None ||
-                !candidate.gameObject.scene.IsValid() ||
-                !string.Equals(candidate.name, objectName, StringComparison.Ordinal))
-            {
-                continue;
-            }
-            return candidate.gameObject;
-        }
-        return null;
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
 using System.Collections;
 using UnityEngine;
@@ -7465,6 +7713,215 @@ public class DayScreenView : MonoBehaviour
         panelImage.raycastTarget = false;
         panelImage.type = Image.Type.Sliced;
         return panelRect;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/UI.cs">
+using System;
+using DG.Tweening;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+public class UI : MonoBehaviour
+{
+    [SerializeField] private GameObject titleScreen;
+    [SerializeField] private TMP_Text clickToStartText;
+    private Tween clickToStartTween;
+    private TutorialOverlayView tutorialOverlayView;
+    public Image TitleScreenImage
+    {
+        get
+        {
+            ResolveReferences();
+            return titleScreen != null ? titleScreen.GetComponent<Image>() : null;
+        }
+    }
+    public static UI EnsureInstance()
+    {
+        var existingUi = FindFirstObjectByType<UI>(FindObjectsInactive.Include);
+        if (existingUi != null)
+        {
+            existingUi.ResolveReferences();
+            if (G.ui != existingUi)
+            {
+                G.ui = existingUi;
+            }
+            return existingUi;
+        }
+        var host = FindSceneObject("UI_Canvas");
+        if (host == null)
+        {
+            var discoveredTitleScreen = FindSceneObject("TitleScreen");
+            host = discoveredTitleScreen != null && discoveredTitleScreen.transform.parent != null
+                ? discoveredTitleScreen.transform.parent.gameObject
+                : null;
+        }
+        if (host == null)
+        {
+            return null;
+        }
+        var createdUi = host.AddComponent<UI>();
+        createdUi.ResolveReferences();
+        G.ui = createdUi;
+        return createdUi;
+    }
+    private void Awake()
+    {
+        G.ui = this;
+        ResolveReferences();
+    }
+    private void OnDestroy()
+    {
+        StopTitlePromptPulse();
+        if (G.ui == this)
+        {
+            G.ui = null;
+        }
+    }
+    public void ToggleTitle(bool visible)
+    {
+        ResolveReferences();
+        if (titleScreen == null)
+        {
+            return;
+        }
+        if (visible)
+        {
+            ResetTitleScreenAlpha();
+            titleScreen.SetActive(true);
+            PlayTitlePromptPulse();
+            titleScreen.transform.SetAsLastSibling();
+            return;
+        }
+        StopTitlePromptPulse();
+        titleScreen.SetActive(false);
+    }
+    public void PlayTitlePromptPulse()
+    {
+        ResolveReferences();
+        if (clickToStartText == null)
+        {
+            return;
+        }
+        StopTitlePromptPulse();
+        clickToStartText.gameObject.SetActive(true);
+        clickToStartText.rectTransform.localScale = Vector3.one;
+        SetClickPromptAlpha(1f);
+        clickToStartTween = DOTween.Sequence()
+            .SetUpdate(true)
+            .Append(clickToStartText.rectTransform.DOScale(1.08f, 0.75f).SetEase(Ease.InOutSine))
+            .Join(clickToStartText.DOFade(0.45f, 0.75f).SetEase(Ease.InOutSine))
+            .Append(clickToStartText.rectTransform.DOScale(1f, 0.75f).SetEase(Ease.InOutSine))
+            .Join(clickToStartText.DOFade(1f, 0.75f).SetEase(Ease.InOutSine))
+            .SetLoops(-1, LoopType.Restart);
+    }
+    public void StopTitlePromptPulse()
+    {
+        if (clickToStartTween != null && clickToStartTween.IsActive())
+        {
+            clickToStartTween.Kill();
+        }
+        clickToStartTween = null;
+        if (clickToStartText == null)
+        {
+            return;
+        }
+        clickToStartText.rectTransform.localScale = Vector3.one;
+        SetClickPromptAlpha(1f);
+    }
+    public TutorialOverlayView EnsureTutorialOverlay()
+    {
+        if (tutorialOverlayView != null)
+        {
+            return tutorialOverlayView;
+        }
+        tutorialOverlayView = GetComponentInChildren<TutorialOverlayView>(true);
+        if (tutorialOverlayView != null)
+        {
+            return tutorialOverlayView;
+        }
+        tutorialOverlayView = TutorialOverlayView.CreateUnder(transform, GetTextTemplate());
+        return tutorialOverlayView;
+    }
+    private void ResolveReferences()
+    {
+        if (titleScreen == null)
+        {
+            titleScreen = FindSceneObject("TitleScreen");
+        }
+        if (clickToStartText != null || titleScreen == null)
+        {
+            return;
+        }
+        var texts = titleScreen.GetComponentsInChildren<TMP_Text>(true);
+        for (var i = 0; i < texts.Length; i++)
+        {
+            var candidate = texts[i];
+            if (candidate == null)
+            {
+                continue;
+            }
+            if (candidate.text.IndexOf("click", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                clickToStartText = candidate;
+                break;
+            }
+        }
+        if (clickToStartText == null && texts.Length > 0)
+        {
+            clickToStartText = texts[0];
+        }
+    }
+    private void ResetTitleScreenAlpha()
+    {
+        var titleImage = TitleScreenImage;
+        if (titleImage == null)
+        {
+            return;
+        }
+        var color = titleImage.color;
+        color.a = 1f;
+        titleImage.color = color;
+    }
+    private void SetClickPromptAlpha(float alpha)
+    {
+        if (clickToStartText == null)
+        {
+            return;
+        }
+        var color = clickToStartText.color;
+        color.a = alpha;
+        clickToStartText.color = color;
+    }
+    private TMP_Text GetTextTemplate()
+    {
+        if (clickToStartText != null)
+        {
+            return clickToStartText;
+        }
+        return GetComponentInChildren<TMP_Text>(true);
+    }
+    private static GameObject FindSceneObject(string objectName)
+    {
+        if (string.IsNullOrWhiteSpace(objectName))
+        {
+            return null;
+        }
+        var transforms = Resources.FindObjectsOfTypeAll<Transform>();
+        for (var i = 0; i < transforms.Length; i++)
+        {
+            var candidate = transforms[i];
+            if (candidate == null ||
+                candidate.hideFlags != HideFlags.None ||
+                !candidate.gameObject.scene.IsValid() ||
+                !string.Equals(candidate.name, objectName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            return candidate.gameObject;
+        }
+        return null;
     }
 }
 </file>

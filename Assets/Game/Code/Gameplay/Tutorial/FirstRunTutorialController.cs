@@ -7,6 +7,12 @@ public sealed class FirstRunTutorialController : IDisposable
     private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
     private const float IntroFadeDuration = 0.45f;
     private const float TutorialEnemySpawnOffsetX = -1.75f;
+    private const string GraveyJonesMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones</color></link>";
+    private const string GraveyJonesPossessiveMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones's</color></link>";
+    private const string BellsMarkup = "<color=#F2D35E>bells</color>";
+    private const string FaithMarkup = "<color=#7EDBFF>faith</color>";
+    private const string LimitedTimeMarkup = "<color=#F2D35E>limited time</color>";
+    private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred places</color>";
 
     private readonly Main main;
     private readonly string tutorialBellId;
@@ -47,7 +53,7 @@ public sealed class FirstRunTutorialController : IDisposable
         }
 
         overlay.ShowBlackBackdropImmediate();
-        yield return overlay.PlayTypedMessage("The old keeper, Gravey Jones, is dead.", true);
+        yield return overlay.PlayTypedMessage($"The old keeper, {GraveyJonesMarkup}, is dead.", true);
         yield return overlay.PlayTypedMessage("Without him, the cemetery stands unguarded.", true);
     }
 
@@ -108,7 +114,9 @@ public sealed class FirstRunTutorialController : IDisposable
         }
 
         overlay.ShowWorldMarker(bellWorldObject.transform, "RING BELL", new Color(1f, 0.86f, 0.36f, 1f));
-        yield return overlay.PlayTypedMessage("Ring the bells to signal the graveyard's defenders.", false);
+        yield return overlay.PlayTypedMessage(
+            $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
+            false);
         while (!bellSummoned)
         {
             yield return null;
@@ -119,7 +127,8 @@ public sealed class FirstRunTutorialController : IDisposable
 
         yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
         yield return overlay.PlayTypedMessage(
-            "Each defender has limited <color=#F2D35E>time</color> to serve this holy ground", false);
+            $"Each defender has {LimitedTimeMarkup} to serve this holy ground.",
+            false);
 
         while (!tutorialEnemyKilled)
         {
@@ -127,10 +136,10 @@ public sealed class FirstRunTutorialController : IDisposable
         }
 
         yield return overlay.PlayTypedMessage(
-            "Raising undead defenders costs faith.",
+            $"Raising undead defenders costs {FaithMarkup}.",
             false);
         yield return overlay.PlayTypedMessage(
-            "To get it you must pray at sacred place, but it can take time.",
+            $"To get it you must pray at {SacredPlacesMarkup}, but it can take time.",
             false);
 
         if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
@@ -147,7 +156,7 @@ public sealed class FirstRunTutorialController : IDisposable
 
         overlay.HideWorldMarker();
         yield return overlay.PlayTypedMessage(
-            "Survive to the final night, and take Gravey Jones's place.",
+            $"Survive to the final night, and take {GraveyJonesPossessiveMarkup} place.",
             false);
 
         PlayerPrefs.SetInt(TutorialCompletedKey, 1);

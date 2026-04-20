@@ -6,4 +6,10 @@ public abstract class ContentDef : ScriptableObject
     [SerializeField] private string id;
 
     public string Id => string.IsNullOrEmpty(id) ? name : id;
+
+    protected void InitializeContent(string contentId)
+    {
+        id = contentId;
+        name = contentId;
+    }
 }

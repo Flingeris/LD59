@@ -65,6 +65,21 @@ public class CemeteryStateSystem
         return totalRepaired;
     }
 
+    public int ApplyInstantRepair(RunState runState, int repairAmount)
+    {
+        if (runState == null || repairAmount <= 0)
+        {
+            return 0;
+        }
+
+        var previousState = runState.CemeteryState;
+        runState.CemeteryState = Mathf.Clamp(
+            runState.CemeteryState + repairAmount,
+            0,
+            Mathf.Max(0, runState.CemeteryMaxState));
+        return Mathf.Max(0, runState.CemeteryState - previousState);
+    }
+
     public void ResetNightRepairProgress(RunState runState)
     {
         if (runState == null)

@@ -16,4 +16,22 @@ public class EnemyDef : ContentDef
     public float AttackInterval => attackInterval;
     public float MoveSpeed => moveSpeed;
     public GameObject ViewPrefab => viewPrefab;
+
+    internal void InitializeRuntime(
+        string contentId,
+        int contentHp,
+        int contentDamage,
+        int contentGoldReward,
+        float contentAttackInterval,
+        float contentMoveSpeed,
+        GameObject contentViewPrefab)
+    {
+        InitializeContent(contentId);
+        hp = contentHp;
+        damage = contentDamage;
+        goldReward = contentGoldReward;
+        attackInterval = contentAttackInterval;
+        moveSpeed = contentMoveSpeed;
+        viewPrefab = contentViewPrefab;
+    }
 }

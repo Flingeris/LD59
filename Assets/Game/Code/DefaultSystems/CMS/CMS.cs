@@ -26,26 +26,40 @@ public static class CMS
         foreach (var def in allDefs)
         {
             if (def == null) continue;
-
-            var id = def.Id;
-
-            if (string.IsNullOrWhiteSpace(id))
+            if (def is BellDef || def is UnitDef || def is EnemyDef || def is UpgradeDef)
             {
-                Debug.LogWarning($"[CSM] Def '{def.name}' has empty Id");
                 continue;
             }
 
-            if (_byId.ContainsKey(id))
-            {
-                Debug.LogError($"[CSM] Duplicate Id '{id}' on asset '{def.name}' and '{_byId[id].name}'");
-                continue;
-            }
+            AddDef(def);
+        }
 
-            _byId.Add(id, def);
-            _all.Add(def);
+        foreach (var runtimeDef in BellgraveBalance.Content.BuildRuntimeDefs())
+        {
+            AddDef(runtimeDef);
         }
 
         Debug.Log($"[CSM] Loaded {_all.Count} defs");
+    }
+
+    private static void AddDef(ContentDef def)
+    {
+        var id = def.Id;
+
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            Debug.LogWarning($"[CSM] Def '{def.name}' has empty Id");
+            return;
+        }
+
+        if (_byId.ContainsKey(id))
+        {
+            Debug.LogError($"[CSM] Duplicate Id '{id}' on asset '{def.name}' and '{_byId[id].name}'");
+            return;
+        }
+
+        _byId.Add(id, def);
+        _all.Add(def);
     }
 
     // --- Публичное API ---

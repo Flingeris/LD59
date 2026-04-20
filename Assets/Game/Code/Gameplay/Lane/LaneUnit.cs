@@ -16,12 +16,12 @@ public class LaneUnit : MonoBehaviour
     public Vector3 IdleAnchorPosition { get; private set; }
     public LaneEnemy TargetEnemy { get; private set; }
     public bool HasTarget => TargetEnemy != null;
-    public bool HasLimitedLifetime => UnitDef != null && UnitDef.LifetimeSeconds > 0f;
+    public bool HasLimitedLifetime => maxLifetimeSeconds > 0f;
 
     public float LifetimeProgressNormalized =>
         !HasLimitedLifetime
             ? 0f
-            : Mathf.Clamp01(1f - (Mathf.Max(0f, remainingLifetime) / Mathf.Max(0.01f, UnitDef.LifetimeSeconds)));
+            : Mathf.Clamp01(1f - (Mathf.Max(0f, remainingLifetime) / Mathf.Max(0.01f, maxLifetimeSeconds)));
 
     private float attackCooldown;
     private bool hasHomePosition;
@@ -35,6 +35,11 @@ public class LaneUnit : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private float remainingLifetime = -1f;
     private bool hasPlayedDeathSfx;
+    private int maxHp;
+    private int damage;
+    private float attackIntervalSeconds;
+    private float moveSpeed;
+    private float maxLifetimeSeconds;
 
     private void Update()
     {
@@ -58,12 +63,22 @@ public class LaneUnit : MonoBehaviour
 
     public void Initialize(UnitDef unitDef)
     {
+        Initialize(unitDef, UnitRuntimeStats.From(unitDef, null));
+    }
+
+    public void Initialize(UnitDef unitDef, UnitRuntimeStats runtimeStats)
+    {
         UnitDef = unitDef;
-        CurrentHp = unitDef.Hp;
+        maxHp = runtimeStats.MaxHp;
+        damage = runtimeStats.Damage;
+        attackIntervalSeconds = runtimeStats.AttackIntervalSeconds;
+        moveSpeed = runtimeStats.MoveSpeed;
+        maxLifetimeSeconds = runtimeStats.LifetimeSeconds;
+        CurrentHp = maxHp;
         State = LaneUnitState.Waiting;
         TargetEnemy = null;
-        attackCooldown = unitDef.AttackInterval;
-        remainingLifetime = unitDef.LifetimeSeconds > 0f ? unitDef.LifetimeSeconds : -1f;
+        attackCooldown = attackIntervalSeconds;
+        remainingLifetime = maxLifetimeSeconds > 0f ? maxLifetimeSeconds : -1f;
         hasPlayedDeathSfx = false;
         combatFeedbackView = GetComponent<LaneCombatFeedbackView>();
         if (combatFeedbackView == null)
@@ -76,7 +91,7 @@ public class LaneUnit : MonoBehaviour
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         }
 
-        combatFeedbackView.Bind(unitDef.Hp, false);
+        combatFeedbackView.Bind(maxHp, false);
         UpdateSortingOrder();
     }
 
@@ -248,9 +263,9 @@ public class LaneUnit : MonoBehaviour
             return;
         }
 
-        TargetEnemy.ApplyDamage(UnitDef.Damage);
+        TargetEnemy.ApplyDamage(damage);
         G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
-        attackCooldown = UnitDef.AttackInterval;
+        attackCooldown = attackIntervalSeconds;
     }
 
     private void UpdateReturning(float deltaTime)
@@ -279,7 +294,7 @@ public class LaneUnit : MonoBehaviour
 
         var direction = offset.normalized;
         UpdateFacing(direction);
-        var moveStep = UnitDef.MoveSpeed * deltaTime;
+        var moveStep = moveSpeed * deltaTime;
         if (offset.magnitude <= moveStep)
         {
             transform.position = targetPosition;

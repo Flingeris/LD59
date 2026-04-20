@@ -49,40 +49,47 @@ public class UpgradeSystem
             || effectType == UpgradeEffectType.CemeteryMaxStateBonus
             || effectType == UpgradeEffectType.BellFaithCostModifier
             || effectType == UpgradeEffectType.StartingNightFaithBonus
-            || effectType == UpgradeEffectType.KeeperMoveSpeedBonus;
+            || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
+            || effectType == UpgradeEffectType.UnitDamageModifier
+            || effectType == UpgradeEffectType.UnitLifetimeModifier
+            || effectType == UpgradeEffectType.UnitHpModifier
+            || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
+            || effectType == UpgradeEffectType.NightInstantRepairCharge;
     }
 
     private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
     {
-        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
+        var effectValue = Mathf.Max(0f, upgradeDef.EffectValue);
+        var effectIntValue = Mathf.RoundToInt(effectValue);
 
         switch (upgradeDef.EffectType)
         {
             case UpgradeEffectType.FaithIncomeBonus:
-                runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectValue);
+                runState.FaithCollectionPayoutAmount =
+                    Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectIntValue);
                 break;
 
             case UpgradeEffectType.CemeteryRepair:
                 runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectValue,
+                    runState.CemeteryState + effectIntValue,
                     0,
                     runState.CemeteryMaxState);
                 break;
 
             case UpgradeEffectType.CemeteryMaxStateBonus:
-                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectValue);
+                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectIntValue);
                 runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectValue,
+                    runState.CemeteryState + effectIntValue,
                     0,
                     runState.CemeteryMaxState);
                 break;
 
             case UpgradeEffectType.BellFaithCostModifier:
-                runState.BellFaithCostModifier -= effectValue;
+                runState.BellFaithCostModifier -= effectIntValue;
                 break;
 
             case UpgradeEffectType.StartingNightFaithBonus:
-                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectValue);
+                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectIntValue);
                 break;
 
             case UpgradeEffectType.KeeperMoveSpeedBonus:
@@ -91,6 +98,29 @@ public class UpgradeSystem
                     runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed + effectValue);
                 }
 
+                break;
+
+            case UpgradeEffectType.UnitDamageModifier:
+                runState.AddUnitDamageModifier(upgradeDef.TargetUnitId, effectIntValue);
+                break;
+
+            case UpgradeEffectType.UnitLifetimeModifier:
+                runState.AddUnitLifetimeModifier(upgradeDef.TargetUnitId, effectValue);
+                break;
+
+            case UpgradeEffectType.UnitHpModifier:
+                runState.AddUnitHpModifier(upgradeDef.TargetUnitId, effectIntValue);
+                break;
+
+            case UpgradeEffectType.FaithCollectionIntervalModifier:
+                runState.FaithCollectionIntervalSeconds =
+                    Mathf.Max(0f, runState.FaithCollectionIntervalSeconds - effectValue);
+                break;
+
+            case UpgradeEffectType.NightInstantRepairCharge:
+                runState.InstantNightRepairChargesPerNight =
+                    Mathf.Max(0, runState.InstantNightRepairChargesPerNight + 1);
+                runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount + effectIntValue);
                 break;
         }
     }
@@ -104,6 +134,12 @@ public class UpgradeSystem
         runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
         runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
         runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
+        runState.InstantNightRepairChargesPerNight = Mathf.Max(0, runState.InstantNightRepairChargesPerNight);
+        runState.RemainingInstantNightRepairCharges = Mathf.Clamp(
+            runState.RemainingInstantNightRepairCharges,
+            0,
+            runState.InstantNightRepairChargesPerNight);
+        runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount);
         if (runState.Keeper != null)
         {
             runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed);

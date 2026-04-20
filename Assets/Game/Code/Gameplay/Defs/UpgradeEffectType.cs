@@ -7,5 +7,9 @@ public enum UpgradeEffectType
     BellFaithCostModifier = 4,
     UnitDamageModifier = 5,
     StartingNightFaithBonus = 6,
-    KeeperMoveSpeedBonus = 7
+    KeeperMoveSpeedBonus = 7,
+    UnitLifetimeModifier = 8,
+    UnitHpModifier = 9,
+    FaithCollectionIntervalModifier = 10,
+    NightInstantRepairCharge = 11
 }

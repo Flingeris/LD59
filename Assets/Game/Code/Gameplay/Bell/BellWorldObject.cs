@@ -82,6 +82,15 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
         Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
     }
 
+    public void InitializeRuntime(string runtimeBellId)
+    {
+        bellId = runtimeBellId;
+        cooldownRemainingSeconds = 0f;
+        cooldownDurationSeconds = 0f;
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+
     public void StartCooldown(float cooldownSeconds)
     {
         cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);

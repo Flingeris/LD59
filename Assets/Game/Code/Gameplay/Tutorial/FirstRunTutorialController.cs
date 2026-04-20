@@ -12,7 +12,7 @@ public sealed class FirstRunTutorialController : IDisposable
     private const string BellsMarkup = "<color=#F2D35E>bells</color>";
     private const string FaithMarkup = "<color=#7EDBFF>faith</color>";
     private const string LimitedTimeMarkup = "<color=#F2D35E>limited time</color>";
-    private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred places</color>";
+    private const string SacredPlacesMarkup = "<color=#7EDBFF>sacred place</color>";
     private const string RepairCemeteryMarkup = "<color=#C8E1BA>repair cemetery</color>";
 
     private readonly Main main;
@@ -171,7 +171,7 @@ public sealed class FirstRunTutorialController : IDisposable
 
         overlay.HideWorldMarker();
         yield return overlay.PlayTypedMessage(
-            $"Survive to the final night, and take {GraveyJonesPossessiveMarkup} place.",
+            $"Survive until the final night, and take {GraveyJonesPossessiveMarkup} place.",
             false);
 
         BlocksWaveProgress = false;

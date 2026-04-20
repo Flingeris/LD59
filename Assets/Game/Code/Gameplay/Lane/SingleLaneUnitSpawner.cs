@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class SingleLaneUnitSpawner
 {
-    public UnitSpawnResult TrySpawnPlayerUnit(UnitDef unitDef, SingleLaneHost laneHost)
+    public UnitSpawnResult TrySpawnPlayerUnit(UnitDef unitDef, SingleLaneHost laneHost, RunState runState)
     {
         if (laneHost == null)
         {
@@ -30,7 +30,7 @@ public class SingleLaneUnitSpawner
             laneUnit = spawnedGameObject.AddComponent<LaneUnit>();
         }
 
-        laneUnit.Initialize(unitDef);
+        laneUnit.Initialize(unitDef, UnitRuntimeStats.From(unitDef, runState));
         return UnitSpawnResult.Success(laneUnit);
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -11,23 +12,8 @@ public class Main : MonoBehaviour
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
     [SerializeField] private KeeperActor keeperActor;
-    [Min(0)] [SerializeField] private int initialCemeteryState = 100;
-    [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
-    [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
-
-    [FormerlySerializedAs("dayFaithReward")]
-    [Min(0)] [SerializeField] private int startingNightFaith = 10;
-
-    [FormerlySerializedAs("initialFaithCollectionPerSecond")]
-    [Min(0f)] [SerializeField] private float initialFaithCollectionPayoutAmount = 3f;
-
-    [Min(0.01f)] [SerializeField] private float initialFaithCollectionIntervalSeconds = 3f;
-    [Min(0)] [SerializeField] private int initialNightCemeteryRepairAmount = 1;
-    [Min(0.01f)] [SerializeField] private float initialNightCemeteryRepairIntervalSeconds = 1f;
-
-    [FormerlySerializedAs("targetSurvivedNights")]
-    [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
     [SerializeField] private bool showIntroScreenOnStartup = true;
+    [SerializeField] private bool showFirstRunTutorial = true;
     [Min(0f)] [SerializeField] private float titleScreenFadeDuration = 1.25f;
     [SerializeField] private string firstRunTutorialBellId = "bell_small";
     [SerializeField] private string firstRunTutorialEnemyId = "en1";
@@ -73,13 +59,13 @@ public class Main : MonoBehaviour
         Time.timeScale = 1f;
         G.main = this;
         RunState = RunState.CreateInitial(
-            initialCemeteryState,
-            initialKeeperMoveSpeed,
-            startingNightFaith,
-            Mathf.Max(0, Mathf.RoundToInt(initialFaithCollectionPayoutAmount)),
-            initialFaithCollectionIntervalSeconds,
-            initialNightCemeteryRepairAmount,
-            initialNightCemeteryRepairIntervalSeconds);
+            BellgraveBalance.Run.InitialCemeteryState,
+            BellgraveBalance.Run.InitialKeeperMoveSpeed,
+            BellgraveBalance.Run.StartingNightFaith,
+            BellgraveBalance.Run.FaithCollectionPayoutAmount,
+            BellgraveBalance.Run.FaithCollectionIntervalSeconds,
+            BellgraveBalance.Run.NightCemeteryRepairAmount,
+            BellgraveBalance.Run.NightCemeteryRepairIntervalSeconds);
         bellSystem = new BellSystem();
         cemeteryStateSystem = new CemeteryStateSystem();
         faithCollectionSystem = new FaithCollectionSystem();
@@ -158,6 +144,7 @@ public class Main : MonoBehaviour
         ClearPendingBellInteraction();
         faithCollectionSystem.EndNight(RunState);
         cemeteryStateSystem.ResetNightRepairProgress(RunState);
+        RunState.RemainingInstantNightRepairCharges = 0;
         waveSystem.StopWave();
         ClearLaneCombatants();
         StopKeeperMovement();
@@ -180,7 +167,9 @@ public class Main : MonoBehaviour
         ClearPendingBellInteraction();
         faithCollectionSystem.StartNight(RunState);
         cemeteryStateSystem.ResetNightRepairProgress(RunState);
+        RunState.RemainingInstantNightRepairCharges = Mathf.Max(0, RunState.InstantNightRepairChargesPerNight);
         PrepareKeeperForNight();
+        TrySpawnNightUnlockedBells();
         StartNightWave();
         RefreshPresentation();
         PlayPhaseTransitionCue(GamePhase.Night);
@@ -453,7 +442,7 @@ public class Main : MonoBehaviour
             return bellResult;
         }
 
-        bellResult.SpawnResult = unitSpawner.TrySpawnPlayerUnit(bellResult.UnitDef, singleLaneHost);
+        bellResult.SpawnResult = unitSpawner.TrySpawnPlayerUnit(bellResult.UnitDef, singleLaneHost, RunState);
         if (!bellResult.SpawnResult.IsSuccess)
         {
             RunState.Faith += bellResult.BellDef.FaithCost;
@@ -716,7 +705,10 @@ public class Main : MonoBehaviour
 
         if (RunState.CurrentPhase == GamePhase.Night)
         {
-            keeperMovementSystem.UpdateMovement(RunState.Keeper, Time.deltaTime, keeperArrivalDistance);
+            keeperMovementSystem.UpdateMovement(
+                RunState.Keeper,
+                Time.deltaTime,
+                BellgraveBalance.Run.KeeperArrivalDistance);
         }
         else
         {
@@ -783,6 +775,17 @@ public class Main : MonoBehaviour
             return;
         }
 
+        var instantRepairedAmount = TryApplyInstantNightRepair();
+        if (instantRepairedAmount > 0)
+        {
+            CemeteryRepaired?.Invoke(instantRepairedAmount);
+            RefreshPresentation();
+            if (RunState.CemeteryState >= RunState.CemeteryMaxState)
+            {
+                return;
+            }
+        }
+
         var repairedAmount = cemeteryStateSystem.ApplyNightRepair(RunState, Time.deltaTime);
         if (repairedAmount <= 0)
         {
@@ -791,6 +794,28 @@ public class Main : MonoBehaviour
 
         CemeteryRepaired?.Invoke(repairedAmount);
         RefreshPresentation();
+    }
+
+    private int TryApplyInstantNightRepair()
+    {
+        if (RunState == null ||
+            cemeteryStateSystem == null ||
+            RunState.RemainingInstantNightRepairCharges <= 0 ||
+            RunState.InstantNightRepairAmount <= 0 ||
+            RunState.CemeteryState >= RunState.CemeteryMaxState)
+        {
+            return 0;
+        }
+
+        var repairedAmount = cemeteryStateSystem.ApplyInstantRepair(RunState, RunState.InstantNightRepairAmount);
+        if (repairedAmount <= 0)
+        {
+            return 0;
+        }
+
+        RunState.RemainingInstantNightRepairCharges--;
+        RunState.NightCemeteryRepairTimerProgress = 0f;
+        return repairedAmount;
     }
 
     private void PublishFaithPickupFeedback(int collectedFaith)
@@ -988,6 +1013,22 @@ public class Main : MonoBehaviour
         }
     }
 
+    private void TrySpawnNightUnlockedBells()
+    {
+        var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
+        if (bellNightSpawnController == null)
+        {
+            return;
+        }
+
+        if (!bellNightSpawnController.TrySpawnForNight(RunState.CurrentNight))
+        {
+            return;
+        }
+
+        RebuildBellWorldObjectRegistry();
+    }
+
     private BellWorldObject ResolveBellWorldObject(string bellId)
     {
         if (string.IsNullOrWhiteSpace(bellId))
@@ -1031,7 +1072,8 @@ public class Main : MonoBehaviour
     {
         startupSequenceInProgress = true;
         UI.EnsureInstance();
-        var shouldRunFirstRunTutorial = firstRunTutorialController != null &&
+        var shouldRunFirstRunTutorial = showFirstRunTutorial &&
+                                        firstRunTutorialController != null &&
                                         firstRunTutorialController.ShouldRunFirstRunTutorial;
         var canShowTitleScreen = showIntroScreenOnStartup && G.ui != null && G.ui.TitleScreenImage != null;
 
@@ -1238,7 +1280,8 @@ public class Main : MonoBehaviour
             new Night2(),
             new Night3(),
             new Night4(),
-            new Night5()
+            new Night5(),
+            new Night6()
         };
     }
 
@@ -1348,17 +1391,46 @@ public class Main : MonoBehaviour
 
     private static string BuildUpgradeEffectText(UpgradeDef upgradeDef)
     {
-        var effectValue = Mathf.Max(0, upgradeDef.EffectValue);
+        var effectValue = Mathf.Max(0f, upgradeDef.EffectValue);
+        var effectValueText = FormatUpgradeValue(effectValue);
+        var targetUnitName = ResolveUpgradeUnitName(upgradeDef.TargetUnitId);
 
         return upgradeDef.EffectType switch
         {
-            UpgradeEffectType.FaithIncomeBonus => $"+{effectValue} Faith per payout",
-            UpgradeEffectType.CemeteryRepair => $"+{effectValue} cemetery repair",
-            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValue} cemetery max",
-            UpgradeEffectType.BellFaithCostModifier => $"-{effectValue} bell Faith cost",
-            UpgradeEffectType.StartingNightFaithBonus => $"+{effectValue} Faith at night start",
-            UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValue} keeper speed",
+            UpgradeEffectType.FaithIncomeBonus => $"+{effectValueText} Faith per payout",
+            UpgradeEffectType.CemeteryRepair => $"+{effectValueText} cemetery repair",
+            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValueText} cemetery max",
+            UpgradeEffectType.BellFaithCostModifier => $"-{effectValueText} bell Faith cost",
+            UpgradeEffectType.StartingNightFaithBonus => $"+{effectValueText} Faith at night start",
+            UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValueText} keeper speed",
+            UpgradeEffectType.UnitDamageModifier => $"+{effectValueText} {targetUnitName} damage",
+            UpgradeEffectType.UnitLifetimeModifier => $"+{effectValueText}s {targetUnitName} lifetime",
+            UpgradeEffectType.UnitHpModifier => $"+{effectValueText} {targetUnitName} HP",
+            UpgradeEffectType.FaithCollectionIntervalModifier => $"-{effectValueText}s Faith payout interval",
+            UpgradeEffectType.NightInstantRepairCharge => $"Instant repair once per night (+{effectValueText} cemetery)",
             _ => string.Empty
+        };
+    }
+
+    private static string FormatUpgradeValue(float value)
+    {
+        if (Mathf.Approximately(value, Mathf.Round(value)))
+        {
+            return Mathf.RoundToInt(value).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private static string ResolveUpgradeUnitName(string unitId)
+    {
+        return unitId switch
+        {
+            "skel1" => "Skeleton",
+            "vampire" => "Vampire",
+            "zombie" => "Zombie",
+            _ when string.IsNullOrWhiteSpace(unitId) => "Unit",
+            _ => unitId
         };
     }
 
@@ -1412,7 +1484,7 @@ public class Main : MonoBehaviour
             return false;
         }
 
-        var requiredDayCount = Mathf.Max(1, targetSurvivedDays);
+        var requiredDayCount = Mathf.Max(1, BellgraveBalance.Run.TargetSurvivedDays);
         var reachedDayCount = RunState.CurrentPhase == GamePhase.Night
             ? RunState.CurrentDay + 1
             : RunState.CurrentDay;
@@ -1460,6 +1532,15 @@ public class Main : MonoBehaviour
 
     private void HandleDebugInput()
     {
+        if (Input.GetKeyDown(KeyCode.N) &&
+            RunState != null &&
+            RunState.CurrentPhase == GamePhase.Night)
+        {
+            Debug.Log("Debug: skipped current night");
+            CompleteNight();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.R))
         {
             SceneManager.LoadScene("Main");

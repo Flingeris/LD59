@@ -1,4 +1,5 @@
 using GameAnalyticsSDK;
+using UnityEngine;
 
 public static class AnalyticsSystem
 {

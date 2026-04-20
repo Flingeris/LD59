@@ -16,4 +16,22 @@ public class UnitDef : ContentDef
     public float MoveSpeed => moveSpeed;
     public float LifetimeSeconds => lifetimeSeconds;
     public GameObject ViewPrefab => viewPrefab;
+
+    internal void InitializeRuntime(
+        string contentId,
+        int contentHp,
+        int contentDamage,
+        float contentAttackInterval,
+        float contentMoveSpeed,
+        float contentLifetimeSeconds,
+        GameObject contentViewPrefab)
+    {
+        InitializeContent(contentId);
+        hp = contentHp;
+        damage = contentDamage;
+        attackInterval = contentAttackInterval;
+        moveSpeed = contentMoveSpeed;
+        lifetimeSeconds = contentLifetimeSeconds;
+        viewPrefab = contentViewPrefab;
+    }
 }

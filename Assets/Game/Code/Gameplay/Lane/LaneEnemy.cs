@@ -1,10 +1,11 @@
+using System;
 using UnityEngine;
 
 public class LaneEnemy : MonoBehaviour
 {
     private const int SortingPrecision = 100;
 
-    public event System.Action<LaneEnemy> CemeteryAttackTriggered;
+    public event Action<LaneEnemy> CemeteryAttackTriggered;
 
     public EnemyDef EnemyDef { get; private set; }
     public Vector3 Position => transform.position;
@@ -143,7 +144,7 @@ public class LaneEnemy : MonoBehaviour
         }
 
         TargetUnit.ApplyDamage(EnemyDef.Damage);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = EnemyDef.AttackInterval;
     }
 
@@ -156,7 +157,7 @@ public class LaneEnemy : MonoBehaviour
         }
 
         CemeteryAttackTriggered?.Invoke(this);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = EnemyDef.AttackInterval;
         transform.position = cemeteryAttackPosition;
     }

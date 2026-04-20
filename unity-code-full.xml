@@ -80,7 +80,6 @@ Assets/Game/Code/Gameplay/Defs/UpgradeDef.cs
 Assets/Game/Code/Gameplay/Defs/UpgradeEffectType.cs
 Assets/Game/Code/Gameplay/Environment/CloudLoopController.cs
 Assets/Game/Code/Gameplay/Environment/LoopingCloud.cs
-Assets/Game/Code/Gameplay/Environment/NightAtmosphereVolumeController.cs
 Assets/Game/Code/Gameplay/Environment/WorldYSortSpriteGroup.cs
 Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs
 Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs
@@ -137,158 +136,6 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="Assets/Game/Code/Gameplay/Environment/NightAtmosphereVolumeController.cs">
-using UnityEngine;
-using UnityEngine.Rendering;
-using UnityEngine.Rendering.Universal;
-[ExecuteAlways]
-[DisallowMultipleComponent]
-public class NightAtmosphereVolumeController : MonoBehaviour
-{
-    [SerializeField] private Camera targetCamera;
-    [Header("Bloom")]
-    [SerializeField] private bool bloomEnabled = true;
-    [Min(0f)] [SerializeField] private float bloomThreshold = 1.1f;
-    [Min(0f)] [SerializeField] private float bloomIntensity = 0.12f;
-    [Range(0f, 1f)] [SerializeField] private float bloomScatter = 0.35f;
-    [Header("Color Adjustments")]
-    [SerializeField] private float postExposure = -0.05f;
-    [Range(-100f, 100f)] [SerializeField] private float contrast = 6f;
-    [ColorUsage(false, true)] [SerializeField] private Color colorFilter = new(0.93f, 0.96f, 1f, 1f);
-    [Header("Vignette")]
-    [SerializeField] private bool vignetteEnabled = true;
-    [Range(0f, 1f)] [SerializeField] private float vignetteIntensity = 0.18f;
-    [Range(0.01f, 1f)] [SerializeField] private float vignetteSmoothness = 0.35f;
-    private Volume volume;
-    private void Reset()
-    {
-        RefreshAtmosphere();
-    }
-    private void OnEnable()
-    {
-        RefreshAtmosphere();
-    }
-    private void OnValidate()
-    {
-        RefreshAtmosphere();
-    }
-    private void RefreshAtmosphere()
-    {
-        EnsureCameraPostProcessing();
-        var targetVolume = GetOrCreateVolume();
-        if (targetVolume == null)
-        {
-            return;
-        }
-        targetVolume.isGlobal = true;
-        targetVolume.priority = 0f;
-        targetVolume.blendDistance = 0f;
-        targetVolume.weight = 1f;
-        var profile = targetVolume.profile;
-        if (profile == null)
-        {
-            return;
-        }
-        ConfigureBloom(profile);
-        ConfigureColorAdjustments(profile);
-        ConfigureVignette(profile);
-    }
-    private void EnsureCameraPostProcessing()
-    {
-        var cameraToConfigure = ResolveTargetCamera();
-        if (cameraToConfigure == null)
-        {
-            return;
-        }
-        var cameraData = cameraToConfigure.GetUniversalAdditionalCameraData();
-        if (!cameraData.renderPostProcessing)
-        {
-            cameraData.renderPostProcessing = true;
-        }
-    }
-    private Camera ResolveTargetCamera()
-    {
-        if (targetCamera != null)
-        {
-            return targetCamera;
-        }
-        targetCamera = Camera.main;
-        if (targetCamera == null)
-        {
-            targetCamera = FindFirstObjectByType<Camera>();
-        }
-        return targetCamera;
-    }
-    private Volume GetOrCreateVolume()
-    {
-        if (volume == null && !TryGetComponent(out volume))
-        {
-            volume = gameObject.AddComponent<Volume>();
-        }
-        return volume;
-    }
-    private void ConfigureBloom(VolumeProfile profile)
-    {
-        var bloom = GetOrAddComponent<Bloom>(profile);
-        bloom.active = bloomEnabled;
-        bloom.threshold.overrideState = true;
-        bloom.threshold.value = Mathf.Max(0f, bloomThreshold);
-        bloom.intensity.overrideState = true;
-        bloom.intensity.value = Mathf.Max(0f, bloomIntensity);
-        bloom.scatter.overrideState = true;
-        bloom.scatter.value = Mathf.Clamp01(bloomScatter);
-        bloom.highQualityFiltering.overrideState = true;
-        bloom.highQualityFiltering.value = false;
-        bloom.filter.overrideState = true;
-        bloom.filter.value = BloomFilterMode.Gaussian;
-        bloom.maxIterations.overrideState = true;
-        bloom.maxIterations.value = 4;
-        bloom.tint.overrideState = true;
-        bloom.tint.value = Color.white;
-        bloom.dirtIntensity.overrideState = true;
-        bloom.dirtIntensity.value = 0f;
-    }
-    private void ConfigureColorAdjustments(VolumeProfile profile)
-    {
-        var adjustments = GetOrAddComponent<ColorAdjustments>(profile);
-        adjustments.active = true;
-        adjustments.postExposure.overrideState = true;
-        adjustments.postExposure.value = postExposure;
-        adjustments.contrast.overrideState = true;
-        adjustments.contrast.value = Mathf.Clamp(contrast, -100f, 100f);
-        adjustments.colorFilter.overrideState = true;
-        adjustments.colorFilter.value = colorFilter;
-        adjustments.hueShift.overrideState = true;
-        adjustments.hueShift.value = 0f;
-        adjustments.saturation.overrideState = true;
-        adjustments.saturation.value = 0f;
-    }
-    private void ConfigureVignette(VolumeProfile profile)
-    {
-        var vignette = GetOrAddComponent<Vignette>(profile);
-        vignette.active = vignetteEnabled;
-        vignette.color.overrideState = true;
-        vignette.color.value = Color.black;
-        vignette.center.overrideState = true;
-        vignette.center.value = new Vector2(0.5f, 0.5f);
-        vignette.intensity.overrideState = true;
-        vignette.intensity.value = Mathf.Clamp01(vignetteIntensity);
-        vignette.smoothness.overrideState = true;
-        vignette.smoothness.value = Mathf.Clamp(vignetteSmoothness, 0.01f, 1f);
-        vignette.rounded.overrideState = true;
-        vignette.rounded.value = false;
-    }
-    private static T GetOrAddComponent<T>(VolumeProfile profile) where T : VolumeComponent
-    {
-        if (profile.TryGet<T>(out var component) && component != null)
-        {
-            return component;
-        }
-        return profile.Add<T>(true);
-    }
-}
-</file>
 
 <file path="Assets/Game/Code/DefaultSystems/AnalyticSystem/AnalyticsSystem.cs">
 using GameAnalyticsSDK;
@@ -1146,23 +993,51 @@ public class JsonDataService : IDataService
 </file>
 
 <file path="Assets/Game/Code/DefaultSystems/SettingsUI/PauseManager.cs">
+using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 public class PauseManager : MonoBehaviour
 {
+    private static readonly Color PanelColor = new(0.08f, 0.09f, 0.13f, 0.92f);
+    private static readonly Color PanelOutlineColor = new(0.63f, 0.72f, 0.95f, 0.85f);
+    private static readonly Color ButtonColor = new(0.17f, 0.2f, 0.28f, 0.96f);
+    private static readonly Color SliderBackgroundColor = new(0.19f, 0.2f, 0.28f, 1f);
+    private static readonly Color SliderFillColor = new(0.72f, 0.81f, 1f, 1f);
+    private static readonly Color ToggleBackgroundColor = new(0.19f, 0.2f, 0.28f, 1f);
+    private static readonly Color ToggleCheckColor = new(0.78f, 0.88f, 1f, 1f);
+    private static readonly Color TextColor = new(0.95f, 0.97f, 1f, 1f);
     [SerializeField] private Slider slider_SFX;
     [SerializeField] private Slider slider_Music;
+    [SerializeField] private Toggle toggle_PostFx;
     [SerializeField] private GameObject pausePanel;
+    [SerializeField] private Button toggleButton;
+    [SerializeField] private TMP_FontAsset fontAsset;
+    [SerializeField] private Camera targetCamera;
     public bool IsOpen { get; private set; } = false;
+    private void Awake()
+    {
+        EnsureUiBuilt();
+    }
     private void Start()
     {
-        if (G.audioSystem == null) return;
         Init();
     }
     private void Init()
     {
-        slider_Music.value = G.audioSystem.MusicVolume;
-        slider_SFX.value = G.audioSystem.SfxVolume;
+        EnsureUiBuilt();
+        if (slider_Music != null)
+        {
+            slider_Music.SetValueWithoutNotify(G.audioSystem != null ? G.audioSystem.MusicVolume : 1f);
+        }
+        if (slider_SFX != null)
+        {
+            slider_SFX.SetValueWithoutNotify(G.audioSystem != null ? G.audioSystem.SfxVolume : 1f);
+        }
+        if (toggle_PostFx != null)
+        {
+            toggle_PostFx.SetIsOnWithoutNotify(IsPostFxEnabled());
+        }
         SetToggle(false);
     }
     public void SetMusicVolume(float volume)
@@ -1176,15 +1051,298 @@ public class PauseManager : MonoBehaviour
         if (G.audioSystem == null) return;
         G.audioSystem.SetSFXVolume(volume);
     }
+    public void SetPostFxEnabled(bool enabled)
+    {
+        var cameraToConfigure = ResolveTargetCamera();
+        if (cameraToConfigure == null)
+        {
+            return;
+        }
+        var additionalCameraData = cameraToConfigure.GetUniversalAdditionalCameraData();
+        additionalCameraData.renderPostProcessing = enabled;
+    }
     public void SetToggle(bool toggle)
     {
         IsOpen = toggle;
-        pausePanel.SetActive(IsOpen);
+        if (pausePanel != null)
+        {
+            pausePanel.SetActive(IsOpen);
+        }
     }
     public void Toggle()
     {
         bool b = !IsOpen;
         SetToggle(b);
+    }
+    private void EnsureUiBuilt()
+    {
+        ResolveFontAsset();
+        if (toggleButton == null)
+        {
+            toggleButton = CreateMenuButton();
+        }
+        if (pausePanel == null)
+        {
+            pausePanel = CreatePanel();
+        }
+        BindGeneratedReferences();
+    }
+    private void ResolveFontAsset()
+    {
+        if (fontAsset != null)
+        {
+            return;
+        }
+        var sampleText = GetComponentInChildren<TMP_Text>(true);
+        if (sampleText != null)
+        {
+            fontAsset = sampleText.font;
+        }
+    }
+    private void BindGeneratedReferences()
+    {
+        if (pausePanel == null)
+        {
+            return;
+        }
+        if (slider_Music == null)
+        {
+            slider_Music = pausePanel.transform.Find("MusicRow/Slider")?.GetComponent<Slider>();
+        }
+        if (slider_SFX == null)
+        {
+            slider_SFX = pausePanel.transform.Find("SfxRow/Slider")?.GetComponent<Slider>();
+        }
+        if (toggle_PostFx == null)
+        {
+            toggle_PostFx = pausePanel.transform.Find("PostFxRow/Toggle")?.GetComponent<Toggle>();
+        }
+        if (slider_Music != null)
+        {
+            slider_Music.onValueChanged.RemoveListener(SetMusicVolume);
+            slider_Music.onValueChanged.AddListener(SetMusicVolume);
+        }
+        if (slider_SFX != null)
+        {
+            slider_SFX.onValueChanged.RemoveListener(SetSFXVolume);
+            slider_SFX.onValueChanged.AddListener(SetSFXVolume);
+        }
+        if (toggle_PostFx != null)
+        {
+            toggle_PostFx.onValueChanged.RemoveListener(SetPostFxEnabled);
+            toggle_PostFx.onValueChanged.AddListener(SetPostFxEnabled);
+        }
+    }
+    private Button CreateMenuButton()
+    {
+        var buttonRoot = CreateUiObject("SettingsButton", transform);
+        var buttonRect = buttonRoot.GetComponent<RectTransform>();
+        buttonRect.anchorMin = new Vector2(1f, 1f);
+        buttonRect.anchorMax = new Vector2(1f, 1f);
+        buttonRect.pivot = new Vector2(1f, 1f);
+        buttonRect.anchoredPosition = new Vector2(-6f, -6f);
+        buttonRect.sizeDelta = new Vector2(24f, 16f);
+        var image = buttonRoot.AddComponent<Image>();
+        image.color = ButtonColor;
+        AddOutline(buttonRoot, PanelOutlineColor, 1f);
+        var button = buttonRoot.AddComponent<Button>();
+        button.onClick.AddListener(Toggle);
+        var label = CreateText("Label", buttonRoot.transform, "SET", 5f, TextAlignmentOptions.Center);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        return button;
+    }
+    private GameObject CreatePanel()
+    {
+        var panelRoot = CreateUiObject("SettingsPanel", transform);
+        var panelRect = panelRoot.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(1f, 1f);
+        panelRect.anchorMax = new Vector2(1f, 1f);
+        panelRect.pivot = new Vector2(1f, 1f);
+        panelRect.anchoredPosition = new Vector2(-6f, -26f);
+        panelRect.sizeDelta = new Vector2(114f, 72f);
+        var background = panelRoot.AddComponent<Image>();
+        background.color = PanelColor;
+        AddOutline(panelRoot, PanelOutlineColor, 1f);
+        CreateText("Title", panelRoot.transform, "SETTINGS", 5f, TextAlignmentOptions.Center);
+        var titleRect = panelRoot.transform.Find("Title").GetComponent<RectTransform>();
+        titleRect.anchorMin = new Vector2(0.5f, 1f);
+        titleRect.anchorMax = new Vector2(0.5f, 1f);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.anchoredPosition = new Vector2(0f, -6f);
+        titleRect.sizeDelta = new Vector2(96f, 10f);
+        CreateSliderRow(panelRoot.transform, "MusicRow", "MUSIC", new Vector2(8f, -22f));
+        CreateSliderRow(panelRoot.transform, "SfxRow", "SFX", new Vector2(8f, -40f));
+        CreateToggleRow(panelRoot.transform, "PostFxRow", "POST FX", new Vector2(8f, -58f));
+        panelRoot.SetActive(false);
+        return panelRoot;
+    }
+    private void CreateSliderRow(Transform parent, string rowName, string labelText, Vector2 anchoredPosition)
+    {
+        var row = CreateUiObject(rowName, parent);
+        var rowRect = row.GetComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0f, 1f);
+        rowRect.anchorMax = new Vector2(0f, 1f);
+        rowRect.pivot = new Vector2(0f, 1f);
+        rowRect.anchoredPosition = anchoredPosition;
+        rowRect.sizeDelta = new Vector2(98f, 14f);
+        var label = CreateText("Label", row.transform, labelText, 4f, TextAlignmentOptions.MidlineLeft);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = new Vector2(0f, 0.5f);
+        labelRect.anchorMax = new Vector2(0f, 0.5f);
+        labelRect.pivot = new Vector2(0f, 0.5f);
+        labelRect.anchoredPosition = new Vector2(0f, 0f);
+        labelRect.sizeDelta = new Vector2(38f, 12f);
+        var sliderObject = CreateUiObject("Slider", row.transform);
+        var sliderRect = sliderObject.GetComponent<RectTransform>();
+        sliderRect.anchorMin = new Vector2(1f, 0.5f);
+        sliderRect.anchorMax = new Vector2(1f, 0.5f);
+        sliderRect.pivot = new Vector2(1f, 0.5f);
+        sliderRect.anchoredPosition = new Vector2(0f, 0f);
+        sliderRect.sizeDelta = new Vector2(56f, 12f);
+        var slider = sliderObject.AddComponent<Slider>();
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.wholeNumbers = false;
+        slider.direction = Slider.Direction.LeftToRight;
+        var background = CreateUiObject("Background", sliderObject.transform);
+        var backgroundRect = background.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = new Vector2(0f, 0.5f);
+        backgroundRect.anchorMax = new Vector2(1f, 0.5f);
+        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+        backgroundRect.offsetMin = new Vector2(0f, -2f);
+        backgroundRect.offsetMax = new Vector2(0f, 2f);
+        var backgroundImage = background.AddComponent<Image>();
+        backgroundImage.color = SliderBackgroundColor;
+        var fillArea = CreateUiObject("Fill Area", sliderObject.transform);
+        var fillAreaRect = fillArea.GetComponent<RectTransform>();
+        fillAreaRect.anchorMin = new Vector2(0f, 0f);
+        fillAreaRect.anchorMax = new Vector2(1f, 1f);
+        fillAreaRect.offsetMin = new Vector2(1f, 0f);
+        fillAreaRect.offsetMax = new Vector2(-1f, 0f);
+        var fill = CreateUiObject("Fill", fillArea.transform);
+        var fillRect = fill.GetComponent<RectTransform>();
+        fillRect.anchorMin = new Vector2(0f, 0f);
+        fillRect.anchorMax = new Vector2(1f, 1f);
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+        var fillImage = fill.AddComponent<Image>();
+        fillImage.color = SliderFillColor;
+        var handle = CreateUiObject("Handle", sliderObject.transform);
+        var handleRect = handle.GetComponent<RectTransform>();
+        handleRect.anchorMin = new Vector2(0f, 0.5f);
+        handleRect.anchorMax = new Vector2(0f, 0.5f);
+        handleRect.pivot = new Vector2(0.5f, 0.5f);
+        handleRect.sizeDelta = new Vector2(5f, 10f);
+        var handleImage = handle.AddComponent<Image>();
+        handleImage.color = TextColor;
+        AddOutline(handle, PanelOutlineColor, 1f);
+        slider.fillRect = fillRect;
+        slider.handleRect = handleRect;
+        slider.targetGraphic = handleImage;
+    }
+    private void CreateToggleRow(Transform parent, string rowName, string labelText, Vector2 anchoredPosition)
+    {
+        var row = CreateUiObject(rowName, parent);
+        var rowRect = row.GetComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0f, 1f);
+        rowRect.anchorMax = new Vector2(0f, 1f);
+        rowRect.pivot = new Vector2(0f, 1f);
+        rowRect.anchoredPosition = anchoredPosition;
+        rowRect.sizeDelta = new Vector2(98f, 12f);
+        var label = CreateText("Label", row.transform, labelText, 4f, TextAlignmentOptions.MidlineLeft);
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = new Vector2(0f, 0.5f);
+        labelRect.anchorMax = new Vector2(0f, 0.5f);
+        labelRect.pivot = new Vector2(0f, 0.5f);
+        labelRect.anchoredPosition = new Vector2(0f, 0f);
+        labelRect.sizeDelta = new Vector2(48f, 12f);
+        var toggleObject = CreateUiObject("Toggle", row.transform);
+        var toggleRect = toggleObject.GetComponent<RectTransform>();
+        toggleRect.anchorMin = new Vector2(1f, 0.5f);
+        toggleRect.anchorMax = new Vector2(1f, 0.5f);
+        toggleRect.pivot = new Vector2(1f, 0.5f);
+        toggleRect.anchoredPosition = new Vector2(-2f, 0f);
+        toggleRect.sizeDelta = new Vector2(12f, 12f);
+        var toggle = toggleObject.AddComponent<Toggle>();
+        var background = CreateUiObject("Background", toggleObject.transform);
+        var backgroundRect = background.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = new Vector2(0.5f, 0.5f);
+        backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
+        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+        backgroundRect.anchoredPosition = Vector2.zero;
+        backgroundRect.sizeDelta = new Vector2(10f, 10f);
+        var backgroundImage = background.AddComponent<Image>();
+        backgroundImage.color = ToggleBackgroundColor;
+        AddOutline(background, PanelOutlineColor, 1f);
+        var checkmark = CreateUiObject("Checkmark", background.transform);
+        var checkmarkRect = checkmark.GetComponent<RectTransform>();
+        checkmarkRect.anchorMin = new Vector2(0.5f, 0.5f);
+        checkmarkRect.anchorMax = new Vector2(0.5f, 0.5f);
+        checkmarkRect.pivot = new Vector2(0.5f, 0.5f);
+        checkmarkRect.anchoredPosition = Vector2.zero;
+        checkmarkRect.sizeDelta = new Vector2(6f, 6f);
+        var checkmarkImage = checkmark.AddComponent<Image>();
+        checkmarkImage.color = ToggleCheckColor;
+        toggle.targetGraphic = backgroundImage;
+        toggle.graphic = checkmarkImage;
+    }
+    private TMP_Text CreateText(
+        string objectName,
+        Transform parent,
+        string textValue,
+        float fontSize,
+        TextAlignmentOptions alignment)
+    {
+        var textObject = CreateUiObject(objectName, parent);
+        var text = textObject.AddComponent<TextMeshProUGUI>();
+        text.text = textValue;
+        text.fontSize = fontSize;
+        text.alignment = alignment;
+        text.color = TextColor;
+        text.raycastTarget = false;
+        if (fontAsset != null)
+        {
+            text.font = fontAsset;
+        }
+        return text;
+    }
+    private static GameObject CreateUiObject(string objectName, Transform parent)
+    {
+        var uiObject = new GameObject(objectName, typeof(RectTransform));
+        uiObject.transform.SetParent(parent, false);
+        return uiObject;
+    }
+    private static void AddOutline(GameObject targetObject, Color outlineColor, float effectDistance)
+    {
+        var outline = targetObject.AddComponent<Outline>();
+        outline.effectColor = outlineColor;
+        outline.effectDistance = new Vector2(effectDistance, -effectDistance);
+    }
+    private Camera ResolveTargetCamera()
+    {
+        if (targetCamera != null)
+        {
+            return targetCamera;
+        }
+        targetCamera = Camera.main;
+        if (targetCamera == null)
+        {
+            targetCamera = FindFirstObjectByType<Camera>();
+        }
+        return targetCamera;
+    }
+    private bool IsPostFxEnabled()
+    {
+        var cameraToCheck = ResolveTargetCamera();
+        if (cameraToCheck == null)
+        {
+            return false;
+        }
+        return cameraToCheck.GetUniversalAdditionalCameraData().renderPostProcessing;
     }
 }
 </file>
@@ -2035,122 +2193,6 @@ public class NightWaveSpawnEntry
     }
     public string EnemyId { get; }
     public int Count { get; }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiSystem.cs">
-using System;
-using System.Collections.Generic;
-using UnityEngine;
-public class NightPoiSystem
-{
-    private static readonly NightPoiType[] RequiredPoiTypes =
-    {
-        NightPoiType.Bells,
-        NightPoiType.FaithPoint,
-        NightPoiType.RepairPoint
-    };
-    private readonly Dictionary<string, NightPointOfInterest> poisById = new(StringComparer.Ordinal);
-    private readonly Dictionary<NightPoiType, NightPointOfInterest> poisByType = new();
-    public int RegisteredPoiCount => poisById.Count;
-    public void RebuildFromScene(IReadOnlyList<NightPointOfInterest> scenePois)
-    {
-        poisById.Clear();
-        poisByType.Clear();
-        if (scenePois == null || scenePois.Count == 0)
-        {
-            Debug.LogWarning("Night POI setup incomplete: no points of interest found in scene");
-            return;
-        }
-        for (var i = 0; i < scenePois.Count; i++)
-        {
-            var poi = scenePois[i];
-            if (poi == null)
-            {
-                continue;
-            }
-            if (string.IsNullOrWhiteSpace(poi.Id))
-            {
-                Debug.LogWarning($"Night POI setup incomplete: scene object '{poi.name}' has empty id");
-                continue;
-            }
-            if (poisById.ContainsKey(poi.Id))
-            {
-                Debug.LogWarning($"Night POI setup incomplete: duplicate poi id '{poi.Id}'");
-                continue;
-            }
-            if (poi.TryGetWorldInteractionValidationError(out var validationError))
-            {
-                Debug.LogWarning(
-                    $"Night POI setup incomplete for '{poi.Id}' on '{poi.name}': {validationError}");
-            }
-            poisById.Add(poi.Id, poi);
-            if (!poisByType.ContainsKey(poi.Type))
-            {
-                poisByType.Add(poi.Type, poi);
-            }
-        }
-        for (var i = 0; i < RequiredPoiTypes.Length; i++)
-        {
-            var requiredPoiType = RequiredPoiTypes[i];
-            if (!poisByType.ContainsKey(requiredPoiType))
-            {
-                Debug.LogWarning($"Night POI setup incomplete: missing required poi type '{requiredPoiType}'");
-            }
-        }
-    }
-    public bool TryGetPoiById(string poiId, out NightPointOfInterest poi)
-    {
-        if (string.IsNullOrWhiteSpace(poiId))
-        {
-            poi = null;
-            return false;
-        }
-        return poisById.TryGetValue(poiId, out poi);
-    }
-    public bool TryGetPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
-    {
-        return poisByType.TryGetValue(poiType, out poi);
-    }
-    public bool TryResolveKeeperInteraction(
-        Vector2 keeperPosition,
-        out NightPointOfInterest poi,
-        out KeeperInteractionState interactionState)
-    {
-        poi = null;
-        interactionState = KeeperInteractionState.None;
-        var bestDistance = float.MaxValue;
-        foreach (var registeredPoi in poisById.Values)
-        {
-            if (registeredPoi == null || !registeredPoi.IsKeeperInInteractionRange(keeperPosition))
-            {
-                continue;
-            }
-            var distance = Vector2.SqrMagnitude(registeredPoi.GetKeeperTargetWorldPosition() - keeperPosition);
-            if (distance >= bestDistance)
-            {
-                continue;
-            }
-            bestDistance = distance;
-            poi = registeredPoi;
-        }
-        if (poi == null)
-        {
-            return false;
-        }
-        interactionState = ToKeeperInteractionState(poi.Type);
-        return true;
-    }
-    public static KeeperInteractionState ToKeeperInteractionState(NightPoiType poiType)
-    {
-        return poiType switch
-        {
-            NightPoiType.Bells => KeeperInteractionState.Bells,
-            NightPoiType.FaithPoint => KeeperInteractionState.FaithPoint,
-            NightPoiType.RepairPoint => KeeperInteractionState.RepairPoint,
-            _ => KeeperInteractionState.None
-        };
-    }
 }
 </file>
 
@@ -3931,61 +3973,6 @@ public class FaithCollectionSystem
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
-using UnityEngine;
-public class KeeperActor : MonoBehaviour
-{
-    private const float FacingThreshold = 0.001f;
-    private const int SortingPrecision = 100;
-    private SpriteRenderer spriteRenderer;
-    private void LateUpdate()
-    {
-        UpdateSortingOrder();
-    }
-    public Vector2 GetWorldPosition()
-    {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public void SetWorldPosition(Vector2 worldPosition)
-    {
-        var currentPosition = transform.position;
-        UpdateFacing(new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y));
-        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
-    }
-    private void UpdateFacing(Vector2 movementOffset)
-    {
-        if (Mathf.Abs(movementOffset.x) <= FacingThreshold)
-        {
-            return;
-        }
-        var targetRenderer = GetSpriteRenderer();
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        targetRenderer.flipX = movementOffset.x < 0f;
-    }
-    private void UpdateSortingOrder()
-    {
-        var targetRenderer = GetSpriteRenderer();
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        targetRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
-    }
-    private SpriteRenderer GetSpriteRenderer()
-    {
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-        return spriteRenderer;
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Lane/CombatHpBarView.cs">
 using UnityEngine;
 [DisallowMultipleComponent]
@@ -4157,88 +4144,6 @@ public class SingleLaneEnemySpawner
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
-{
-    [SerializeField] private string id;
-    [SerializeField] private NightPoiType type;
-    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
-    [SerializeField] private Transform keeperTargetPoint;
-    [SerializeField] private NightPoiProgressView progressView;
-    public string Id => id;
-    public NightPoiType Type => type;
-    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
-    private void Awake()
-    {
-        if (progressView == null)
-        {
-            progressView = GetComponentInChildren<NightPoiProgressView>();
-        }
-        progressView?.Bind(this);
-    }
-    public Vector2 GetWorldPosition()
-    {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public Vector2 GetKeeperTargetWorldPosition()
-    {
-        var targetTransform = keeperTargetPoint != null ? keeperTargetPoint : transform;
-        var worldPosition = targetTransform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
-    {
-        var interactionRadiusValue = InteractionRadius;
-        if (interactionRadiusValue <= 0f)
-        {
-            return false;
-        }
-        return Vector2.Distance(GetKeeperTargetWorldPosition(), keeperPosition) <= interactionRadiusValue;
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        if (InteractionRadius <= 0f)
-        {
-            validationError = "invalid interaction radius";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-        {
-            return;
-        }
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
-            return;
-        }
-        G.main.TryMoveKeeperToPoi(id);
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiProgressView.cs">
 using UnityEngine;
 [DisallowMultipleComponent]
@@ -4282,6 +4187,122 @@ public class NightPoiProgressView : MonoBehaviour
             pointOfInterest = GetComponentInParent<NightPointOfInterest>();
         if (progressBar == null)
             progressBar = GetComponentInChildren<WorldBarFillGrow>();
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPoiSystem.cs">
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+public class NightPoiSystem
+{
+    private static readonly NightPoiType[] RequiredPoiTypes =
+    {
+        NightPoiType.Bells,
+        NightPoiType.FaithPoint,
+        NightPoiType.RepairPoint
+    };
+    private readonly Dictionary<string, NightPointOfInterest> poisById = new(StringComparer.Ordinal);
+    private readonly Dictionary<NightPoiType, NightPointOfInterest> poisByType = new();
+    public int RegisteredPoiCount => poisById.Count;
+    public void RebuildFromScene(IReadOnlyList<NightPointOfInterest> scenePois)
+    {
+        poisById.Clear();
+        poisByType.Clear();
+        if (scenePois == null || scenePois.Count == 0)
+        {
+            Debug.LogWarning("Night POI setup incomplete: no points of interest found in scene");
+            return;
+        }
+        for (var i = 0; i < scenePois.Count; i++)
+        {
+            var poi = scenePois[i];
+            if (poi == null)
+            {
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(poi.Id))
+            {
+                Debug.LogWarning($"Night POI setup incomplete: scene object '{poi.name}' has empty id");
+                continue;
+            }
+            if (poisById.ContainsKey(poi.Id))
+            {
+                Debug.LogWarning($"Night POI setup incomplete: duplicate poi id '{poi.Id}'");
+                continue;
+            }
+            if (poi.TryGetWorldInteractionValidationError(out var validationError))
+            {
+                Debug.LogWarning(
+                    $"Night POI setup incomplete for '{poi.Id}' on '{poi.name}': {validationError}");
+            }
+            poisById.Add(poi.Id, poi);
+            if (!poisByType.ContainsKey(poi.Type))
+            {
+                poisByType.Add(poi.Type, poi);
+            }
+        }
+        for (var i = 0; i < RequiredPoiTypes.Length; i++)
+        {
+            var requiredPoiType = RequiredPoiTypes[i];
+            if (!poisByType.ContainsKey(requiredPoiType))
+            {
+                Debug.LogWarning($"Night POI setup incomplete: missing required poi type '{requiredPoiType}'");
+            }
+        }
+    }
+    public bool TryGetPoiById(string poiId, out NightPointOfInterest poi)
+    {
+        if (string.IsNullOrWhiteSpace(poiId))
+        {
+            poi = null;
+            return false;
+        }
+        return poisById.TryGetValue(poiId, out poi);
+    }
+    public bool TryGetPoiByType(NightPoiType poiType, out NightPointOfInterest poi)
+    {
+        return poisByType.TryGetValue(poiType, out poi);
+    }
+    public bool TryResolveKeeperInteraction(
+        Vector2 keeperPosition,
+        out NightPointOfInterest poi,
+        out KeeperInteractionState interactionState)
+    {
+        poi = null;
+        interactionState = KeeperInteractionState.None;
+        var bestDistance = float.MaxValue;
+        foreach (var registeredPoi in poisById.Values)
+        {
+            if (registeredPoi == null || !registeredPoi.IsKeeperInInteractionRange(keeperPosition))
+            {
+                continue;
+            }
+            var distance = Vector2.SqrMagnitude(registeredPoi.GetKeeperTargetWorldPosition() - keeperPosition);
+            if (distance >= bestDistance)
+            {
+                continue;
+            }
+            bestDistance = distance;
+            poi = registeredPoi;
+        }
+        if (poi == null)
+        {
+            return false;
+        }
+        interactionState = ToKeeperInteractionState(poi.Type);
+        return true;
+    }
+    public static KeeperInteractionState ToKeeperInteractionState(NightPoiType poiType)
+    {
+        return poiType switch
+        {
+            NightPoiType.Bells => KeeperInteractionState.Bells,
+            NightPoiType.FaithPoint => KeeperInteractionState.FaithPoint,
+            NightPoiType.RepairPoint => KeeperInteractionState.RepairPoint,
+            _ => KeeperInteractionState.None
+        };
     }
 }
 </file>
@@ -4938,20 +4959,72 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
+using UnityEngine;
+public class KeeperActor : MonoBehaviour
+{
+    private const float FacingThreshold = 0.001f;
+    private const int SortingPrecision = 100;
+    private SpriteRenderer spriteRenderer;
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public void SetWorldPosition(Vector2 worldPosition)
+    {
+        var currentPosition = transform.position;
+        UpdateFacing(new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y));
+        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
+    }
+    private void UpdateFacing(Vector2 movementOffset)
+    {
+        if (Mathf.Abs(movementOffset.x) <= FacingThreshold)
+        {
+            return;
+        }
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.flipX = movementOffset.x < 0f;
+    }
+    private void UpdateSortingOrder()
+    {
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+    }
+    private SpriteRenderer GetSpriteRenderer()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        return spriteRenderer;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Night/Night1.cs">
 using System.Collections.Generic;
 public class Night1 : NightDefinition
 {
     public override string Id => "night_1";
-    public override float DurationSeconds => 54f;
+    public override float DurationSeconds => 30f;
     protected override IReadOnlyList<NightWaveEntry> BuildWaveEntries()
     {
         return new List<NightWaveEntry>
         {
             Wave(12f, Spawn("en1", 1)),
-            Wave(24f, Spawn("en1", 2)),
-            Wave(38f, Spawn("en1", 2)),
-            Wave(50f, Spawn("en1", 2)),
         };
     }
 }
@@ -5018,6 +5091,88 @@ public class Night5 : NightDefinition
             Wave(54f, Spawn("en1", 3)),
             Wave(66f, Spawn("en1", 2)),
         };
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string id;
+    [SerializeField] private NightPoiType type;
+    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private Transform keeperTargetPoint;
+    [SerializeField] private NightPoiProgressView progressView;
+    public string Id => id;
+    public NightPoiType Type => type;
+    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
+    private void Awake()
+    {
+        if (progressView == null)
+        {
+            progressView = GetComponentInChildren<NightPoiProgressView>();
+        }
+        progressView?.Bind(this);
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public Vector2 GetKeeperTargetWorldPosition()
+    {
+        var targetTransform = keeperTargetPoint != null ? keeperTargetPoint : transform;
+        var worldPosition = targetTransform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
+    {
+        var interactionRadiusValue = InteractionRadius;
+        if (interactionRadiusValue <= 0f)
+        {
+            return false;
+        }
+        return Vector2.Distance(GetKeeperTargetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        if (InteractionRadius <= 0f)
+        {
+            validationError = "invalid interaction radius";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+        {
+            return;
+        }
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
+            return;
+        }
+        G.main.TryMoveKeeperToPoi(id);
     }
 }
 </file>
@@ -5406,11 +5561,12 @@ public class LaneCombatFeedbackView : MonoBehaviour
 </file>
 
 <file path="Assets/Game/Code/Gameplay/Lane/LaneEnemy.cs">
+using System;
 using UnityEngine;
 public class LaneEnemy : MonoBehaviour
 {
     private const int SortingPrecision = 100;
-    public event System.Action<LaneEnemy> CemeteryAttackTriggered;
+    public event Action<LaneEnemy> CemeteryAttackTriggered;
     public EnemyDef EnemyDef { get; private set; }
     public Vector3 Position => transform.position;
     public int CurrentHp { get; private set; }
@@ -5525,7 +5681,7 @@ public class LaneEnemy : MonoBehaviour
             return;
         }
         TargetUnit.ApplyDamage(EnemyDef.Damage);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = EnemyDef.AttackInterval;
     }
     private void UpdateCemeteryAttack(float deltaTime)
@@ -5536,7 +5692,7 @@ public class LaneEnemy : MonoBehaviour
             return;
         }
         CemeteryAttackTriggered?.Invoke(this);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = EnemyDef.AttackInterval;
         transform.position = cemeteryAttackPosition;
     }
@@ -6870,7 +7026,7 @@ public class LaneUnit : MonoBehaviour
             return;
         }
         TargetEnemy.ApplyDamage(UnitDef.Damage);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = UnitDef.AttackInterval;
     }
     private void UpdateReturning(float deltaTime)
@@ -8234,16 +8390,9 @@ using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 public class Main : MonoBehaviour
 {
-    private const int DebugFaithAmount = 10;
-    private const int DebugGoldAmount = 10;
-    private const int DebugCemeteryDamageAmount = 10;
-    private const string DefaultDebugUpgradeId = "upgrade_morning_prayers";
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
     [SerializeField] private KeeperActor keeperActor;
-    [SerializeField] private string debugBellId;
-    [SerializeField] private string debugUpgradeId;
-    [SerializeField] private EnemyDef debugEnemyDef;
     [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
     [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
@@ -8680,21 +8829,6 @@ public class Main : MonoBehaviour
     private void ClearPendingBellInteraction()
     {
         pendingBellInteractionId = string.Empty;
-    }
-    public EnemySpawnResult TrySpawnDebugEnemy()
-    {
-        ValidateLanePrototypeSetup();
-        var spawnResult = enemySpawner.TrySpawnEnemy(debugEnemyDef, singleLaneHost);
-        if (!spawnResult.IsSuccess)
-        {
-            Debug.LogWarning($"Enemy spawn failed: {spawnResult.FailureReason}");
-        }
-        else
-        {
-            Debug.Log($"Enemy spawned '{debugEnemyDef.Id}'");
-            RegisterEnemyOnLane(spawnResult.SpawnedEnemy);
-        }
-        return spawnResult;
     }
     private EnemySpawnResult TrySpawnEnemyById(string enemyId)
     {
@@ -9357,46 +9491,10 @@ public class Main : MonoBehaviour
     }
     private void HandleDebugInput()
     {
-        if (Input.GetKeyDown(KeyCode.N))
-        {
-            EnterNight();
-        }
-        if (Input.GetKeyDown(KeyCode.M))
-        {
-            EnterDay();
-        }
-        if (Input.GetKeyDown(KeyCode.F))
-        {
-            AddFaith(DebugFaithAmount);
-        }
-        if (Input.GetKeyDown(KeyCode.G))
-        {
-            AddGold(DebugGoldAmount);
-        }
-        if (Input.GetKeyDown(KeyCode.H))
-        {
-            DamageCemetery(DebugCemeteryDamageAmount);
-        }
-        if (Input.GetKeyDown(KeyCode.J))
-        {
-            TryRingBell(debugBellId);
-        }
-        if (Input.GetKeyDown(KeyCode.K))
-        {
-            TrySpawnDebugEnemy();
-        }
-        if (Input.GetKeyDown(KeyCode.U))
-        {
-            TryPurchaseUpgrade(GetDebugUpgradeId());
-        }
         if (Input.GetKeyDown(KeyCode.R))
         {
             SceneManager.LoadScene("Main");
         }
-    }
-    private string GetDebugUpgradeId()
-    {
-        return string.IsNullOrWhiteSpace(debugUpgradeId) ? DefaultDebugUpgradeId : debugUpgradeId;
     }
 }
 </file>

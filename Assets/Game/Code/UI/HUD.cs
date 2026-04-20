@@ -39,7 +39,6 @@ public class HUD : MonoBehaviour
     private bool missingMainWarningShown;
     private FaithPickupVfxController faithPickupVfxController;
     private GoldPickupVfxController goldPickupVfxController;
-
     private void Awake()
     {
         G.HUD = this;

@@ -17,6 +17,7 @@ public class LaneUnit : MonoBehaviour
     public LaneEnemy TargetEnemy { get; private set; }
     public bool HasTarget => TargetEnemy != null;
     public bool HasLimitedLifetime => UnitDef != null && UnitDef.LifetimeSeconds > 0f;
+
     public float LifetimeProgressNormalized =>
         !HasLimitedLifetime
             ? 0f
@@ -242,7 +243,7 @@ public class LaneUnit : MonoBehaviour
         }
 
         TargetEnemy.ApplyDamage(UnitDef.Damage);
-        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit, 0.95f, 1.05f);
+        G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = UnitDef.AttackInterval;
     }
 

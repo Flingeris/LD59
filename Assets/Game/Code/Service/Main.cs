@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -7,17 +8,9 @@ using UnityEngine.Serialization;
 
 public class Main : MonoBehaviour
 {
-    private const int DebugFaithAmount = 10;
-    private const int DebugGoldAmount = 10;
-    private const int DebugCemeteryDamageAmount = 10;
-    private const string DefaultDebugUpgradeId = "upgrade_morning_prayers";
-
     [SerializeField] private SingleLaneHost singleLaneHost;
     [SerializeField] private SingleLaneEncounterCoordinator laneEncounterCoordinator;
     [SerializeField] private KeeperActor keeperActor;
-    [SerializeField] private string debugBellId;
-    [SerializeField] private string debugUpgradeId;
-    [SerializeField] private EnemyDef debugEnemyDef;
     [Min(0)] [SerializeField] private int initialCemeteryState = 100;
     [Min(0f)] [SerializeField] private float initialKeeperMoveSpeed = 3f;
     [Min(0f)] [SerializeField] private float keeperArrivalDistance = 0.05f;
@@ -34,6 +27,8 @@ public class Main : MonoBehaviour
 
     [FormerlySerializedAs("targetSurvivedNights")]
     [Min(1)] [SerializeField] private int targetSurvivedDays = 5;
+    [SerializeField] private bool showIntroScreenOnStartup = true;
+    [Min(0f)] [SerializeField] private float titleScreenFadeDuration = 1.25f;
 
     private BellSystem bellSystem;
     private CemeteryStateSystem cemeteryStateSystem;
@@ -50,6 +45,7 @@ public class Main : MonoBehaviour
     private bool laneSetupWarningShown;
     private bool keeperBindingWarningShown;
     private bool keeperSceneBindingInitialized;
+    private bool startupSequenceInProgress;
     private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
 
@@ -102,8 +98,7 @@ public class Main : MonoBehaviour
         G.audioSystem.Play(SoundId.Ambient_Forest);
         G.audioSystem.Play(SoundId.Music_Main);
         BindHud();
-        EnterNight();
-        ValidateLanePrototypeSetup();
+        BeginStartupSequence();
     }
 
     private void OnDestroy()
@@ -113,6 +108,12 @@ public class Main : MonoBehaviour
 
     private void Update()
     {
+        if (startupSequenceInProgress)
+        {
+            HandleDebugInput();
+            return;
+        }
+
         UpdateLoseCondition();
         if (RunState == null || RunState.CurrentPhase == GamePhase.Defeat || RunState.CurrentPhase == GamePhase.Win)
         {
@@ -534,24 +535,6 @@ public class Main : MonoBehaviour
     private void ClearPendingBellInteraction()
     {
         pendingBellInteractionId = string.Empty;
-    }
-
-    public EnemySpawnResult TrySpawnDebugEnemy()
-    {
-        ValidateLanePrototypeSetup();
-
-        var spawnResult = enemySpawner.TrySpawnEnemy(debugEnemyDef, singleLaneHost);
-        if (!spawnResult.IsSuccess)
-        {
-            Debug.LogWarning($"Enemy spawn failed: {spawnResult.FailureReason}");
-        }
-        else
-        {
-            Debug.Log($"Enemy spawned '{debugEnemyDef.Id}'");
-            RegisterEnemyOnLane(spawnResult.SpawnedEnemy);
-        }
-
-        return spawnResult;
     }
 
     private EnemySpawnResult TrySpawnEnemyById(string enemyId)
@@ -997,6 +980,67 @@ public class Main : MonoBehaviour
         G.HUD.WinScreenRestartRequested += HandleWinScreenRestartRequested;
     }
 
+    private void BeginStartupSequence()
+    {
+        startupSequenceInProgress = true;
+        UI.EnsureInstance();
+
+        if (!showIntroScreenOnStartup || G.ui == null || G.ui.TitleScreenImage == null)
+        {
+            G.ui?.ToggleTitle(false);
+            CompleteStartupSequence();
+            return;
+        }
+
+        StartCoroutine(PlayStartupSequence());
+    }
+
+    private IEnumerator PlayStartupSequence()
+    {
+        G.ui.ToggleTitle(true);
+
+        while (!IsTitleScreenStartRequested())
+        {
+            yield return null;
+        }
+
+        G.ui.StopTitlePromptPulse();
+        var titleScreenImage = G.ui.TitleScreenImage;
+        if (titleScreenImage != null && G.ScreenFader != null)
+        {
+            var fadeCompleted = false;
+            G.ScreenFader.FadeOutCustom(
+                titleScreenImage,
+                Mathf.Max(0f, titleScreenFadeDuration),
+                () => { fadeCompleted = true; });
+
+            while (!fadeCompleted)
+            {
+                yield return null;
+            }
+        }
+        else
+        {
+            G.ui.ToggleTitle(false);
+        }
+
+        CompleteStartupSequence();
+    }
+
+    private void CompleteStartupSequence()
+    {
+        G.ui?.ToggleTitle(false);
+        EnterNight();
+        ValidateLanePrototypeSetup();
+        startupSequenceInProgress = false;
+    }
+
+    private static bool IsTitleScreenStartRequested()
+    {
+        return Input.GetMouseButtonDown(0) ||
+               (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began);
+    }
+
     private void UnbindHud()
     {
         if (G.HUD == null)
@@ -1347,54 +1391,9 @@ public class Main : MonoBehaviour
 
     private void HandleDebugInput()
     {
-        if (Input.GetKeyDown(KeyCode.N))
-        {
-            EnterNight();
-        }
-
-        if (Input.GetKeyDown(KeyCode.M))
-        {
-            EnterDay();
-        }
-
-        if (Input.GetKeyDown(KeyCode.F))
-        {
-            AddFaith(DebugFaithAmount);
-        }
-
-        if (Input.GetKeyDown(KeyCode.G))
-        {
-            AddGold(DebugGoldAmount);
-        }
-
-        if (Input.GetKeyDown(KeyCode.H))
-        {
-            DamageCemetery(DebugCemeteryDamageAmount);
-        }
-
-        if (Input.GetKeyDown(KeyCode.J))
-        {
-            TryRingBell(debugBellId);
-        }
-
-        if (Input.GetKeyDown(KeyCode.K))
-        {
-            TrySpawnDebugEnemy();
-        }
-
-        if (Input.GetKeyDown(KeyCode.U))
-        {
-            TryPurchaseUpgrade(GetDebugUpgradeId());
-        }
-
         if (Input.GetKeyDown(KeyCode.R))
         {
             SceneManager.LoadScene("Main");
         }
-    }
-
-    private string GetDebugUpgradeId()
-    {
-        return string.IsNullOrWhiteSpace(debugUpgradeId) ? DefaultDebugUpgradeId : debugUpgradeId;
     }
 }

@@ -15,16 +15,16 @@ MonoBehaviour:
   soundsEntities:
   - soundId: 2
     Clips:
-    - {fileID: 8300000, guid: 1d51dc053c669944d97826dcd7934099, type: 3}
+    - {fileID: 8300000, guid: 023e4ddf6a28adb4db771e449363f29b, type: 3}
     type: 0
     Loop: 0
-    Volume: 0.448
+    Volume: 0.057
   - soundId: 1
     Clips:
-    - {fileID: 8300000, guid: 7418a32d8806916449c8cb6a43090199, type: 3}
+    - {fileID: 8300000, guid: a82947b1c776f3247a5aae306651adff, type: 3}
     type: 0
     Loop: 0
-    Volume: 1
+    Volume: 0.039
   - soundId: 3
     Clips:
     - {fileID: 8300000, guid: 803e6f49cd4c71e418982a8b21894f5c, type: 3}

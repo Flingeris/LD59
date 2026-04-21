@@ -322,18 +322,18 @@ public static class BellgraveBalance
             WaveAt(31f, Spawn("en1", 2)));
 
         public static readonly NightWaveBalance Night2 = new(
-            50f,
+            55f,
             WaveAt(6f, Spawn("en1", 2)),
-            WaveAt(18f, Spawn("en_runner", 2)),
-            WaveAt(30f, Spawn("en1", 2), Spawn("en_runner", 1)),
-            WaveAt(42f, Spawn("en1", 3)));
+            WaveAt(20f, Spawn("en_runner", 2)),
+            WaveAt(32f, Spawn("en1", 2), Spawn("en_runner", 1)),
+            WaveAt(45f, Spawn("en1", 3)));
 
         public static readonly NightWaveBalance Night3 = new(
             58f,
             WaveAt(6f, Spawn("en1", 2)),
             WaveAt(16f, Spawn("en_runner", 2)),
             WaveAt(28f, Spawn("en1", 3)),
-            WaveAt(40f, Spawn("en_brute", 1), Spawn("en1", 2)),
+            WaveAt(40f, Spawn("en_brute", 1), Spawn("en1", 1)),
             WaveAt(50f, Spawn("en_runner", 2), Spawn("en1", 1)));
 
         public static readonly NightWaveBalance Night4 = new(

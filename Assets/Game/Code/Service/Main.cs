@@ -62,9 +62,10 @@ public class Main : MonoBehaviour
     public bool HasUpcomingNightWave => waveSystem != null && waveSystem.HasUpcomingWave;
     public float NextNightWaveTriggerTime => waveSystem != null ? waveSystem.NextWaveTriggerTime : 0f;
     public float PreviousNightWaveTriggerTime => waveSystem != null ? waveSystem.PreviousWaveTriggerTime : 0f;
+
     public IReadOnlyList<NightWaveEntry> CurrentNightWaveEntries => waveSystem != null
         ? waveSystem.ActiveEntries
-        : System.Array.Empty<NightWaveEntry>();
+        : Array.Empty<NightWaveEntry>();
 
     private void Awake()
     {
@@ -164,6 +165,7 @@ public class Main : MonoBehaviour
         StopKeeperMovement();
         GenerateDayUpgradeOffers();
         RefreshPresentation();
+        G.audioSystem.Play(SoundId.SFX_LevelTransition);
         PlayPhaseTransitionCue(GamePhase.Day);
         return true;
     }
@@ -229,6 +231,18 @@ public class Main : MonoBehaviour
         {
             Debug.LogWarning($"Upgrade purchase failed for '{upgradeId}': {purchaseResult.FailureReason}");
             return purchaseResult;
+        }
+
+        if (RunState.CurrentDayUpgradeOfferIds != null)
+        {
+            for (var i = 0; i < RunState.CurrentDayUpgradeOfferIds.Count; i++)
+            {
+                if (RunState.CurrentDayUpgradeOfferIds[i] == upgradeId)
+                {
+                    RunState.CurrentDayUpgradeOfferIds[i] = string.Empty;
+                    break;
+                }
+            }
         }
 
         Debug.Log($"Purchased upgrade '{purchaseResult.UpgradeDef.Id}'");
@@ -1471,6 +1485,7 @@ public class Main : MonoBehaviour
     {
         var displayItems = new List<DayUpgradeItemData>();
         var offerIds = RunState.CurrentDayUpgradeOfferIds;
+
         if (offerIds == null || offerIds.Count == 0)
         {
             return displayItems;
@@ -1479,14 +1494,17 @@ public class Main : MonoBehaviour
         for (var i = 0; i < offerIds.Count; i++)
         {
             var upgradeId = offerIds[i];
+
             if (string.IsNullOrWhiteSpace(upgradeId))
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
 
             var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
             if (upgradeDef == null)
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
 
@@ -1494,15 +1512,18 @@ public class Main : MonoBehaviour
                 RunState.PurchasedUpgradeIds != null &&
                 RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
 
             if (!UpgradeSystem.SupportsEffectType(upgradeDef.EffectType))
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
 
             var price = Mathf.Max(0, upgradeDef.Price);
+
             displayItems.Add(new DayUpgradeItemData
             {
                 UpgradeId = upgradeDef.Id,
@@ -1532,31 +1553,143 @@ public class Main : MonoBehaviour
             return;
         }
 
+        var affordableUpgradeDefs = GetAffordableEligibleDayUpgradeDefs(eligibleUpgradeDefs);
+
+        TryAddDailyOffer(affordableUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Economy);
+        TryAddDailyOffer(affordableUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Combat);
+        TryAddDailyOffer(affordableUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Utility);
+
         TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Economy);
         TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Combat);
         TryAddDailyOffer(eligibleUpgradeDefs, RunState.CurrentDayUpgradeOfferIds, DayUpgradeOfferCategory.Utility);
 
-        if (RunState.CurrentDayUpgradeOfferIds.Count >= DailyUpgradeOfferCount)
+        if (RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount)
+        {
+            FillDailyOffersFromPool(
+                affordableUpgradeDefs,
+                RunState.CurrentDayUpgradeOfferIds,
+                (RunState.CurrentDay - 1) * 13 + 1);
+        }
+
+        if (RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount)
+        {
+            FillDailyOffersFromPool(
+                eligibleUpgradeDefs,
+                RunState.CurrentDayUpgradeOfferIds,
+                (RunState.CurrentDay - 1) * 17 + 3);
+        }
+    }
+
+    private void FillDailyOffersFromPool(
+        IReadOnlyList<UpgradeDef> sourceUpgradeDefs,
+        ICollection<string> selectedOfferIds,
+        int salt)
+    {
+        if (sourceUpgradeDefs == null || sourceUpgradeDefs.Count == 0 || selectedOfferIds == null || RunState == null)
         {
             return;
         }
 
-        var fallbackStartIndex = GetDeterministicOfferIndex(
-            eligibleUpgradeDefs.Count,
-            (RunState.CurrentDay - 1) * 11 + (RunState.PurchasedUpgradeIds?.Count ?? 0));
+        var startIndex = GetDeterministicOfferIndex(
+            sourceUpgradeDefs.Count,
+            (RunState.CurrentDay - 1) * 11 + salt);
 
         for (var i = 0;
-             i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount;
+             i < sourceUpgradeDefs.Count && selectedOfferIds.Count < DailyUpgradeOfferCount;
              i++)
         {
-            var candidateIndex = (fallbackStartIndex + i) % eligibleUpgradeDefs.Count;
-            var candidate = eligibleUpgradeDefs[candidateIndex];
-            if (candidate == null || RunState.CurrentDayUpgradeOfferIds.Contains(candidate.Id))
+            var candidateIndex = (startIndex + i) % sourceUpgradeDefs.Count;
+            var candidate = sourceUpgradeDefs[candidateIndex];
+            if (candidate == null || selectedOfferIds.Contains(candidate.Id))
             {
                 continue;
             }
 
-            RunState.CurrentDayUpgradeOfferIds.Add(candidate.Id);
+            selectedOfferIds.Add(candidate.Id);
+        }
+    }
+
+    private List<UpgradeDef> GetAffordableEligibleDayUpgradeDefs(IReadOnlyList<UpgradeDef> eligibleUpgradeDefs)
+    {
+        var affordableUpgradeDefs = new List<UpgradeDef>();
+
+        if (eligibleUpgradeDefs == null || RunState == null)
+        {
+            return affordableUpgradeDefs;
+        }
+
+        for (var i = 0; i < eligibleUpgradeDefs.Count; i++)
+        {
+            var upgradeDef = eligibleUpgradeDefs[i];
+            if (upgradeDef == null)
+            {
+                continue;
+            }
+
+            var price = Mathf.Max(0, upgradeDef.Price);
+            if (price <= RunState.Gold)
+            {
+                affordableUpgradeDefs.Add(upgradeDef);
+            }
+        }
+
+        return affordableUpgradeDefs;
+    }
+
+    private void EnsureAtLeastOneAffordableOffer(
+        IReadOnlyList<UpgradeDef> affordableUpgradeDefs,
+        IList<string> selectedOfferIds)
+    {
+        if (RunState == null || selectedOfferIds == null || selectedOfferIds.Count == 0)
+        {
+            return;
+        }
+
+        var hasAffordableOffer = false;
+        for (var i = 0; i < selectedOfferIds.Count; i++)
+        {
+            var offerId = selectedOfferIds[i];
+            if (string.IsNullOrWhiteSpace(offerId))
+            {
+                continue;
+            }
+
+            var offerDef = CMS.Get<UpgradeDef>(offerId);
+            if (offerDef == null)
+            {
+                continue;
+            }
+
+            if (Mathf.Max(0, offerDef.Price) <= RunState.Gold)
+            {
+                hasAffordableOffer = true;
+                break;
+            }
+        }
+
+        if (hasAffordableOffer || affordableUpgradeDefs == null || affordableUpgradeDefs.Count == 0)
+        {
+            return;
+        }
+
+        var replacementIndex = GetDeterministicOfferIndex(
+            affordableUpgradeDefs.Count,
+            (RunState.CurrentDay - 1) * 19 + (RunState.PurchasedUpgradeIds?.Count ?? 0));
+
+        var replacement = affordableUpgradeDefs[replacementIndex];
+        if (replacement == null)
+        {
+            return;
+        }
+
+        // Ставим доступный оффер в первый слот.
+        if (selectedOfferIds.Count > 0)
+        {
+            selectedOfferIds[0] = replacement.Id;
+        }
+        else
+        {
+            selectedOfferIds.Add(replacement.Id);
         }
     }
 
@@ -1818,6 +1951,7 @@ public class Main : MonoBehaviour
         }
 
         RunState.CurrentPhase = GamePhase.Defeat;
+        G.audioSystem.Play(SoundId.SFX_Lose);
         waveSystem.StopWave();
         Time.timeScale = 0f;
         Debug.Log("Defeat: cemetery destroyed");
@@ -1871,6 +2005,7 @@ public class Main : MonoBehaviour
         }
 
         RunState.CurrentPhase = GamePhase.Win;
+        G.audioSystem.Play(SoundId.SFX_Win);
         waveSystem.StopWave();
         Time.timeScale = 0f;
         Debug.Log($"Victory: survived day {reachedDayCount} of {requiredDayCount}");

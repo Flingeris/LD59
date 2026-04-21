@@ -181,6 +181,7 @@ GameObject:
   - component: {fileID: 6871145201187109421}
   - component: {fileID: 4770253281149064022}
   - component: {fileID: 1482209150036711851}
+  - component: {fileID: 705497806416660293}
   m_Layer: 0
   m_Name: Bell2
   m_TagString: Untagged
@@ -326,3 +327,16 @@ MonoBehaviour:
   cooldownBar: {fileID: 3018958925928787590}
   tutorialMarkerTarget: {fileID: 6563174735312511764}
   popupVerticalPadding: 0.28
+--- !u!114 &705497806416660293
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7351986209183276401}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4306d3f49ac0e041abf5af13279391e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BellTooltipHover
+  tooltipView: {fileID: 0}

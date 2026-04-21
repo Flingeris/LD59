@@ -290,29 +290,31 @@ public class DayScreenView : MonoBehaviour
     {
         ClearUpgradeItems();
 
-        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
+        if (upgradeItemsContainer == null || upgradeItemTemplate == null)
         {
             return;
         }
 
-        var offerCount = Mathf.Min(3, upgradeItems.Count);
-        if (offerCount <= 0)
-        {
-            return;
-        }
+        const int slotCount = 3;
 
         var availableWidth = Mathf.Max(280f, upgradeItemsContainer.rect.width);
         var availableHeight = Mathf.Max(70f, upgradeItemsContainer.rect.height);
-
         const float spacing = 4f;
+
         var cardWidth = Mathf.Floor((availableWidth - spacing * 2f) / 3f);
         var cardHeight = Mathf.Clamp(availableHeight, 70f, 82f);
 
-        var usedWidth = offerCount * cardWidth + Mathf.Max(0, offerCount - 1) * spacing;
+        var usedWidth = slotCount * cardWidth + (slotCount - 1) * spacing;
         var startX = Mathf.Floor((availableWidth - usedWidth) * 0.5f);
 
-        for (var i = 0; i < offerCount; i++)
+        for (var i = 0; i < slotCount; i++)
         {
+            DayUpgradeItemData itemData = null;
+            if (upgradeItems != null && i < upgradeItems.Count)
+            {
+                itemData = upgradeItems[i];
+            }
+
             var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
             itemView.gameObject.name = $"UpgradeItem_{i + 1}";
             itemView.gameObject.SetActive(true);
@@ -329,7 +331,16 @@ public class DayScreenView : MonoBehaviour
             itemView.BuyRequested -= HandleUpgradeBuyRequested;
             itemView.BuyRequested += HandleUpgradeBuyRequested;
             itemView.ApplyLayout(true, cardWidth, cardHeight);
-            itemView.Bind(upgradeItems[i]);
+
+            var isEmptySlot = itemData == null || string.IsNullOrWhiteSpace(itemData.UpgradeId);
+            if (isEmptySlot)
+            {
+                itemView.gameObject.SetActive(false);
+            }
+            else
+            {
+                itemView.Bind(itemData);
+            }
 
             spawnedUpgradeItems.Add(itemView);
         }

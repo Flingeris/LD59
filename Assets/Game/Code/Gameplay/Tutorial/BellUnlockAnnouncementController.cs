@@ -35,20 +35,25 @@ public sealed class BellUnlockAnnouncementController
             yield break;
         }
 
-        if (!main.TryGetBellWorldObject(data.BellId, out var bellWorldObject) || bellWorldObject == null)
-        {
-            yield break;
-        }
-
         IsRunning = true;
+        var currentAnnouncement = data;
 
-        overlay.ShowWorldMarker(
-            bellWorldObject.GetTutorialMarkerTarget(),
-            data.Title,
-            data.MarkerColor,
-            TutorialWorldMarkerAnchor.BellPosition);
+        while (currentAnnouncement != null)
+        {
+            if (!main.TryGetBellWorldObject(currentAnnouncement.BellId, out var bellWorldObject) || bellWorldObject == null)
+            {
+                break;
+            }
 
-        yield return overlay.PlayTypedMessage(data.Message, false);
+            overlay.ShowWorldMarker(
+                bellWorldObject.GetTutorialMarkerTarget(),
+                currentAnnouncement.Title,
+                currentAnnouncement.MarkerColor,
+                TutorialWorldMarkerAnchor.BellPosition);
+
+            yield return overlay.PlayTypedMessage(currentAnnouncement.Message, false);
+            currentAnnouncement = currentAnnouncement.NextAnnouncement;
+        }
 
         overlay.HideWorldMarker();
         IsRunning = false;

@@ -26,7 +26,11 @@ public class SFXPlayer : IAudioPlayer
 
         var clip = sound.GetClip();
         var source = sourcePool.GetAvailableAudioSource();
-        if (source == null) return;
+        if (source == null)
+        {
+            Debug.LogWarning($"No available SFX AudioSource for '{sound.SoundId}'");
+            return;
+        }
 
         source.clip = clip;
         source.volume = audioSystem.SfxVolume * sound.Volume * volumeMul;

@@ -728,6 +728,7 @@ public class Main : MonoBehaviour
     {
         TrackNightCompleted();
         RecordCompletedNightSummary();
+        G.audioSystem.Play(SoundId.SFX_Win);
         Debug.Log("Night completed");
         activeNightDefinition = null;
         if (TryEnterWin())
@@ -1158,7 +1159,14 @@ public class Main : MonoBehaviour
                 BellId = bellId,
                 Title = "NEW BELL",
                 Message = "Another bell has awakened. Vamp has joined you",
-                MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+                MarkerColor = new Color(1f, 0.86f, 0.36f, 1f),
+                NextAnnouncement = new BellUnlockAnnouncementData
+                {
+                    BellId = bellId,
+                    Title = "NEW BELL",
+                    Message = "His life is short but he is very strong",
+                    MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+                }
             };
         }
 
@@ -2016,7 +2024,6 @@ public class Main : MonoBehaviour
         }
 
         RunState.CurrentPhase = GamePhase.Win;
-        G.audioSystem.Play(SoundId.SFX_Win);
         waveSystem.StopWave();
         Time.timeScale = 0f;
         AnalyticsSystem.OnGameEnded("win", reachedDayCount);

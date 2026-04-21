@@ -4,12 +4,12 @@ using UnityEngine;
 
 public class SFXSourcesPool
 {
-    private GameObject audioObject;
-    private AudioSystem audioSystem;
-    private int initialPoolSize = 10;
-    private int maxPoolSize = 24;
+    private readonly GameObject audioObject;
+    private readonly AudioSystem audioSystem;
+    private readonly int initialPoolSize = 10;
+    private readonly int maxPoolSize = 24;
 
-    private List<AudioSource> SFXSources = new List<AudioSource>();
+    private readonly List<AudioSource> SFXSources = new List<AudioSource>();
 
     public SFXSourcesPool(AudioSystem audioSystem, int initSize, int maxSize)
     {
@@ -36,6 +36,7 @@ public class SFXSourcesPool
         {
             if (!src.isPlaying || src.clip == null) return src;
         }
+
         if (AddAudioSource())
         {
             return SFXSources[^1];
@@ -71,7 +72,7 @@ public class SFXSourcesPool
 
     private IEnumerator ReleaseRoutine(AudioSource source, AudioClip initialClip)
     {
-        yield return new WaitForSeconds(initialClip.length);
+        yield return new WaitForSecondsRealtime(initialClip.length);
 
         if (source.clip != initialClip) yield break;
         source.Stop();

@@ -179,6 +179,7 @@ public class Main : MonoBehaviour
             return false;
         }
 
+        var isFirstNightOfRun = RunState.CurrentNight <= 0;
         RunState.CurrentNight++;
         RunState.CurrentPhase = GamePhase.Night;
         ClearPendingBellInteraction();
@@ -192,6 +193,12 @@ public class Main : MonoBehaviour
         RefreshPresentation();
         TryPlayPendingBellUnlockAnnouncement();
         PlayPhaseTransitionCue(GamePhase.Night);
+        if (isFirstNightOfRun)
+        {
+            AnalyticsSystem.OnGameStarted();
+        }
+
+        TrackNightStarted();
         return true;
     }
 
@@ -246,6 +253,7 @@ public class Main : MonoBehaviour
         }
 
         Debug.Log($"Purchased upgrade '{purchaseResult.UpgradeDef.Id}'");
+        AnalyticsSystem.OnRewardPicked(purchaseResult.UpgradeDef.Id);
         RefreshPresentation();
         return purchaseResult;
     }
@@ -718,6 +726,7 @@ public class Main : MonoBehaviour
 
     private void CompleteNight()
     {
+        TrackNightCompleted();
         RecordCompletedNightSummary();
         Debug.Log("Night completed");
         activeNightDefinition = null;
@@ -1950,10 +1959,12 @@ public class Main : MonoBehaviour
             return false;
         }
 
+        TrackNightFailed();
         RunState.CurrentPhase = GamePhase.Defeat;
         G.audioSystem.Play(SoundId.SFX_Lose);
         waveSystem.StopWave();
         Time.timeScale = 0f;
+        AnalyticsSystem.OnGameEnded("defeat", GetCompletedNightCount());
         Debug.Log("Defeat: cemetery destroyed");
         RefreshPresentation();
         return true;
@@ -2008,6 +2019,7 @@ public class Main : MonoBehaviour
         G.audioSystem.Play(SoundId.SFX_Win);
         waveSystem.StopWave();
         Time.timeScale = 0f;
+        AnalyticsSystem.OnGameEnded("win", reachedDayCount);
         Debug.Log($"Victory: survived day {reachedDayCount} of {requiredDayCount}");
         RefreshPresentation();
         return true;
@@ -2040,6 +2052,53 @@ public class Main : MonoBehaviour
         Time.timeScale = 1f;
         var activeScene = SceneManager.GetActiveScene();
         SceneManager.LoadScene(activeScene.name);
+    }
+
+    private void TrackNightStarted()
+    {
+        if (RunState == null || RunState.CurrentNight <= 0)
+        {
+            return;
+        }
+
+        AnalyticsSystem.OnLevelChanged(RunState.CurrentNight, GetCurrentNightAnalyticsName());
+    }
+
+    private void TrackNightCompleted()
+    {
+        if (RunState == null || RunState.CurrentNight <= 0)
+        {
+            return;
+        }
+
+        AnalyticsSystem.OnLevelCompleted(RunState.CurrentNight, GetCurrentNightAnalyticsName());
+    }
+
+    private void TrackNightFailed()
+    {
+        if (RunState == null || RunState.CurrentPhase != GamePhase.Night || RunState.CurrentNight <= 0)
+        {
+            return;
+        }
+
+        AnalyticsSystem.OnLevelFailed(RunState.CurrentNight, GetCurrentNightAnalyticsName());
+    }
+
+    private string GetCurrentNightAnalyticsName()
+    {
+        if (!string.IsNullOrWhiteSpace(activeNightDefinition?.Id))
+        {
+            return activeNightDefinition.Id;
+        }
+
+        return RunState != null && RunState.CurrentNight > 0
+            ? $"night_{RunState.CurrentNight}"
+            : "unknown";
+    }
+
+    private int GetCompletedNightCount()
+    {
+        return RunState != null ? Mathf.Max(0, RunState.CurrentDay) : 0;
     }
 
     private void HandleDebugInput()

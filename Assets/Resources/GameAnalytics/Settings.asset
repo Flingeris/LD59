@@ -30,7 +30,7 @@ MonoBehaviour:
   secretKey:
   - f89e407c3ef52d516ba65b852b52cdfe73a510c7
   Build:
-  - 0.1
+  - 0.2
   SelectedPlatformOrganization:
   - Flinge
   SelectedPlatformStudio:

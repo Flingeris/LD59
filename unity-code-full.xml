@@ -154,288 +154,6 @@ Assets/Game/Code/UI/World/WorldProgressBarView.cs
 <files>
 This section contains the contents of the repository's files.
 
-<file path="Assets/Game/Code/UI/BellTooltipHover.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-[RequireComponent(typeof(BellWorldObject))]
-public sealed class BellTooltipHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
-{
-    [SerializeField] private BellTooltipView tooltipView;
-    private BellWorldObject bellWorldObject;
-    private void Awake()
-    {
-        bellWorldObject = GetComponent<BellWorldObject>();
-        if (tooltipView == null)
-            tooltipView = FindFirstObjectByType<BellTooltipView>();
-    }
-    public void OnPointerEnter(PointerEventData eventData)
-    {
-        if (tooltipView == null || bellWorldObject == null)
-            return;
-        var bellDef = CMS.Get<BellDef>(bellWorldObject.BellId);
-        if (bellDef == null)
-            return;
-        var unitDef = CMS.Get<UnitDef>(bellDef.LinkedUnitId);
-        int faithCost = bellDef.FaithCost;
-        if (G.main != null && G.main.RunState != null)
-            faithCost = Mathf.Max(0, bellDef.FaithCost + G.main.RunState.BellFaithCostModifier);
-        var title = BellTooltipView.BuildTitle(bellDef, bellWorldObject.BellId);
-        var body = BellTooltipView.BuildBody(bellDef, unitDef, faithCost);
-        tooltipView.Show(title, body);
-    }
-    public void OnPointerExit(PointerEventData eventData)
-    {
-        if (tooltipView == null)
-            return;
-        tooltipView.Hide();
-    }
-    private void OnDisable()
-    {
-        if (tooltipView != null)
-            tooltipView.Hide();
-    }
-    private void OnDestroy()
-    {
-        if (tooltipView != null)
-            tooltipView.Hide();
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/UI/BellTooltipPrefabCreator.cs">
-#if UNITY_EDITOR
-using System.IO;
-using TMPro;
-using UnityEditor;
-using UnityEngine;
-using UnityEngine.UI;
-public static class BellTooltipPrefabCreator
-{
-    private const string FolderPath = "Assets/GeneratedPrefabs";
-    private const string PrefabPath = FolderPath + "/BellTooltipView.prefab";
-    [MenuItem("Tools/Bellgrave/Create Bell Tooltip Prefab")]
-    public static void CreatePrefab()
-    {
-        if (!Directory.Exists(FolderPath))
-            Directory.CreateDirectory(FolderPath);
-        var root = new GameObject("BellTooltipView", typeof(RectTransform), typeof(CanvasGroup), typeof(Image),
-            typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
-        var rootRect = root.GetComponent<RectTransform>();
-        var canvasGroup = root.GetComponent<CanvasGroup>();
-        var bg = root.GetComponent<Image>();
-        var layout = root.GetComponent<VerticalLayoutGroup>();
-        var fitter = root.GetComponent<ContentSizeFitter>();
-        rootRect.anchorMin = new Vector2(0f, 1f);
-        rootRect.anchorMax = new Vector2(0f, 1f);
-        rootRect.pivot = new Vector2(0f, 1f);
-        rootRect.sizeDelta = new Vector2(110f, 0f);
-        bg.color = new Color32(58, 68, 104, 245);
-        bg.raycastTarget = false;
-        layout.childAlignment = TextAnchor.UpperLeft;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-        layout.spacing = 1f;
-        layout.padding = new RectOffset(4, 4, 3, 3);
-        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        var outline = root.AddComponent<Outline>();
-        outline.effectColor = new Color32(188, 208, 255, 255);
-        outline.effectDistance = new Vector2(1f, -1f);
-        var shadow = root.AddComponent<Shadow>();
-        shadow.effectColor = new Color32(18, 22, 38, 180);
-        shadow.effectDistance = new Vector2(1f, -1f);
-        var title = CreateText("Title", root.transform, 6, FontStyles.Bold, new Color32(243, 245, 255, 255),
-            "Bone Bell");
-        var body = CreateText("Body", root.transform, 5, FontStyles.Normal, new Color32(209, 220, 255, 255),
-            "Cost: 7 Faith\nSummons Skeleton\nHP 10  DMG 4");
-        var view = root.AddComponent<BellTooltipView>();
-        SerializedObject so = new SerializedObject(view);
-        so.FindProperty("root").objectReferenceValue = rootRect;
-        so.FindProperty("background").objectReferenceValue = bg;
-        so.FindProperty("titleText").objectReferenceValue = title;
-        so.FindProperty("bodyText").objectReferenceValue = body;
-        so.FindProperty("canvasGroup").objectReferenceValue = canvasGroup;
-        so.ApplyModifiedPropertiesWithoutUndo();
-        var prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
-        Object.DestroyImmediate(root);
-        Selection.activeObject = prefab;
-        EditorGUIUtility.PingObject(prefab);
-        Debug.Log($"Bell tooltip prefab created at: {PrefabPath}");
-    }
-    private static TextMeshProUGUI CreateText(string objectName, Transform parent, float fontSize, FontStyles fontStyle,
-        Color color, string sampleText)
-    {
-        var go = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
-        go.transform.SetParent(parent, false);
-        var text = go.GetComponent<TextMeshProUGUI>();
-        text.font = TMP_Settings.defaultFontAsset;
-        text.fontSize = fontSize;
-        text.fontStyle = fontStyle;
-        text.color = color;
-        text.alignment = TextAlignmentOptions.TopLeft;
-        text.enableWordWrapping = true;
-        text.raycastTarget = false;
-        text.lineSpacing = 0f;
-        text.text = sampleText;
-        var rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(1f, 1f);
-        rect.pivot = new Vector2(0.5f, 1f);
-        return text;
-    }
-}
-#endif
-</file>
-
-<file path="Assets/Game/Code/UI/BellTooltipView.cs">
-using System.Collections.Generic;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
-public sealed class BellTooltipView : MonoBehaviour
-{
-    [Header("Refs")]
-    [SerializeField] private RectTransform root;
-    [SerializeField] private Image background;
-    [SerializeField] private TextMeshProUGUI titleText;
-    [SerializeField] private TextMeshProUGUI bodyText;
-    [SerializeField] private CanvasGroup canvasGroup;
-    [Header("Behavior")]
-    [SerializeField] private bool followMouse = true;
-    [SerializeField] private Vector2 mouseOffset = new Vector2(8f, -6f);
-    [SerializeField] private bool clampInsideCanvas = true;
-    private Canvas parentCanvas;
-    private RectTransform canvasRect;
-    private void Awake()
-    {
-        if (root == null)
-            root = transform as RectTransform;
-        if (canvasGroup == null)
-            canvasGroup = GetComponent<CanvasGroup>();
-        parentCanvas = GetComponentInParent<Canvas>();
-        if (parentCanvas != null)
-            canvasRect = parentCanvas.GetComponent<RectTransform>();
-        HideInstant();
-    }
-    private void Update()
-    {
-        if (!followMouse)
-            return;
-        if (canvasGroup == null || canvasGroup.alpha <= 0.001f)
-            return;
-        UpdatePosition(Input.mousePosition);
-    }
-    public void Show(string title, string body)
-    {
-        if (titleText != null)
-            titleText.text = title ?? string.Empty;
-        if (bodyText != null)
-            bodyText.text = body ?? string.Empty;
-        if (canvasGroup != null)
-        {
-            canvasGroup.alpha = 1f;
-            canvasGroup.blocksRaycasts = false;
-            canvasGroup.interactable = false;
-        }
-        else
-        {
-            gameObject.SetActive(true);
-        }
-        LayoutRebuilder.ForceRebuildLayoutImmediate(root);
-        UpdatePosition(Input.mousePosition);
-    }
-    public void Hide()
-    {
-        HideInstant();
-    }
-    private void HideInstant()
-    {
-        if (canvasGroup != null)
-        {
-            canvasGroup.alpha = 0f;
-            canvasGroup.blocksRaycasts = false;
-            canvasGroup.interactable = false;
-        }
-        else
-        {
-            gameObject.SetActive(false);
-        }
-    }
-    private void UpdatePosition(Vector2 screenPosition)
-    {
-        if (root == null || canvasRect == null || parentCanvas == null)
-            return;
-        var targetScreenPos = screenPosition + mouseOffset;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            canvasRect,
-            targetScreenPos,
-            parentCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : parentCanvas.worldCamera,
-            out var localPoint
-        );
-        var canvasSize = canvasRect.rect.size;
-        var anchored = new Vector2(
-            localPoint.x + canvasSize.x * 0.5f,
-            localPoint.y - canvasSize.y * 0.5f
-        );
-        root.anchoredPosition = clampInsideCanvas ? ClampToCanvas(anchored) : anchored;
-    }
-    private Vector2 ClampToCanvas(Vector2 desired)
-    {
-        if (root == null || canvasRect == null)
-            return desired;
-        var canvasSize = canvasRect.rect.size;
-        var tooltipSize = root.rect.size;
-        float x = Mathf.Clamp(desired.x, 0f, Mathf.Max(0f, canvasSize.x - tooltipSize.x));
-        float y = Mathf.Clamp(desired.y, -Mathf.Max(0f, canvasSize.y - tooltipSize.y), 0f);
-        return new Vector2(x, y);
-    }
-    public static string BuildBody(BellDef bellDef, UnitDef unitDef, int faithCost)
-    {
-        var lines = new List<string>();
-        lines.Add($"Cost: {faithCost} Faith");
-        if (unitDef != null)
-        {
-            string name;
-            switch (unitDef.Id)
-            {
-            }
-            lines.Add("Summons undead ally");
-            lines.Add($"HP {unitDef.Hp}  DMG {unitDef.Damage}");
-        }
-        else
-        {
-            lines.Add("Summons undead ally");
-        }
-        return string.Join("\n", lines);
-    }
-    public static string BuildTitle(BellDef bellDef, string bellId)
-    {
-        return Humanize(bellDef != null ? bellDef.DisplayName : null, bellId);
-    }
-    private static string Humanize(string preferred, string fallback)
-    {
-        if (!string.IsNullOrWhiteSpace(preferred))
-            return preferred;
-        if (string.IsNullOrWhiteSpace(fallback))
-            return "Unknown";
-        var raw = fallback.Replace('_', ' ').Replace('-', ' ').Trim();
-        if (string.IsNullOrWhiteSpace(raw))
-            return "Unknown";
-        var parts = raw.Split(' ');
-        for (int i = 0; i < parts.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(parts[i]))
-                continue;
-            var lower = parts[i].ToLowerInvariant();
-            parts[i] = char.ToUpperInvariant(lower[0]) + lower.Substring(1);
-        }
-        return string.Join(" ", parts);
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/DefaultSystems/AudioSystem/AudioPlayers/AmbientPlayer.cs">
 using UnityEngine;
 public class AmbientPlayer : IAudioPlayer
@@ -2601,6 +2319,252 @@ public static class TextStuff
             return valueText;
         var c = m.Groups["c"].Value;
         return $"<color={c}>{valueText}</color>";
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/BellTooltipPrefabCreator.cs">
+#if UNITY_EDITOR
+using System.IO;
+using TMPro;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UI;
+public static class BellTooltipPrefabCreator
+{
+    private const string FolderPath = "Assets/GeneratedPrefabs";
+    private const string PrefabPath = FolderPath + "/BellTooltipView.prefab";
+    [MenuItem("Tools/Bellgrave/Create Bell Tooltip Prefab")]
+    public static void CreatePrefab()
+    {
+        if (!Directory.Exists(FolderPath))
+            Directory.CreateDirectory(FolderPath);
+        var root = new GameObject("BellTooltipView", typeof(RectTransform), typeof(CanvasGroup), typeof(Image),
+            typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        var rootRect = root.GetComponent<RectTransform>();
+        var canvasGroup = root.GetComponent<CanvasGroup>();
+        var bg = root.GetComponent<Image>();
+        var layout = root.GetComponent<VerticalLayoutGroup>();
+        var fitter = root.GetComponent<ContentSizeFitter>();
+        rootRect.anchorMin = new Vector2(0f, 1f);
+        rootRect.anchorMax = new Vector2(0f, 1f);
+        rootRect.pivot = new Vector2(0f, 1f);
+        rootRect.sizeDelta = new Vector2(110f, 0f);
+        bg.color = new Color32(58, 68, 104, 245);
+        bg.raycastTarget = false;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        layout.spacing = 1f;
+        layout.padding = new RectOffset(4, 4, 3, 3);
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var outline = root.AddComponent<Outline>();
+        outline.effectColor = new Color32(188, 208, 255, 255);
+        outline.effectDistance = new Vector2(1f, -1f);
+        var shadow = root.AddComponent<Shadow>();
+        shadow.effectColor = new Color32(18, 22, 38, 180);
+        shadow.effectDistance = new Vector2(1f, -1f);
+        var title = CreateText("Title", root.transform, 6, FontStyles.Bold, new Color32(243, 245, 255, 255),
+            "Bone Bell");
+        var body = CreateText("Body", root.transform, 5, FontStyles.Normal, new Color32(209, 220, 255, 255),
+            "Cost: 7 Faith\nSummons Skeleton\nHP 10  DMG 4");
+        var view = root.AddComponent<BellTooltipView>();
+        SerializedObject so = new SerializedObject(view);
+        so.FindProperty("root").objectReferenceValue = rootRect;
+        so.FindProperty("background").objectReferenceValue = bg;
+        so.FindProperty("titleText").objectReferenceValue = title;
+        so.FindProperty("bodyText").objectReferenceValue = body;
+        so.FindProperty("canvasGroup").objectReferenceValue = canvasGroup;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        var prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
+        Object.DestroyImmediate(root);
+        Selection.activeObject = prefab;
+        EditorGUIUtility.PingObject(prefab);
+        Debug.Log($"Bell tooltip prefab created at: {PrefabPath}");
+    }
+    private static TextMeshProUGUI CreateText(string objectName, Transform parent, float fontSize, FontStyles fontStyle,
+        Color color, string sampleText)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
+        go.transform.SetParent(parent, false);
+        var text = go.GetComponent<TextMeshProUGUI>();
+        text.font = TMP_Settings.defaultFontAsset;
+        text.fontSize = fontSize;
+        text.fontStyle = fontStyle;
+        text.color = color;
+        text.alignment = TextAlignmentOptions.TopLeft;
+        text.enableWordWrapping = true;
+        text.raycastTarget = false;
+        text.lineSpacing = 0f;
+        text.text = sampleText;
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        return text;
+    }
+}
+#endif
+</file>
+
+<file path="Assets/Game/Code/UI/BellTooltipView.cs">
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+public sealed class BellTooltipView : MonoBehaviour
+{
+    [Header("Refs")]
+    [SerializeField] private RectTransform root;
+    [SerializeField] private Image background;
+    [SerializeField] private TextMeshProUGUI titleText;
+    [SerializeField] private TextMeshProUGUI bodyText;
+    [SerializeField] private CanvasGroup canvasGroup;
+    [Header("Behavior")]
+    [SerializeField] private bool followMouse = true;
+    [SerializeField] private Vector2 mouseOffset = new Vector2(8f, -6f);
+    [SerializeField] private bool clampInsideCanvas = true;
+    private Canvas parentCanvas;
+    private RectTransform canvasRect;
+    private void Awake()
+    {
+        if (root == null)
+            root = transform as RectTransform;
+        if (canvasGroup == null)
+            canvasGroup = GetComponent<CanvasGroup>();
+        parentCanvas = GetComponentInParent<Canvas>();
+        if (parentCanvas != null)
+            canvasRect = parentCanvas.GetComponent<RectTransform>();
+        HideInstant();
+    }
+    private void Update()
+    {
+        if (!followMouse)
+            return;
+        if (canvasGroup == null || canvasGroup.alpha <= 0.001f)
+            return;
+        UpdatePosition(Input.mousePosition);
+    }
+    public void Show(string title, string body)
+    {
+        if (titleText != null)
+            titleText.text = title ?? string.Empty;
+        if (bodyText != null)
+            bodyText.text = body ?? string.Empty;
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 1f;
+            canvasGroup.blocksRaycasts = false;
+            canvasGroup.interactable = false;
+        }
+        else
+        {
+            gameObject.SetActive(true);
+        }
+        LayoutRebuilder.ForceRebuildLayoutImmediate(root);
+        UpdatePosition(Input.mousePosition);
+    }
+    public void Hide()
+    {
+        HideInstant();
+    }
+    private void HideInstant()
+    {
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 0f;
+            canvasGroup.blocksRaycasts = false;
+            canvasGroup.interactable = false;
+        }
+        else
+        {
+            gameObject.SetActive(false);
+        }
+    }
+    private void UpdatePosition(Vector2 screenPosition)
+    {
+        if (root == null || canvasRect == null || parentCanvas == null)
+            return;
+        var targetScreenPos = screenPosition + mouseOffset;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            canvasRect,
+            targetScreenPos,
+            parentCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : parentCanvas.worldCamera,
+            out var localPoint
+        );
+        var canvasSize = canvasRect.rect.size;
+        var anchored = new Vector2(
+            localPoint.x + canvasSize.x * 0.5f,
+            localPoint.y - canvasSize.y * 0.5f
+        );
+        root.anchoredPosition = clampInsideCanvas ? ClampToCanvas(anchored) : anchored;
+    }
+    private Vector2 ClampToCanvas(Vector2 desired)
+    {
+        if (root == null || canvasRect == null)
+            return desired;
+        var canvasSize = canvasRect.rect.size;
+        var tooltipSize = root.rect.size;
+        float x = Mathf.Clamp(desired.x, 0f, Mathf.Max(0f, canvasSize.x - tooltipSize.x));
+        float y = Mathf.Clamp(desired.y, -Mathf.Max(0f, canvasSize.y - tooltipSize.y), 0f);
+        return new Vector2(x, y);
+    }
+    public static string BuildBody(BellDef bellDef, UnitDef unitDef, int faithCost)
+    {
+        var lines = new List<string>();
+        lines.Add($"Cost: {faithCost} Faith");
+        if (unitDef != null)
+        {
+            string summonName;
+            switch (unitDef.Id)
+            {
+                case "skel1":
+                    summonName = "Summon skeleton";
+                    break;
+                case "zombie":
+                    summonName = "Summon zombie";
+                    break;
+                case "vampire":
+                    summonName = "Summon vampire";
+                    break;
+                default:
+                    summonName = "Summon undead ally";
+                    break;
+            }
+            lines.Add(summonName);
+            lines.Add($"HP {unitDef.Hp}  DMG {unitDef.Damage}");
+        }
+        else
+        {
+            lines.Add("Summon undead ally");
+        }
+        return string.Join("\n", lines);
+    }
+    public static string BuildTitle(BellDef bellDef, string bellId)
+    {
+        return Humanize(bellDef != null ? bellDef.DisplayName : null, bellId);
+    }
+    private static string Humanize(string preferred, string fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(preferred))
+            return preferred;
+        if (string.IsNullOrWhiteSpace(fallback))
+            return "Unknown";
+        var raw = fallback.Replace('_', ' ').Replace('-', ' ').Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return "Unknown";
+        var parts = raw.Split(' ');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(parts[i]))
+                continue;
+            var lower = parts[i].ToLowerInvariant();
+            parts[i] = char.ToUpperInvariant(lower[0]) + lower.Substring(1);
+        }
+        return string.Join(" ", parts);
     }
 }
 </file>
@@ -5120,6 +5084,124 @@ public class ServiceMain : MonoBehaviour
         G.audioSystem = gameObject.AddComponent<AudioSystem>();
         AnalyticsSystem.Init();
         CMS.Init();
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/UI/BellTooltipHover.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+[RequireComponent(typeof(BellWorldObject))]
+public sealed class BellTooltipHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    [SerializeField] private BellTooltipView tooltipView;
+    private BellWorldObject bellWorldObject;
+    private void Awake()
+    {
+        bellWorldObject = GetComponent<BellWorldObject>();
+        TryResolveTooltip();
+    }
+    private void TryResolveTooltip()
+    {
+        if (tooltipView == null)
+        {
+            tooltipView = FindFirstObjectByType<BellTooltipView>(FindObjectsInactive.Include);
+        }
+    }
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        TryResolveTooltip();
+        if (tooltipView == null || bellWorldObject == null)
+            return;
+        var bellId = bellWorldObject.BellId;
+        var bellDef = TryGetBellDef(bellId);
+        var resolved = ResolveTooltipData(bellId, bellDef);
+        tooltipView.Show(resolved.title, resolved.body);
+    }
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (tooltipView != null)
+            tooltipView.Hide();
+    }
+    private void OnDisable()
+    {
+        if (tooltipView != null)
+            tooltipView.Hide();
+    }
+    private void OnDestroy()
+    {
+        if (tooltipView != null)
+            tooltipView.Hide();
+    }
+    private BellDef TryGetBellDef(string bellId)
+    {
+        if (string.IsNullOrWhiteSpace(bellId))
+            return null;
+        foreach (var bell in CMS.GetAll<BellDef>())
+        {
+            if (bell != null && bell.Id == bellId)
+                return bell;
+        }
+        return null;
+    }
+    private UnitDef TryGetUnitDef(string unitId)
+    {
+        if (string.IsNullOrWhiteSpace(unitId))
+            return null;
+        foreach (var unit in CMS.GetAll<UnitDef>())
+        {
+            if (unit != null && unit.Id == unitId)
+                return unit;
+        }
+        return null;
+    }
+    private (string title, string body) ResolveTooltipData(string bellId, BellDef bellDef)
+    {
+        string title = "Unknown Bell";
+        int faithCost = 0;
+        UnitDef unitDef = null;
+        if (bellDef != null)
+        {
+            title = BellTooltipView.BuildTitle(bellDef, bellId);
+            faithCost = bellDef.FaithCost;
+            if (G.main != null && G.main.RunState != null)
+            {
+                faithCost = Mathf.Max(0, faithCost + G.main.RunState.BellFaithCostModifier);
+            }
+            unitDef = TryGetUnitDef(bellDef.LinkedUnitId);
+        }
+        else
+        {
+            switch (bellId)
+            {
+                case "bell_small":
+                    title = "Bone Bell";
+                    faithCost = 7;
+                    unitDef = TryGetUnitDef("skel1");
+                    break;
+                case "bell_zombie":
+                    title = "Grave Bell";
+                    faithCost = 14;
+                    unitDef = TryGetUnitDef("zombie");
+                    break;
+                case "bell_vampire":
+                    title = "Blood Bell";
+                    faithCost = 24;
+                    unitDef = TryGetUnitDef("vampire");
+                    break;
+                default:
+                    title = string.IsNullOrWhiteSpace(bellId) ? "Unknown Bell" : bellId;
+                    faithCost = 0;
+                    unitDef = null;
+                    break;
+            }
+            if (G.main != null && G.main.RunState != null)
+            {
+                faithCost = Mathf.Max(0, faithCost + G.main.RunState.BellFaithCostModifier);
+            }
+        }
+        var body = BellTooltipView.BuildBody(bellDef, unitDef, faithCost);
+        return (title, body);
     }
 }
 </file>
@@ -8802,6 +8884,137 @@ internal static class NightBalanceBuilder
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
+using System.Collections.Generic;
+using UnityEngine;
+public class UpgradeSystem
+{
+    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
+    {
+        if (runState == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
+        }
+        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
+        if (upgradeDef == null)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
+        }
+        runState.PurchasedUpgradeIds ??= new HashSet<string>();
+        if (!upgradeDef.IsRepeatable && runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
+        }
+        if (!SupportsEffectType(upgradeDef.EffectType))
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
+        }
+        var price = Mathf.Max(0, upgradeDef.Price);
+        if (runState.Gold < price)
+        {
+            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
+        }
+        runState.Gold -= price;
+        if (!upgradeDef.IsRepeatable)
+        {
+            runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
+        }
+        ApplyEffect(upgradeDef, runState);
+        ClampRunState(runState);
+        return UpgradePurchaseResult.Success(upgradeDef);
+    }
+    public static bool SupportsEffectType(UpgradeEffectType effectType)
+    {
+        return effectType == UpgradeEffectType.FaithIncomeBonus
+               || effectType == UpgradeEffectType.CemeteryRepair
+               || effectType == UpgradeEffectType.CemeteryMaxStateBonus
+               || effectType == UpgradeEffectType.BellFaithCostModifier
+               || effectType == UpgradeEffectType.StartingNightFaithBonus
+               || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
+               || effectType == UpgradeEffectType.UnitDamageModifier
+               || effectType == UpgradeEffectType.UnitLifetimeModifier
+               || effectType == UpgradeEffectType.UnitHpModifier
+               || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
+               || effectType == UpgradeEffectType.NightInstantRepairCharge;
+    }
+    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
+    {
+        var effectValue = upgradeDef.EffectValue;
+        var effectIntValue = Mathf.RoundToInt(effectValue);
+        switch (upgradeDef.EffectType)
+        {
+            case UpgradeEffectType.FaithIncomeBonus:
+                runState.FaithCollectionPayoutAmount =
+                    Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectIntValue);
+                break;
+            case UpgradeEffectType.CemeteryRepair:
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectIntValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+            case UpgradeEffectType.CemeteryMaxStateBonus:
+                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectIntValue);
+                runState.CemeteryState = Mathf.Clamp(
+                    runState.CemeteryState + effectIntValue,
+                    0,
+                    runState.CemeteryMaxState);
+                break;
+            case UpgradeEffectType.BellFaithCostModifier:
+                runState.BellFaithCostModifier += effectIntValue;
+                break;
+            case UpgradeEffectType.StartingNightFaithBonus:
+                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectIntValue);
+                break;
+            case UpgradeEffectType.KeeperMoveSpeedBonus:
+                if (runState.Keeper != null)
+                {
+                    runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed + effectValue);
+                }
+                break;
+            case UpgradeEffectType.UnitDamageModifier:
+                runState.AddUnitDamageModifier(upgradeDef.TargetUnitId, effectIntValue);
+                break;
+            case UpgradeEffectType.UnitLifetimeModifier:
+                runState.AddUnitLifetimeModifier(upgradeDef.TargetUnitId, effectValue);
+                break;
+            case UpgradeEffectType.UnitHpModifier:
+                runState.AddUnitHpModifier(upgradeDef.TargetUnitId, effectIntValue);
+                break;
+            case UpgradeEffectType.FaithCollectionIntervalModifier:
+                runState.FaithCollectionIntervalSeconds =
+                    Mathf.Max(0f, runState.FaithCollectionIntervalSeconds - effectValue);
+                break;
+            case UpgradeEffectType.NightInstantRepairCharge:
+                runState.InstantNightRepairChargesPerNight =
+                    Mathf.Max(0, runState.InstantNightRepairChargesPerNight + 1);
+                runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount + effectIntValue);
+                break;
+        }
+    }
+    private static void ClampRunState(RunState runState)
+    {
+        runState.Gold = Mathf.Max(0, runState.Gold);
+        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
+        runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
+        runState.FaithCollectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
+        runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
+        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
+        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
+        runState.InstantNightRepairChargesPerNight = Mathf.Max(0, runState.InstantNightRepairChargesPerNight);
+        runState.RemainingInstantNightRepairCharges = Mathf.Clamp(
+            runState.RemainingInstantNightRepairCharges,
+            0,
+            runState.InstantNightRepairChargesPerNight);
+        runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount);
+        if (runState.Keeper != null)
+        {
+            runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed);
+        }
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/UI/DayScreenView.cs">
 using System;
 using System.Collections.Generic;
@@ -9045,24 +9258,25 @@ public class DayScreenView : MonoBehaviour
     private void RebuildUpgradeItems(IReadOnlyList<DayUpgradeItemData> upgradeItems)
     {
         ClearUpgradeItems();
-        if (upgradeItemsContainer == null || upgradeItemTemplate == null || upgradeItems == null)
+        if (upgradeItemsContainer == null || upgradeItemTemplate == null)
         {
             return;
         }
-        var offerCount = Mathf.Min(3, upgradeItems.Count);
-        if (offerCount <= 0)
-        {
-            return;
-        }
+        const int slotCount = 3;
         var availableWidth = Mathf.Max(280f, upgradeItemsContainer.rect.width);
         var availableHeight = Mathf.Max(70f, upgradeItemsContainer.rect.height);
         const float spacing = 4f;
         var cardWidth = Mathf.Floor((availableWidth - spacing * 2f) / 3f);
         var cardHeight = Mathf.Clamp(availableHeight, 70f, 82f);
-        var usedWidth = offerCount * cardWidth + Mathf.Max(0, offerCount - 1) * spacing;
+        var usedWidth = slotCount * cardWidth + (slotCount - 1) * spacing;
         var startX = Mathf.Floor((availableWidth - usedWidth) * 0.5f);
-        for (var i = 0; i < offerCount; i++)
+        for (var i = 0; i < slotCount; i++)
         {
+            DayUpgradeItemData itemData = null;
+            if (upgradeItems != null && i < upgradeItems.Count)
+            {
+                itemData = upgradeItems[i];
+            }
             var itemView = Instantiate(upgradeItemTemplate, upgradeItemsContainer, false);
             itemView.gameObject.name = $"UpgradeItem_{i + 1}";
             itemView.gameObject.SetActive(true);
@@ -9077,7 +9291,15 @@ public class DayScreenView : MonoBehaviour
             itemView.BuyRequested -= HandleUpgradeBuyRequested;
             itemView.BuyRequested += HandleUpgradeBuyRequested;
             itemView.ApplyLayout(true, cardWidth, cardHeight);
-            itemView.Bind(upgradeItems[i]);
+            var isEmptySlot = itemData == null || string.IsNullOrWhiteSpace(itemData.UpgradeId);
+            if (isEmptySlot)
+            {
+                itemView.gameObject.SetActive(false);
+            }
+            else
+            {
+                itemView.Bind(itemData);
+            }
             spawnedUpgradeItems.Add(itemView);
         }
     }
@@ -9264,137 +9486,6 @@ public class DayScreenView : MonoBehaviour
             Debug.LogWarning($"DayScreenView: failed to save generated prefab assets. {exception.Message}");
         }
 #endif
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs">
-using System.Collections.Generic;
-using UnityEngine;
-public class UpgradeSystem
-{
-    public UpgradePurchaseResult TryPurchaseUpgrade(string upgradeId, RunState runState)
-    {
-        if (runState == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.InvalidState);
-        }
-        var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
-        if (upgradeDef == null)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.UpgradeNotFound);
-        }
-        runState.PurchasedUpgradeIds ??= new HashSet<string>();
-        if (!upgradeDef.IsRepeatable && runState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.AlreadyPurchased, upgradeDef);
-        }
-        if (!SupportsEffectType(upgradeDef.EffectType))
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.EffectNotSupported, upgradeDef);
-        }
-        var price = Mathf.Max(0, upgradeDef.Price);
-        if (runState.Gold < price)
-        {
-            return UpgradePurchaseResult.Failure(UpgradePurchaseFailureReason.NotEnoughGold, upgradeDef);
-        }
-        runState.Gold -= price;
-        if (!upgradeDef.IsRepeatable)
-        {
-            runState.PurchasedUpgradeIds.Add(upgradeDef.Id);
-        }
-        ApplyEffect(upgradeDef, runState);
-        ClampRunState(runState);
-        return UpgradePurchaseResult.Success(upgradeDef);
-    }
-    public static bool SupportsEffectType(UpgradeEffectType effectType)
-    {
-        return effectType == UpgradeEffectType.FaithIncomeBonus
-               || effectType == UpgradeEffectType.CemeteryRepair
-               || effectType == UpgradeEffectType.CemeteryMaxStateBonus
-               || effectType == UpgradeEffectType.BellFaithCostModifier
-               || effectType == UpgradeEffectType.StartingNightFaithBonus
-               || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
-               || effectType == UpgradeEffectType.UnitDamageModifier
-               || effectType == UpgradeEffectType.UnitLifetimeModifier
-               || effectType == UpgradeEffectType.UnitHpModifier
-               || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
-               || effectType == UpgradeEffectType.NightInstantRepairCharge;
-    }
-    private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
-    {
-        var effectValue = upgradeDef.EffectValue;
-        var effectIntValue = Mathf.RoundToInt(effectValue);
-        switch (upgradeDef.EffectType)
-        {
-            case UpgradeEffectType.FaithIncomeBonus:
-                runState.FaithCollectionPayoutAmount =
-                    Mathf.Max(0, runState.FaithCollectionPayoutAmount + effectIntValue);
-                break;
-            case UpgradeEffectType.CemeteryRepair:
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectIntValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-            case UpgradeEffectType.CemeteryMaxStateBonus:
-                runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState + effectIntValue);
-                runState.CemeteryState = Mathf.Clamp(
-                    runState.CemeteryState + effectIntValue,
-                    0,
-                    runState.CemeteryMaxState);
-                break;
-            case UpgradeEffectType.BellFaithCostModifier:
-                runState.BellFaithCostModifier += effectIntValue;
-                break;
-            case UpgradeEffectType.StartingNightFaithBonus:
-                runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith + effectIntValue);
-                break;
-            case UpgradeEffectType.KeeperMoveSpeedBonus:
-                if (runState.Keeper != null)
-                {
-                    runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed + effectValue);
-                }
-                break;
-            case UpgradeEffectType.UnitDamageModifier:
-                runState.AddUnitDamageModifier(upgradeDef.TargetUnitId, effectIntValue);
-                break;
-            case UpgradeEffectType.UnitLifetimeModifier:
-                runState.AddUnitLifetimeModifier(upgradeDef.TargetUnitId, effectValue);
-                break;
-            case UpgradeEffectType.UnitHpModifier:
-                runState.AddUnitHpModifier(upgradeDef.TargetUnitId, effectIntValue);
-                break;
-            case UpgradeEffectType.FaithCollectionIntervalModifier:
-                runState.FaithCollectionIntervalSeconds =
-                    Mathf.Max(0f, runState.FaithCollectionIntervalSeconds - effectValue);
-                break;
-            case UpgradeEffectType.NightInstantRepairCharge:
-                runState.InstantNightRepairChargesPerNight =
-                    Mathf.Max(0, runState.InstantNightRepairChargesPerNight + 1);
-                runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount + effectIntValue);
-                break;
-        }
-    }
-    private static void ClampRunState(RunState runState)
-    {
-        runState.Gold = Mathf.Max(0, runState.Gold);
-        runState.StartingNightFaith = Mathf.Max(0, runState.StartingNightFaith);
-        runState.FaithCollectionPayoutAmount = Mathf.Max(0, runState.FaithCollectionPayoutAmount);
-        runState.FaithCollectionIntervalSeconds = Mathf.Max(0f, runState.FaithCollectionIntervalSeconds);
-        runState.FaithCollectionTimerProgress = Mathf.Max(0f, runState.FaithCollectionTimerProgress);
-        runState.CemeteryMaxState = Mathf.Max(0, runState.CemeteryMaxState);
-        runState.CemeteryState = Mathf.Clamp(runState.CemeteryState, 0, runState.CemeteryMaxState);
-        runState.InstantNightRepairChargesPerNight = Mathf.Max(0, runState.InstantNightRepairChargesPerNight);
-        runState.RemainingInstantNightRepairCharges = Mathf.Clamp(
-            runState.RemainingInstantNightRepairCharges,
-            0,
-            runState.InstantNightRepairChargesPerNight);
-        runState.InstantNightRepairAmount = Mathf.Max(0, runState.InstantNightRepairAmount);
-        if (runState.Keeper != null)
-        {
-            runState.Keeper.MoveSpeed = Mathf.Max(0f, runState.Keeper.MoveSpeed);
-        }
     }
 }
 </file>
@@ -11502,7 +11593,14 @@ public class Main : MonoBehaviour
         }
         if (RunState.CurrentDayUpgradeOfferIds != null)
         {
-            RunState.CurrentDayUpgradeOfferIds.Remove(upgradeId);
+            for (var i = 0; i < RunState.CurrentDayUpgradeOfferIds.Count; i++)
+            {
+                if (RunState.CurrentDayUpgradeOfferIds[i] == upgradeId)
+                {
+                    RunState.CurrentDayUpgradeOfferIds[i] = string.Empty;
+                    break;
+                }
+            }
         }
         Debug.Log($"Purchased upgrade '{purchaseResult.UpgradeDef.Id}'");
         RefreshPresentation();
@@ -12551,21 +12649,25 @@ public class Main : MonoBehaviour
             var upgradeId = offerIds[i];
             if (string.IsNullOrWhiteSpace(upgradeId))
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
             var upgradeDef = CMS.Get<UpgradeDef>(upgradeId);
             if (upgradeDef == null)
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
             if (!upgradeDef.IsRepeatable &&
                 RunState.PurchasedUpgradeIds != null &&
                 RunState.PurchasedUpgradeIds.Contains(upgradeDef.Id))
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
             if (!UpgradeSystem.SupportsEffectType(upgradeDef.EffectType))
             {
+                displayItems.Add(new DayUpgradeItemData());
                 continue;
             }
             var price = Mathf.Max(0, upgradeDef.Price);

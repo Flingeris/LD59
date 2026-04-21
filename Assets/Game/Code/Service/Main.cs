@@ -1630,8 +1630,8 @@ public class Main : MonoBehaviour
 
     private static string BuildUpgradeEffectText(UpgradeDef upgradeDef)
     {
-        var effectValue = Mathf.Max(0f, upgradeDef.EffectValue);
-        var effectValueText = FormatUpgradeValue(effectValue);
+        var effectValue = upgradeDef.EffectValue;
+        var effectValueText = FormatUpgradeValue(Mathf.Abs(effectValue));
         var targetUnitName = ResolveUpgradeUnitName(upgradeDef.TargetUnitId);
 
         return upgradeDef.EffectType switch
@@ -1639,7 +1639,7 @@ public class Main : MonoBehaviour
             UpgradeEffectType.FaithIncomeBonus => $"+{effectValueText} Faith per payout",
             UpgradeEffectType.CemeteryRepair => $"+{effectValueText} cemetery repair",
             UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValueText} cemetery max",
-            UpgradeEffectType.BellFaithCostModifier => $"-{effectValueText} bell Faith cost",
+            UpgradeEffectType.BellFaithCostModifier => $"-{effectValueText} bells Faith cost",
             UpgradeEffectType.StartingNightFaithBonus => $"+{effectValueText} Faith at night start",
             UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValueText} keeper speed",
             UpgradeEffectType.UnitDamageModifier => $"+{effectValueText} {targetUnitName} damage",

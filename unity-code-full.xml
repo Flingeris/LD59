@@ -89,6 +89,7 @@ Assets/Game/Code/Gameplay/Environment/CloudLoopController.cs
 Assets/Game/Code/Gameplay/Environment/LoopingCloud.cs
 Assets/Game/Code/Gameplay/Environment/WorldYSortSpriteGroup.cs
 Assets/Game/Code/Gameplay/Faith/FaithCollectionSystem.cs
+Assets/Game/Code/Gameplay/Faith/FaithPoiAnimationView.cs
 Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs
 Assets/Game/Code/Gameplay/Keeper/KeeperMovementSystem.cs
 Assets/Game/Code/Gameplay/Lane/CombatHpBarView.cs
@@ -1800,6 +1801,27 @@ public class LoopingCloud : MonoBehaviour
         return directionSign > 0f
             ? localX > maxX + recyclePadding
             : localX < minX - recyclePadding;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Faith/FaithPoiAnimationView.cs">
+using UnityEngine;
+public class FaithPoiAnimationView : MonoBehaviour
+{
+    [SerializeField] private Animator animator;
+    private static readonly int IsKeeperNearHash = Animator.StringToHash("IsKeeperNear");
+    private void Reset()
+    {
+        animator = GetComponentInChildren<Animator>();
+    }
+    public void SetKeeperNearby(bool isKeeperNear)
+    {
+        if (animator == null)
+        {
+            return;
+        }
+        animator.SetBool(IsKeeperNearHash, isKeeperNear);
     }
 }
 </file>
@@ -6425,104 +6447,6 @@ public class TutorialOverlayView : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
-using UnityEngine;
-using UnityEngine.Rendering;
-public class KeeperActor : MonoBehaviour
-{
-    private const float FacingThreshold = 0.001f;
-    private const int SortingPrecision = 100;
-    private SpriteRenderer spriteRenderer;
-    private SortingGroup sortingGroup;
-    [SerializeField] private Animator animator;
-    private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
-    private const float MovingAnimationThreshold = 0.0001f;
-    private void LateUpdate()
-    {
-        UpdateSortingOrder();
-    }
-    public Vector2 GetWorldPosition()
-    {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public void SetWorldPosition(Vector2 worldPosition)
-    {
-        var currentPosition = transform.position;
-        var movementOffset = new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y);
-        UpdateFacing(movementOffset);
-        UpdateMovementAnimation(movementOffset);
-        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
-    }
-    private void UpdateMovementAnimation(Vector2 movementOffset)
-    {
-        var targetAnimator = GetAnimator();
-        if (targetAnimator == null)
-        {
-            return;
-        }
-        var isMoving = movementOffset.sqrMagnitude > MovingAnimationThreshold;
-        targetAnimator.SetBool(IsMovingHash, isMoving);
-    }
-    private Animator GetAnimator()
-    {
-        if (animator == null)
-        {
-            animator = GetComponent<Animator>();
-        }
-        return animator;
-    }
-    public void SetFacingDirection(PoiKeeperFacingDirection facingDirection)
-    {
-        var targetRenderer = GetSpriteRenderer();
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        targetRenderer.flipX = facingDirection == PoiKeeperFacingDirection.Left;
-    }
-    private void UpdateFacing(Vector2 movementOffset)
-    {
-        if (Mathf.Abs(movementOffset.x) <= FacingThreshold)
-        {
-            return;
-        }
-        var targetRenderer = GetSpriteRenderer();
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        targetRenderer.flipX = movementOffset.x < 0f;
-    }
-    private void UpdateSortingOrder()
-    {
-        if (sortingGroup == null)
-        {
-            sortingGroup = GetComponentInChildren<SortingGroup>();
-        }
-        if (sortingGroup != null)
-        {
-            sortingGroup.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
-            return;
-        }
-        var targetRenderer = GetSpriteRenderer();
-        if (targetRenderer == null)
-        {
-            return;
-        }
-        targetRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
-    }
-    private SpriteRenderer GetSpriteRenderer()
-    {
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        }
-        return spriteRenderer;
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Lane/LaneCombatFeedbackView.cs">
 using System.Collections;
 using UnityEngine;
@@ -7165,95 +7089,6 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
     private float GetIdleMicroRetargetDelay()
     {
         return laneHost != null ? laneHost.AlliedIdleMicroRetargetDelay : 1f;
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-public enum PoiKeeperFacingDirection
-{
-    Right = 0,
-    Left = 1
-}
-public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
-{
-    [SerializeField] private string id;
-    [SerializeField] private NightPoiType type;
-    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
-    [SerializeField] private Transform keeperTargetPoint;
-    [SerializeField] private PoiKeeperFacingDirection keeperFacingDirection = PoiKeeperFacingDirection.Right;
-    [SerializeField] private NightPoiProgressView progressView;
-    public string Id => id;
-    public NightPoiType Type => type;
-    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
-    public PoiKeeperFacingDirection KeeperFacingDirection => keeperFacingDirection;
-    private void Awake()
-    {
-        if (progressView == null)
-        {
-            progressView = GetComponentInChildren<NightPoiProgressView>(true);
-        }
-        progressView?.Bind(this);
-    }
-    public Vector2 GetWorldPosition()
-    {
-        var worldPosition = transform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public Vector2 GetKeeperTargetWorldPosition()
-    {
-        var targetTransform = keeperTargetPoint != null ? keeperTargetPoint : transform;
-        var worldPosition = targetTransform.position;
-        return new Vector2(worldPosition.x, worldPosition.y);
-    }
-    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
-    {
-        var interactionRadiusValue = InteractionRadius;
-        if (interactionRadiusValue <= 0f)
-        {
-            return false;
-        }
-        return Vector2.Distance(GetKeeperTargetWorldPosition(), keeperPosition) <= interactionRadiusValue;
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        if (InteractionRadius <= 0f)
-        {
-            validationError = "invalid interaction radius";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-        {
-            return;
-        }
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
-            return;
-        }
-        G.main.TryMoveKeeperToPoi(id);
     }
 }
 </file>
@@ -7980,6 +7815,202 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
     {
         var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
         return spriteHeight * 0.6f + popupVerticalPadding;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
+using UnityEngine;
+using UnityEngine.Rendering;
+public class KeeperActor : MonoBehaviour
+{
+    private const float FacingThreshold = 0.001f;
+    private const int SortingPrecision = 100;
+    private SpriteRenderer spriteRenderer;
+    private SortingGroup sortingGroup;
+    [SerializeField] private Animator animator;
+    private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
+    private const float MovingAnimationThreshold = 0.0001f;
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public void SetWorldPosition(Vector2 worldPosition)
+    {
+        var currentPosition = transform.position;
+        var movementOffset = new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y);
+        UpdateFacing(movementOffset);
+        UpdateMovementAnimation(movementOffset);
+        transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
+    }
+    private void UpdateMovementAnimation(Vector2 movementOffset)
+    {
+        var targetAnimator = GetAnimator();
+        if (targetAnimator == null)
+        {
+            return;
+        }
+        var isMoving = movementOffset.sqrMagnitude > MovingAnimationThreshold;
+        targetAnimator.SetBool(IsMovingHash, isMoving);
+    }
+    private Animator GetAnimator()
+    {
+        if (animator == null)
+        {
+            animator = GetComponent<Animator>();
+        }
+        return animator;
+    }
+    public void SetFacingDirection(PoiKeeperFacingDirection facingDirection)
+    {
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.flipX = facingDirection == PoiKeeperFacingDirection.Left;
+    }
+    private void UpdateFacing(Vector2 movementOffset)
+    {
+        if (Mathf.Abs(movementOffset.x) <= FacingThreshold)
+        {
+            return;
+        }
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.flipX = movementOffset.x < 0f;
+    }
+    private void UpdateSortingOrder()
+    {
+        if (sortingGroup == null)
+        {
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+        }
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+            return;
+        }
+        var targetRenderer = GetSpriteRenderer();
+        if (targetRenderer == null)
+        {
+            return;
+        }
+        targetRenderer.sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+    }
+    private SpriteRenderer GetSpriteRenderer()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        }
+        return spriteRenderer;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/NightPoi/NightPointOfInterest.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+public enum PoiKeeperFacingDirection
+{
+    Right = 0,
+    Left = 1
+}
+public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
+{
+    [SerializeField] private string id;
+    [SerializeField] private NightPoiType type;
+    [Min(0f)] [SerializeField] private float interactionRadius = 0.6f;
+    [SerializeField] private Transform keeperTargetPoint;
+    [SerializeField] private PoiKeeperFacingDirection keeperFacingDirection = PoiKeeperFacingDirection.Right;
+    [SerializeField] private NightPoiProgressView progressView;
+    [SerializeField] private FaithPoiAnimationView faithPoiAnimationView;
+    public string Id => id;
+    public NightPoiType Type => type;
+    public float InteractionRadius => Mathf.Max(0f, interactionRadius);
+    public PoiKeeperFacingDirection KeeperFacingDirection => keeperFacingDirection;
+    private void Awake()
+    {
+        if (progressView == null)
+        {
+            progressView = GetComponentInChildren<NightPoiProgressView>(true);
+        }
+        progressView?.Bind(this);
+    }
+    public Vector2 GetWorldPosition()
+    {
+        var worldPosition = transform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public void SetKeeperNearbyPresentation(bool isKeeperNear)
+    {
+        if (type != NightPoiType.FaithPoint)
+        {
+            return;
+        }
+        faithPoiAnimationView?.SetKeeperNearby(isKeeperNear);
+    }
+    public Vector2 GetKeeperTargetWorldPosition()
+    {
+        var targetTransform = keeperTargetPoint != null ? keeperTargetPoint : transform;
+        var worldPosition = targetTransform.position;
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    public bool IsKeeperInInteractionRange(Vector2 keeperPosition)
+    {
+        var interactionRadiusValue = InteractionRadius;
+        if (interactionRadiusValue <= 0f)
+        {
+            return false;
+        }
+        return Vector2.Distance(GetKeeperTargetWorldPosition(), keeperPosition) <= interactionRadiusValue;
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        if (!TryGetComponent<SpriteRenderer>(out var spriteRenderer) || spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        if (InteractionRadius <= 0f)
+        {
+            validationError = "invalid interaction radius";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+        {
+            return;
+        }
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Night POI click ignored for '{id}': Main is missing");
+            return;
+        }
+        G.main.TryMoveKeeperToPoi(id);
     }
 }
 </file>
@@ -9069,6 +9100,141 @@ public class LaneEnemy : MonoBehaviour
 }
 </file>
 
+<file path="Assets/Game/Code/Gameplay/Runtime/RunState.cs">
+using System.Collections.Generic;
+using UnityEngine;
+public class RunState
+{
+    public int Faith;
+    public int Gold;
+    public int StartingNightFaith;
+    public int BellFaithCostModifier;
+    public int FaithCollectionPayoutAmount;
+    public float FaithCollectionIntervalSeconds;
+    public float FaithCollectionTimerProgress;
+    public int CemeteryState;
+    public int CemeteryMaxState;
+    public int NightCemeteryRepairAmount;
+    public float NightCemeteryRepairIntervalSeconds;
+    public float NightCemeteryRepairTimerProgress;
+    public int CurrentDay;
+    public int CurrentNight;
+    public GamePhase CurrentPhase;
+    public DayRewardData LastDayReward;
+    public HashSet<string> PurchasedUpgradeIds;
+    public List<string> CurrentDayUpgradeOfferIds;
+    public Dictionary<string, int> UnitDamageModifiersById;
+    public Dictionary<string, int> UnitHpModifiersById;
+    public Dictionary<string, float> UnitLifetimeModifiersById;
+    public int InstantNightRepairChargesPerNight;
+    public int RemainingInstantNightRepairCharges;
+    public int InstantNightRepairAmount;
+    public KeeperState Keeper;
+    public static RunState CreateInitial(
+        int initialCemeteryState,
+        float initialKeeperMoveSpeed,
+        int startingNightFaith,
+        int faithCollectionPayoutAmount,
+        float faithCollectionIntervalSeconds,
+        int nightCemeteryRepairAmount,
+        float nightCemeteryRepairIntervalSeconds)
+    {
+        var clampedInitialCemeteryState = Mathf.Max(0, initialCemeteryState);
+        var clampedStartingNightFaith = Mathf.Max(0, startingNightFaith);
+        var clampedFaithCollectionPayoutAmount = Mathf.Max(0, faithCollectionPayoutAmount);
+        var clampedFaithCollectionIntervalSeconds = Mathf.Max(0f, faithCollectionIntervalSeconds);
+        var clampedNightCemeteryRepairAmount = Mathf.Max(0, nightCemeteryRepairAmount);
+        var clampedNightCemeteryRepairIntervalSeconds = Mathf.Max(0f, nightCemeteryRepairIntervalSeconds);
+        return new RunState
+        {
+            Faith = 0,
+            Gold = 0,
+            StartingNightFaith = clampedStartingNightFaith,
+            BellFaithCostModifier = 0,
+            FaithCollectionPayoutAmount = clampedFaithCollectionPayoutAmount,
+            FaithCollectionIntervalSeconds = clampedFaithCollectionIntervalSeconds,
+            FaithCollectionTimerProgress = 0f,
+            CemeteryState = clampedInitialCemeteryState,
+            CemeteryMaxState = clampedInitialCemeteryState,
+            NightCemeteryRepairAmount = clampedNightCemeteryRepairAmount,
+            NightCemeteryRepairIntervalSeconds = clampedNightCemeteryRepairIntervalSeconds,
+            NightCemeteryRepairTimerProgress = 0f,
+            CurrentDay = 0,
+            CurrentNight = 0,
+            CurrentPhase = GamePhase.Transition,
+            LastDayReward = new DayRewardData(),
+            PurchasedUpgradeIds = new HashSet<string>(),
+            CurrentDayUpgradeOfferIds = new List<string>(),
+            UnitDamageModifiersById = new Dictionary<string, int>(),
+            UnitHpModifiersById = new Dictionary<string, int>(),
+            UnitLifetimeModifiersById = new Dictionary<string, float>(),
+            InstantNightRepairChargesPerNight = 0,
+            RemainingInstantNightRepairCharges = 0,
+            InstantNightRepairAmount = 0,
+            Keeper = KeeperState.CreateInitial(initialKeeperMoveSpeed)
+        };
+    }
+    public int GetUnitDamageModifier(string unitId)
+    {
+        return GetUnitIntModifier(UnitDamageModifiersById, unitId);
+    }
+    public int GetUnitHpModifier(string unitId)
+    {
+        return GetUnitIntModifier(UnitHpModifiersById, unitId);
+    }
+    public float GetUnitLifetimeModifier(string unitId)
+    {
+        return GetUnitFloatModifier(UnitLifetimeModifiersById, unitId);
+    }
+    public void AddUnitDamageModifier(string unitId, int amount)
+    {
+        AddUnitIntModifier(UnitDamageModifiersById, unitId, amount);
+    }
+    public void AddUnitHpModifier(string unitId, int amount)
+    {
+        AddUnitIntModifier(UnitHpModifiersById, unitId, amount);
+    }
+    public void AddUnitLifetimeModifier(string unitId, float amount)
+    {
+        AddUnitFloatModifier(UnitLifetimeModifiersById, unitId, amount);
+    }
+    private static int GetUnitIntModifier(Dictionary<string, int> modifiers, string unitId)
+    {
+        if (modifiers == null || string.IsNullOrWhiteSpace(unitId))
+        {
+            return 0;
+        }
+        return modifiers.TryGetValue(unitId, out var value) ? value : 0;
+    }
+    private static float GetUnitFloatModifier(Dictionary<string, float> modifiers, string unitId)
+    {
+        if (modifiers == null || string.IsNullOrWhiteSpace(unitId))
+        {
+            return 0f;
+        }
+        return modifiers.TryGetValue(unitId, out var value) ? value : 0f;
+    }
+    private static void AddUnitIntModifier(Dictionary<string, int> modifiers, string unitId, int amount)
+    {
+        if (modifiers == null || string.IsNullOrWhiteSpace(unitId) || amount == 0)
+        {
+            return;
+        }
+        modifiers.TryGetValue(unitId, out var currentValue);
+        modifiers[unitId] = currentValue + amount;
+    }
+    private static void AddUnitFloatModifier(Dictionary<string, float> modifiers, string unitId, float amount)
+    {
+        if (modifiers == null || string.IsNullOrWhiteSpace(unitId) || Mathf.Approximately(amount, 0f))
+        {
+            return;
+        }
+        modifiers.TryGetValue(unitId, out var currentValue);
+        modifiers[unitId] = currentValue + amount;
+    }
+}
+</file>
+
 <file path="Assets/Game/Code/Gameplay/Lane/LaneUnit.cs">
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -9456,141 +9622,6 @@ public class LaneUnit : MonoBehaviour
         {
             G.audioSystem.Play(SoundId.SFX_SkelDying);
         }
-    }
-}
-</file>
-
-<file path="Assets/Game/Code/Gameplay/Runtime/RunState.cs">
-using System.Collections.Generic;
-using UnityEngine;
-public class RunState
-{
-    public int Faith;
-    public int Gold;
-    public int StartingNightFaith;
-    public int BellFaithCostModifier;
-    public int FaithCollectionPayoutAmount;
-    public float FaithCollectionIntervalSeconds;
-    public float FaithCollectionTimerProgress;
-    public int CemeteryState;
-    public int CemeteryMaxState;
-    public int NightCemeteryRepairAmount;
-    public float NightCemeteryRepairIntervalSeconds;
-    public float NightCemeteryRepairTimerProgress;
-    public int CurrentDay;
-    public int CurrentNight;
-    public GamePhase CurrentPhase;
-    public DayRewardData LastDayReward;
-    public HashSet<string> PurchasedUpgradeIds;
-    public List<string> CurrentDayUpgradeOfferIds;
-    public Dictionary<string, int> UnitDamageModifiersById;
-    public Dictionary<string, int> UnitHpModifiersById;
-    public Dictionary<string, float> UnitLifetimeModifiersById;
-    public int InstantNightRepairChargesPerNight;
-    public int RemainingInstantNightRepairCharges;
-    public int InstantNightRepairAmount;
-    public KeeperState Keeper;
-    public static RunState CreateInitial(
-        int initialCemeteryState,
-        float initialKeeperMoveSpeed,
-        int startingNightFaith,
-        int faithCollectionPayoutAmount,
-        float faithCollectionIntervalSeconds,
-        int nightCemeteryRepairAmount,
-        float nightCemeteryRepairIntervalSeconds)
-    {
-        var clampedInitialCemeteryState = Mathf.Max(0, initialCemeteryState);
-        var clampedStartingNightFaith = Mathf.Max(0, startingNightFaith);
-        var clampedFaithCollectionPayoutAmount = Mathf.Max(0, faithCollectionPayoutAmount);
-        var clampedFaithCollectionIntervalSeconds = Mathf.Max(0f, faithCollectionIntervalSeconds);
-        var clampedNightCemeteryRepairAmount = Mathf.Max(0, nightCemeteryRepairAmount);
-        var clampedNightCemeteryRepairIntervalSeconds = Mathf.Max(0f, nightCemeteryRepairIntervalSeconds);
-        return new RunState
-        {
-            Faith = 0,
-            Gold = 0,
-            StartingNightFaith = clampedStartingNightFaith,
-            BellFaithCostModifier = 0,
-            FaithCollectionPayoutAmount = clampedFaithCollectionPayoutAmount,
-            FaithCollectionIntervalSeconds = clampedFaithCollectionIntervalSeconds,
-            FaithCollectionTimerProgress = 0f,
-            CemeteryState = clampedInitialCemeteryState,
-            CemeteryMaxState = clampedInitialCemeteryState,
-            NightCemeteryRepairAmount = clampedNightCemeteryRepairAmount,
-            NightCemeteryRepairIntervalSeconds = clampedNightCemeteryRepairIntervalSeconds,
-            NightCemeteryRepairTimerProgress = 0f,
-            CurrentDay = 0,
-            CurrentNight = 0,
-            CurrentPhase = GamePhase.Transition,
-            LastDayReward = new DayRewardData(),
-            PurchasedUpgradeIds = new HashSet<string>(),
-            CurrentDayUpgradeOfferIds = new List<string>(),
-            UnitDamageModifiersById = new Dictionary<string, int>(),
-            UnitHpModifiersById = new Dictionary<string, int>(),
-            UnitLifetimeModifiersById = new Dictionary<string, float>(),
-            InstantNightRepairChargesPerNight = 0,
-            RemainingInstantNightRepairCharges = 0,
-            InstantNightRepairAmount = 0,
-            Keeper = KeeperState.CreateInitial(initialKeeperMoveSpeed)
-        };
-    }
-    public int GetUnitDamageModifier(string unitId)
-    {
-        return GetUnitIntModifier(UnitDamageModifiersById, unitId);
-    }
-    public int GetUnitHpModifier(string unitId)
-    {
-        return GetUnitIntModifier(UnitHpModifiersById, unitId);
-    }
-    public float GetUnitLifetimeModifier(string unitId)
-    {
-        return GetUnitFloatModifier(UnitLifetimeModifiersById, unitId);
-    }
-    public void AddUnitDamageModifier(string unitId, int amount)
-    {
-        AddUnitIntModifier(UnitDamageModifiersById, unitId, amount);
-    }
-    public void AddUnitHpModifier(string unitId, int amount)
-    {
-        AddUnitIntModifier(UnitHpModifiersById, unitId, amount);
-    }
-    public void AddUnitLifetimeModifier(string unitId, float amount)
-    {
-        AddUnitFloatModifier(UnitLifetimeModifiersById, unitId, amount);
-    }
-    private static int GetUnitIntModifier(Dictionary<string, int> modifiers, string unitId)
-    {
-        if (modifiers == null || string.IsNullOrWhiteSpace(unitId))
-        {
-            return 0;
-        }
-        return modifiers.TryGetValue(unitId, out var value) ? value : 0;
-    }
-    private static float GetUnitFloatModifier(Dictionary<string, float> modifiers, string unitId)
-    {
-        if (modifiers == null || string.IsNullOrWhiteSpace(unitId))
-        {
-            return 0f;
-        }
-        return modifiers.TryGetValue(unitId, out var value) ? value : 0f;
-    }
-    private static void AddUnitIntModifier(Dictionary<string, int> modifiers, string unitId, int amount)
-    {
-        if (modifiers == null || string.IsNullOrWhiteSpace(unitId) || amount == 0)
-        {
-            return;
-        }
-        modifiers.TryGetValue(unitId, out var currentValue);
-        modifiers[unitId] = currentValue + amount;
-    }
-    private static void AddUnitFloatModifier(Dictionary<string, float> modifiers, string unitId, float amount)
-    {
-        if (modifiers == null || string.IsNullOrWhiteSpace(unitId) || Mathf.Approximately(amount, 0f))
-        {
-            return;
-        }
-        modifiers.TryGetValue(unitId, out var currentValue);
-        modifiers[unitId] = currentValue + amount;
     }
 }
 </file>
@@ -10762,7 +10793,6 @@ using System.Globalization;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
-using UnityEngine.Serialization;
 public class Main : MonoBehaviour
 {
     private enum DayUpgradeOfferCategory
@@ -10834,7 +10864,8 @@ public class Main : MonoBehaviour
         keeperMovementSystem = new KeeperMovementSystem();
         nightPoiSystem = new NightPoiSystem();
         nightDefinitions = BuildNightDefinitions();
-        firstRunTutorialController = new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
+        firstRunTutorialController =
+            new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
         if (laneEncounterCoordinator != null)
         {
             laneEncounterCoordinator.OnEnemyBreakthrough = HandleEnemyBreakthrough;
@@ -11810,11 +11841,13 @@ public class Main : MonoBehaviour
         if (RunState.Keeper.ActivityState == KeeperActivityState.Moving)
         {
             ClearKeeperInteractionAvailability();
+            UpdateFaithPoiAnimationState();
             return;
         }
         if (nightPoiSystem == null)
         {
             ClearKeeperInteractionAvailability();
+            UpdateFaithPoiAnimationState();
             return;
         }
         if (nightPoiSystem.RegisteredPoiCount <= 0)
@@ -11827,11 +11860,13 @@ public class Main : MonoBehaviour
                 out var interactionState))
         {
             ClearKeeperInteractionAvailability();
+            UpdateFaithPoiAnimationState();
             return;
         }
         RunState.Keeper.CurrentPoiId = poi.Id;
         RunState.Keeper.InteractionState = interactionState;
         keeperActor?.SetFacingDirection(poi.KeeperFacingDirection);
+        UpdateFaithPoiAnimationState();
     }
     private void StopKeeperMovement()
     {
@@ -11954,7 +11989,9 @@ public class Main : MonoBehaviour
         var fallbackStartIndex = GetDeterministicOfferIndex(
             eligibleUpgradeDefs.Count,
             (RunState.CurrentDay - 1) * 11 + (RunState.PurchasedUpgradeIds?.Count ?? 0));
-        for (var i = 0; i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount; i++)
+        for (var i = 0;
+             i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount;
+             i++)
         {
             var candidateIndex = (fallbackStartIndex + i) % eligibleUpgradeDefs.Count;
             var candidate = eligibleUpgradeDefs[candidateIndex];
@@ -12141,7 +12178,8 @@ public class Main : MonoBehaviour
             UpgradeEffectType.UnitLifetimeModifier => $"+{effectValueText}s {targetUnitName} lifetime",
             UpgradeEffectType.UnitHpModifier => $"+{effectValueText} {targetUnitName} HP",
             UpgradeEffectType.FaithCollectionIntervalModifier => $"-{effectValueText}s Faith payout interval",
-            UpgradeEffectType.NightInstantRepairCharge => $"Instant repair once per night (+{effectValueText} cemetery)",
+            UpgradeEffectType.NightInstantRepairCharge =>
+                $"Instant repair once per night (+{effectValueText} cemetery)",
             _ => string.Empty
         };
     }
@@ -12190,6 +12228,19 @@ public class Main : MonoBehaviour
         Debug.Log("Defeat: cemetery destroyed");
         RefreshPresentation();
         return true;
+    }
+    private void UpdateFaithPoiAnimationState()
+    {
+        if (!TryResolveNightPoiByType(NightPoiType.FaithPoint, out var faithPoi) || faithPoi == null)
+        {
+            return;
+        }
+        var isKeeperNearFaithPoi =
+            RunState?.Keeper != null &&
+            RunState.Keeper.ActivityState != KeeperActivityState.Moving &&
+            RunState.Keeper.CurrentPoiId == faithPoi.Id &&
+            RunState.Keeper.InteractionState == KeeperInteractionState.FaithPoint;
+        faithPoi.SetKeeperNearbyPresentation(isKeeperNearFaithPoi);
     }
     private void PlayPhaseTransitionCue(GamePhase phase)
     {

@@ -49,21 +49,21 @@ public class UpgradeSystem
     public static bool SupportsEffectType(UpgradeEffectType effectType)
     {
         return effectType == UpgradeEffectType.FaithIncomeBonus
-            || effectType == UpgradeEffectType.CemeteryRepair
-            || effectType == UpgradeEffectType.CemeteryMaxStateBonus
-            || effectType == UpgradeEffectType.BellFaithCostModifier
-            || effectType == UpgradeEffectType.StartingNightFaithBonus
-            || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
-            || effectType == UpgradeEffectType.UnitDamageModifier
-            || effectType == UpgradeEffectType.UnitLifetimeModifier
-            || effectType == UpgradeEffectType.UnitHpModifier
-            || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
-            || effectType == UpgradeEffectType.NightInstantRepairCharge;
+               || effectType == UpgradeEffectType.CemeteryRepair
+               || effectType == UpgradeEffectType.CemeteryMaxStateBonus
+               || effectType == UpgradeEffectType.BellFaithCostModifier
+               || effectType == UpgradeEffectType.StartingNightFaithBonus
+               || effectType == UpgradeEffectType.KeeperMoveSpeedBonus
+               || effectType == UpgradeEffectType.UnitDamageModifier
+               || effectType == UpgradeEffectType.UnitLifetimeModifier
+               || effectType == UpgradeEffectType.UnitHpModifier
+               || effectType == UpgradeEffectType.FaithCollectionIntervalModifier
+               || effectType == UpgradeEffectType.NightInstantRepairCharge;
     }
 
     private static void ApplyEffect(UpgradeDef upgradeDef, RunState runState)
     {
-        var effectValue = Mathf.Max(0f, upgradeDef.EffectValue);
+        var effectValue = upgradeDef.EffectValue;
         var effectIntValue = Mathf.RoundToInt(effectValue);
 
         switch (upgradeDef.EffectType)
@@ -89,7 +89,7 @@ public class UpgradeSystem
                 break;
 
             case UpgradeEffectType.BellFaithCostModifier:
-                runState.BellFaithCostModifier -= effectIntValue;
+                runState.BellFaithCostModifier += effectIntValue;
                 break;
 
             case UpgradeEffectType.StartingNightFaithBonus:

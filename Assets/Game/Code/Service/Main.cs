@@ -62,6 +62,9 @@ public class Main : MonoBehaviour
     public bool HasUpcomingNightWave => waveSystem != null && waveSystem.HasUpcomingWave;
     public float NextNightWaveTriggerTime => waveSystem != null ? waveSystem.NextWaveTriggerTime : 0f;
     public float PreviousNightWaveTriggerTime => waveSystem != null ? waveSystem.PreviousWaveTriggerTime : 0f;
+    public IReadOnlyList<NightWaveEntry> CurrentNightWaveEntries => waveSystem != null
+        ? waveSystem.ActiveEntries
+        : System.Array.Empty<NightWaveEntry>();
 
     private void Awake()
     {

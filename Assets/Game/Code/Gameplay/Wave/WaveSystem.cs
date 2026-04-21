@@ -3,7 +3,6 @@ using System.Collections.Generic;
 public class WaveSystem
 {
     private readonly List<NightWaveEntry> activeEntries = new();
-
     private float elapsedTime;
     private float durationSeconds;
     private int nextWaveIndex;
@@ -16,6 +15,8 @@ public class WaveSystem
     public bool HasUpcomingWave => isRunning && nextWaveIndex < activeEntries.Count;
     public float NextWaveTriggerTime => HasUpcomingWave ? activeEntries[nextWaveIndex].TriggerTime : durationSeconds;
     public float PreviousWaveTriggerTime => nextWaveIndex <= 0 ? 0f : activeEntries[nextWaveIndex - 1].TriggerTime;
+
+    public IReadOnlyList<NightWaveEntry> ActiveEntries => activeEntries;
 
     public void StartWave(NightDefinition nightDefinition)
     {
@@ -31,7 +32,6 @@ public class WaveSystem
         }
 
         durationSeconds = nightDefinition.DurationSeconds;
-
         var entries = nightDefinition.WaveEntries;
         if (entries == null)
         {

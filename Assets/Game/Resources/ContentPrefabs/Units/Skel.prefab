@@ -407,6 +407,8 @@ GameObject:
   - component: {fileID: 8165175480599496251}
   - component: {fileID: 3269294100103990433}
   - component: {fileID: 5811111111111111111}
+  - component: {fileID: -4884904833348482800}
+  - component: {fileID: -2400149464708575937}
   m_Layer: 0
   m_Name: Skel
   m_TagString: Untagged
@@ -444,6 +446,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02f5be9d19e94654389469cb4313389b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LaneUnit
+  animator: {fileID: -4884904833348482800}
 --- !u!212 &3269294100103990433
 SpriteRenderer:
   serializedVersion: 2
@@ -494,7 +497,7 @@ SpriteRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: d95841e08986c0847927ec32c8f0ead7, type: 3}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.8867924, g: 0.8867924, b: 0.8867924, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -520,3 +523,38 @@ MonoBehaviour:
   targetRenderer: {fileID: 3269294100103990433}
   popupVerticalPadding: 0.28
   hitFlashDuration: 0.08
+--- !u!95 &-4884904833348482800
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7541570758843446100}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 8e9667b6c54930c43bf83406dbc04bde, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!210 &-2400149464708575937
+SortingGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7541570758843446100}
+  m_Enabled: 1
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_SortAtRoot: 0
+  m_Sort3DAs2D: 0

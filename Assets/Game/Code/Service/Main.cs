@@ -5,7 +5,6 @@ using System.Globalization;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
-using UnityEngine.Serialization;
 
 public class Main : MonoBehaviour
 {
@@ -85,7 +84,8 @@ public class Main : MonoBehaviour
         keeperMovementSystem = new KeeperMovementSystem();
         nightPoiSystem = new NightPoiSystem();
         nightDefinitions = BuildNightDefinitions();
-        firstRunTutorialController = new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
+        firstRunTutorialController =
+            new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
 
         if (laneEncounterCoordinator != null)
         {
@@ -1250,12 +1250,14 @@ public class Main : MonoBehaviour
         if (RunState.Keeper.ActivityState == KeeperActivityState.Moving)
         {
             ClearKeeperInteractionAvailability();
+            UpdateFaithPoiAnimationState();
             return;
         }
 
         if (nightPoiSystem == null)
         {
             ClearKeeperInteractionAvailability();
+            UpdateFaithPoiAnimationState();
             return;
         }
 
@@ -1270,12 +1272,14 @@ public class Main : MonoBehaviour
                 out var interactionState))
         {
             ClearKeeperInteractionAvailability();
+            UpdateFaithPoiAnimationState();
             return;
         }
 
         RunState.Keeper.CurrentPoiId = poi.Id;
         RunState.Keeper.InteractionState = interactionState;
         keeperActor?.SetFacingDirection(poi.KeeperFacingDirection);
+        UpdateFaithPoiAnimationState();
     }
 
     private void StopKeeperMovement()
@@ -1421,7 +1425,9 @@ public class Main : MonoBehaviour
             eligibleUpgradeDefs.Count,
             (RunState.CurrentDay - 1) * 11 + (RunState.PurchasedUpgradeIds?.Count ?? 0));
 
-        for (var i = 0; i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount; i++)
+        for (var i = 0;
+             i < eligibleUpgradeDefs.Count && RunState.CurrentDayUpgradeOfferIds.Count < DailyUpgradeOfferCount;
+             i++)
         {
             var candidateIndex = (fallbackStartIndex + i) % eligibleUpgradeDefs.Count;
             var candidate = eligibleUpgradeDefs[candidateIndex];
@@ -1640,7 +1646,8 @@ public class Main : MonoBehaviour
             UpgradeEffectType.UnitLifetimeModifier => $"+{effectValueText}s {targetUnitName} lifetime",
             UpgradeEffectType.UnitHpModifier => $"+{effectValueText} {targetUnitName} HP",
             UpgradeEffectType.FaithCollectionIntervalModifier => $"-{effectValueText}s Faith payout interval",
-            UpgradeEffectType.NightInstantRepairCharge => $"Instant repair once per night (+{effectValueText} cemetery)",
+            UpgradeEffectType.NightInstantRepairCharge =>
+                $"Instant repair once per night (+{effectValueText} cemetery)",
             _ => string.Empty
         };
     }
@@ -1697,6 +1704,23 @@ public class Main : MonoBehaviour
         RefreshPresentation();
         return true;
     }
+
+    private void UpdateFaithPoiAnimationState()
+    {
+        if (!TryResolveNightPoiByType(NightPoiType.FaithPoint, out var faithPoi) || faithPoi == null)
+        {
+            return;
+        }
+
+        var isKeeperNearFaithPoi =
+            RunState?.Keeper != null &&
+            RunState.Keeper.ActivityState != KeeperActivityState.Moving &&
+            RunState.Keeper.CurrentPoiId == faithPoi.Id &&
+            RunState.Keeper.InteractionState == KeeperInteractionState.FaithPoint;
+
+        faithPoi.SetKeeperNearbyPresentation(isKeeperNearFaithPoi);
+    }
+
 
     private void PlayPhaseTransitionCue(GamePhase phase)
     {

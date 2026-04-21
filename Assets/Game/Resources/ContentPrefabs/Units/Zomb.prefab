@@ -316,6 +316,8 @@ GameObject:
   - component: {fileID: 8165175480599496251}
   - component: {fileID: 3269294100103990433}
   - component: {fileID: 5811111111111111111}
+  - component: {fileID: -2288171417914399454}
+  - component: {fileID: -6587378758559357923}
   m_Layer: 0
   m_Name: Zomb
   m_TagString: Untagged
@@ -353,6 +355,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02f5be9d19e94654389469cb4313389b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LaneUnit
+  animator: {fileID: -2288171417914399454}
 --- !u!212 &3269294100103990433
 SpriteRenderer:
   serializedVersion: 2
@@ -429,6 +432,41 @@ MonoBehaviour:
   targetRenderer: {fileID: 3269294100103990433}
   popupVerticalPadding: 0.28
   hitFlashDuration: 0.08
+--- !u!95 &-2288171417914399454
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7541570758843446100}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 65d6cb36d7759514a9e4d504950fe9a1, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!210 &-6587378758559357923
+SortingGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7541570758843446100}
+  m_Enabled: 1
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_SortAtRoot: 0
+  m_Sort3DAs2D: 0
 --- !u!1 &8381657832214059599
 GameObject:
   m_ObjectHideFlags: 0

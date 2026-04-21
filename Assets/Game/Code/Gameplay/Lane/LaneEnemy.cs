@@ -23,6 +23,8 @@ public class LaneEnemy : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private SortingGroup sortingGroup;
     private bool hasPlayedDeathSfx;
+    [SerializeField] private Animator animator;
+    private static readonly int AttackHash = Animator.StringToHash("Attack");
 
     private void Update()
     {
@@ -151,6 +153,7 @@ public class LaneEnemy : MonoBehaviour
             return;
         }
 
+        animator.SetTrigger(AttackHash);
         TargetUnit.ApplyDamage(EnemyDef.Damage);
         G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = EnemyDef.AttackInterval;
@@ -164,6 +167,7 @@ public class LaneEnemy : MonoBehaviour
             return;
         }
 
+        animator?.SetTrigger(AttackHash);
         CemeteryAttackTriggered?.Invoke(this);
         G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = EnemyDef.AttackInterval;

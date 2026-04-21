@@ -9,6 +9,10 @@ public class KeeperActor : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private SortingGroup sortingGroup;
 
+    [SerializeField] private Animator animator;
+    private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
+    private const float MovingAnimationThreshold = 0.0001f;
+
     private void LateUpdate()
     {
         UpdateSortingOrder();
@@ -23,8 +27,34 @@ public class KeeperActor : MonoBehaviour
     public void SetWorldPosition(Vector2 worldPosition)
     {
         var currentPosition = transform.position;
-        UpdateFacing(new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y));
+        var movementOffset = new Vector2(worldPosition.x - currentPosition.x, worldPosition.y - currentPosition.y);
+
+        UpdateFacing(movementOffset);
+        UpdateMovementAnimation(movementOffset);
+
         transform.position = new Vector3(worldPosition.x, worldPosition.y, currentPosition.z);
+    }
+
+    private void UpdateMovementAnimation(Vector2 movementOffset)
+    {
+        var targetAnimator = GetAnimator();
+        if (targetAnimator == null)
+        {
+            return;
+        }
+
+        var isMoving = movementOffset.sqrMagnitude > MovingAnimationThreshold;
+        targetAnimator.SetBool(IsMovingHash, isMoving);
+    }
+
+    private Animator GetAnimator()
+    {
+        if (animator == null)
+        {
+            animator = GetComponent<Animator>();
+        }
+
+        return animator;
     }
 
     public void SetFacingDirection(PoiKeeperFacingDirection facingDirection)

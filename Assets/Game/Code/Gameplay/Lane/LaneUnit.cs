@@ -43,6 +43,9 @@ public class LaneUnit : MonoBehaviour
     private float moveSpeed;
     private float maxLifetimeSeconds;
 
+    [SerializeField] private Animator animator;
+    private static readonly int AttackHash = Animator.StringToHash("Attack");
+
     private void Update()
     {
         if (UnitDef == null)
@@ -265,6 +268,7 @@ public class LaneUnit : MonoBehaviour
             return;
         }
 
+        animator?.SetTrigger(AttackHash);
         TargetEnemy.ApplyDamage(damage);
         G.audioSystem.PlayRandomPitched(SoundId.SFX_CombatHit);
         attackCooldown = attackIntervalSeconds;

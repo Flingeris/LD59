@@ -15,6 +15,7 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
     [SerializeField] private Transform keeperTargetPoint;
     [SerializeField] private PoiKeeperFacingDirection keeperFacingDirection = PoiKeeperFacingDirection.Right;
     [SerializeField] private NightPoiProgressView progressView;
+    [SerializeField] private FaithPoiAnimationView faithPoiAnimationView;
 
     public string Id => id;
     public NightPoiType Type => type;
@@ -35,6 +36,16 @@ public class NightPointOfInterest : MonoBehaviour, IPointerClickHandler
     {
         var worldPosition = transform.position;
         return new Vector2(worldPosition.x, worldPosition.y);
+    }
+
+    public void SetKeeperNearbyPresentation(bool isKeeperNear)
+    {
+        if (type != NightPoiType.FaithPoint)
+        {
+            return;
+        }
+
+        faithPoiAnimationView?.SetKeeperNearby(isKeeperNear);
     }
 
     public Vector2 GetKeeperTargetWorldPosition()

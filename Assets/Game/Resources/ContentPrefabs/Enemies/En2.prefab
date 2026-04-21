@@ -118,6 +118,8 @@ GameObject:
   - component: {fileID: 5920263454918678487}
   - component: {fileID: 3497965420854131290}
   - component: {fileID: 6822222222222222222}
+  - component: {fileID: 2990222556543553856}
+  - component: {fileID: 4820966504938132098}
   m_Layer: 0
   m_Name: En2
   m_TagString: Untagged
@@ -213,6 +215,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2d296c7fe0ab08c4abcb652c10184431, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LaneEnemy
+  animator: {fileID: 2990222556543553856}
 --- !u!114 &6822222222222222222
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -230,6 +233,41 @@ MonoBehaviour:
   targetRenderer: {fileID: 5920263454918678487}
   popupVerticalPadding: 0.28
   hitFlashDuration: 0.08
+--- !u!95 &2990222556543553856
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7472344182768934562}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 2a145af8f8e3fb348ac0f4b5fc4f5547, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!210 &4820966504938132098
+SortingGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7472344182768934562}
+  m_Enabled: 1
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_SortAtRoot: 0
+  m_Sort3DAs2D: 0
 --- !u!1 &8029007172022442634
 GameObject:
   m_ObjectHideFlags: 0

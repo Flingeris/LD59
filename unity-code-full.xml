@@ -120,6 +120,8 @@ Assets/Game/Code/Gameplay/Runtime/KeeperActivityState.cs
 Assets/Game/Code/Gameplay/Runtime/KeeperInteractionState.cs
 Assets/Game/Code/Gameplay/Runtime/KeeperState.cs
 Assets/Game/Code/Gameplay/Runtime/RunState.cs
+Assets/Game/Code/Gameplay/Tutorial/BellUnlockAnnouncementController.cs
+Assets/Game/Code/Gameplay/Tutorial/BellUnlockAnnouncementData.cs
 Assets/Game/Code/Gameplay/Tutorial/FirstRunTutorialController.cs
 Assets/Game/Code/Gameplay/Upgrade/UpgradePurchaseResult.cs
 Assets/Game/Code/Gameplay/Upgrade/UpgradeSystem.cs
@@ -2139,6 +2141,73 @@ public class KeeperState
             InteractionState = KeeperInteractionState.None
         };
     }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Tutorial/BellUnlockAnnouncementController.cs">
+using System.Collections;
+public sealed class BellUnlockAnnouncementController
+{
+    private readonly Main main;
+    private TutorialOverlayView overlayView;
+    public BellUnlockAnnouncementController(Main main)
+    {
+        this.main = main;
+    }
+    public bool IsRunning { get; private set; }
+    public void TryPlay(BellUnlockAnnouncementData data)
+    {
+        if (IsRunning || data == null || string.IsNullOrWhiteSpace(data.BellId))
+        {
+            return;
+        }
+        if (main == null || main.RunState == null || main.RunState.CurrentPhase != GamePhase.Night)
+        {
+            return;
+        }
+        main.StartCoroutine(PlayRoutine(data));
+    }
+    private IEnumerator PlayRoutine(BellUnlockAnnouncementData data)
+    {
+        var overlay = ResolveOverlay();
+        if (overlay == null)
+        {
+            yield break;
+        }
+        if (!main.TryGetBellWorldObject(data.BellId, out var bellWorldObject) || bellWorldObject == null)
+        {
+            yield break;
+        }
+        IsRunning = true;
+        overlay.ShowWorldMarker(
+            bellWorldObject.GetTutorialMarkerTarget(),
+            data.Title,
+            data.MarkerColor,
+            TutorialWorldMarkerAnchor.BellPosition);
+        yield return overlay.PlayTypedMessage(data.Message, false);
+        overlay.HideWorldMarker();
+        IsRunning = false;
+    }
+    private TutorialOverlayView ResolveOverlay()
+    {
+        if (overlayView != null)
+        {
+            return overlayView;
+        }
+        overlayView = G.ui != null ? G.ui.EnsureTutorialOverlay() : null;
+        return overlayView;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Tutorial/BellUnlockAnnouncementData.cs">
+using UnityEngine;
+public sealed class BellUnlockAnnouncementData
+{
+    public string BellId;
+    public string Title;
+    public string Message;
+    public Color MarkerColor;
 }
 </file>
 
@@ -7674,151 +7743,6 @@ public class DayUpgradeItemView : MonoBehaviour
 }
 </file>
 
-<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
-using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.Rendering;
-public class BellWorldObject : MonoBehaviour, IPointerClickHandler
-{
-    private const int SortingPrecision = 100;
-    [SerializeField] private string bellId;
-    [SerializeField] private WorldBarFillShrink cooldownBar;
-    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
-    private float cooldownRemainingSeconds;
-    private float cooldownDurationSeconds;
-    private SpriteRenderer spriteRenderer;
-    private SortingGroup sortingGroup;
-    public string BellId => bellId;
-    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
-    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
-    private void Awake()
-    {
-        EnsureReferences();
-        cooldownBar?.SetVisible(false);
-    }
-    private void Update()
-    {
-        if (cooldownRemainingSeconds <= 0f)
-        {
-            cooldownBar?.SetVisible(false);
-            return;
-        }
-        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
-        RefreshCooldownPresentation();
-    }
-    private void LateUpdate()
-    {
-        UpdateSortingOrder();
-    }
-    public bool TryGetWorldInteractionValidationError(out string validationError)
-    {
-        EnsureReferences();
-        if (string.IsNullOrWhiteSpace(bellId))
-        {
-            validationError = "missing bell id";
-            return true;
-        }
-        if (CMS.Get<BellDef>(bellId) == null)
-        {
-            validationError = "missing BellDef";
-            return true;
-        }
-        if (spriteRenderer == null)
-        {
-            validationError = "missing SpriteRenderer";
-            return true;
-        }
-        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
-        {
-            validationError = "missing Collider2D";
-            return true;
-        }
-        if (!collider2D.enabled)
-        {
-            validationError = "disabled Collider2D";
-            return true;
-        }
-        validationError = string.Empty;
-        return false;
-    }
-    public void ShowFeedbackPopup(string message, Color color)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-        EnsureReferences();
-        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
-    }
-    public void InitializeRuntime(string runtimeBellId)
-    {
-        bellId = runtimeBellId;
-        cooldownRemainingSeconds = 0f;
-        cooldownDurationSeconds = 0f;
-        EnsureReferences();
-        cooldownBar?.SetVisible(false);
-    }
-    public void StartCooldown(float cooldownSeconds)
-    {
-        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
-        cooldownRemainingSeconds = cooldownDurationSeconds;
-        RefreshCooldownPresentation();
-    }
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
-            return;
-        if (G.main == null)
-        {
-            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
-            return;
-        }
-        G.main.TryInteractWithBell(bellId);
-    }
-    private void RefreshCooldownPresentation()
-    {
-        if (cooldownBar == null)
-            return;
-        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
-        {
-            cooldownBar.SetVisible(false);
-            return;
-        }
-        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
-        cooldownBar.SetVisible(true);
-        cooldownBar.SetNormalized(remainingNormalized);
-    }
-    private void EnsureReferences()
-    {
-        if (spriteRenderer == null)
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-        if (sortingGroup == null)
-            sortingGroup = GetComponentInChildren<SortingGroup>();
-        if (cooldownBar == null)
-            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
-    }
-    private void UpdateSortingOrder()
-    {
-        EnsureReferences();
-        var sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
-        if (sortingGroup != null)
-        {
-            sortingGroup.sortingOrder = sortingOrder;
-            return;
-        }
-        if (spriteRenderer != null)
-        {
-            spriteRenderer.sortingOrder = sortingOrder;
-        }
-    }
-    private float GetPopupOffsetY()
-    {
-        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
-        return spriteHeight * 0.6f + popupVerticalPadding;
-    }
-}
-</file>
-
 <file path="Assets/Game/Code/Gameplay/Keeper/KeeperActor.cs">
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -8221,6 +8145,157 @@ public class UI : MonoBehaviour
             return candidate.gameObject;
         }
         return null;
+    }
+}
+</file>
+
+<file path="Assets/Game/Code/Gameplay/Bell/BellWorldObject.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
+public class BellWorldObject : MonoBehaviour, IPointerClickHandler
+{
+    private const int SortingPrecision = 100;
+    [SerializeField] private string bellId;
+    [SerializeField] private WorldBarFillShrink cooldownBar;
+    [SerializeField] private Transform tutorialMarkerTarget;
+    [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
+    private float cooldownRemainingSeconds;
+    private float cooldownDurationSeconds;
+    private SpriteRenderer spriteRenderer;
+    private SortingGroup sortingGroup;
+    public string BellId => bellId;
+    public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
+    public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    public Transform TutorialMarkerTarget => tutorialMarkerTarget != null ? tutorialMarkerTarget : transform;
+    public Transform GetTutorialMarkerTarget()
+    {
+        return TutorialMarkerTarget;
+    }
+    private void Awake()
+    {
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+    private void Update()
+    {
+        if (cooldownRemainingSeconds <= 0f)
+        {
+            cooldownBar?.SetVisible(false);
+            return;
+        }
+        cooldownRemainingSeconds = Mathf.Max(0f, cooldownRemainingSeconds - Time.deltaTime);
+        RefreshCooldownPresentation();
+    }
+    private void LateUpdate()
+    {
+        UpdateSortingOrder();
+    }
+    public bool TryGetWorldInteractionValidationError(out string validationError)
+    {
+        EnsureReferences();
+        if (string.IsNullOrWhiteSpace(bellId))
+        {
+            validationError = "missing bell id";
+            return true;
+        }
+        if (CMS.Get<BellDef>(bellId) == null)
+        {
+            validationError = "missing BellDef";
+            return true;
+        }
+        if (spriteRenderer == null)
+        {
+            validationError = "missing SpriteRenderer";
+            return true;
+        }
+        if (!TryGetComponent<Collider2D>(out var collider2D) || collider2D == null)
+        {
+            validationError = "missing Collider2D";
+            return true;
+        }
+        if (!collider2D.enabled)
+        {
+            validationError = "disabled Collider2D";
+            return true;
+        }
+        validationError = string.Empty;
+        return false;
+    }
+    public void ShowFeedbackPopup(string message, Color color)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+        EnsureReferences();
+        Popups.TextAbove(transform, GetPopupOffsetY(), message, color);
+    }
+    public void InitializeRuntime(string runtimeBellId)
+    {
+        bellId = runtimeBellId;
+        cooldownRemainingSeconds = 0f;
+        cooldownDurationSeconds = 0f;
+        EnsureReferences();
+        cooldownBar?.SetVisible(false);
+    }
+    public void StartCooldown(float cooldownSeconds)
+    {
+        cooldownDurationSeconds = Mathf.Max(0f, cooldownSeconds);
+        cooldownRemainingSeconds = cooldownDurationSeconds;
+        RefreshCooldownPresentation();
+    }
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+            return;
+        if (G.main == null)
+        {
+            Debug.LogWarning($"Bell click ignored for '{bellId}': Main is missing");
+            return;
+        }
+        G.main.TryInteractWithBell(bellId);
+    }
+    private void RefreshCooldownPresentation()
+    {
+        if (cooldownBar == null)
+            return;
+        if (cooldownRemainingSeconds <= 0f || cooldownDurationSeconds <= 0f)
+        {
+            cooldownBar.SetVisible(false);
+            return;
+        }
+        var remainingNormalized = cooldownRemainingSeconds / Mathf.Max(0.01f, cooldownDurationSeconds);
+        cooldownBar.SetVisible(true);
+        cooldownBar.SetNormalized(remainingNormalized);
+    }
+    private void EnsureReferences()
+    {
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        if (sortingGroup == null)
+            sortingGroup = GetComponentInChildren<SortingGroup>();
+        if (cooldownBar == null)
+            cooldownBar = GetComponentInChildren<WorldBarFillShrink>();
+    }
+    private void UpdateSortingOrder()
+    {
+        EnsureReferences();
+        var sortingOrder = -Mathf.RoundToInt(transform.position.y * SortingPrecision);
+        if (sortingGroup != null)
+        {
+            sortingGroup.sortingOrder = sortingOrder;
+            return;
+        }
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.sortingOrder = sortingOrder;
+        }
+    }
+    private float GetPopupOffsetY()
+    {
+        var spriteHeight = spriteRenderer != null ? spriteRenderer.bounds.size.y : 0.4f;
+        return spriteHeight * 0.6f + popupVerticalPadding;
     }
 }
 </file>
@@ -9094,7 +9169,7 @@ public class LaneEnemy : MonoBehaviour
         hasPlayedDeathSfx = true;
         if (G.audioSystem != null)
         {
-            G.audioSystem.Play(SoundId.SFX_EnDying);
+            G.audioSystem.PlayPitched(SoundId.SFX_EnDying);
         }
     }
 }
@@ -9130,6 +9205,8 @@ public class RunState
     public int RemainingInstantNightRepairCharges;
     public int InstantNightRepairAmount;
     public KeeperState Keeper;
+    public HashSet<int> ShownBellUnlockTutorialNights;
+    public BellUnlockAnnouncementData PendingBellUnlockAnnouncement;
     public static RunState CreateInitial(
         int initialCemeteryState,
         float initialKeeperMoveSpeed,
@@ -9171,7 +9248,9 @@ public class RunState
             InstantNightRepairChargesPerNight = 0,
             RemainingInstantNightRepairCharges = 0,
             InstantNightRepairAmount = 0,
-            Keeper = KeeperState.CreateInitial(initialKeeperMoveSpeed)
+            Keeper = KeeperState.CreateInitial(initialKeeperMoveSpeed),
+            ShownBellUnlockTutorialNights = new HashSet<int>(),
+            PendingBellUnlockAnnouncement = null
         };
     }
     public int GetUnitDamageModifier(string unitId)
@@ -9620,7 +9699,7 @@ public class LaneUnit : MonoBehaviour
         hasPlayedDeathSfx = true;
         if (G.audioSystem != null)
         {
-            G.audioSystem.Play(SoundId.SFX_SkelDying);
+            G.audioSystem.PlayPitched(SoundId.SFX_SkelDying);
         }
     }
 }
@@ -10827,6 +10906,7 @@ public class Main : MonoBehaviour
     private bool keeperSceneBindingInitialized;
     private bool startupSequenceInProgress;
     private FirstRunTutorialController firstRunTutorialController;
+    private BellUnlockAnnouncementController bellUnlockAnnouncementController;
     private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
     public RunState RunState { get; private set; }
@@ -10866,6 +10946,7 @@ public class Main : MonoBehaviour
         nightDefinitions = BuildNightDefinitions();
         firstRunTutorialController =
             new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
+        bellUnlockAnnouncementController = new BellUnlockAnnouncementController(this);
         if (laneEncounterCoordinator != null)
         {
             laneEncounterCoordinator.OnEnemyBreakthrough = HandleEnemyBreakthrough;
@@ -10948,9 +11029,11 @@ public class Main : MonoBehaviour
         cemeteryStateSystem.ResetNightRepairProgress(RunState);
         RunState.RemainingInstantNightRepairCharges = Mathf.Max(0, RunState.InstantNightRepairChargesPerNight);
         PrepareKeeperForNight();
-        TrySpawnNightUnlockedBells();
+        var spawnedNightUnlockBell = TrySpawnNightUnlockedBells();
+        TryQueueBellUnlockAnnouncementForCurrentNight(spawnedNightUnlockBell);
         StartNightWave();
         RefreshPresentation();
+        TryPlayPendingBellUnlockAnnouncement();
         PlayPhaseTransitionCue(GamePhase.Night);
         return true;
     }
@@ -11654,18 +11737,113 @@ public class Main : MonoBehaviour
             bellWorldObjectsById.Add(bellWorldObject.BellId, bellWorldObject);
         }
     }
-    private void TrySpawnNightUnlockedBells()
+    private bool TrySpawnNightUnlockedBells()
     {
         var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
         if (bellNightSpawnController == null)
         {
-            return;
+            return false;
         }
         if (!bellNightSpawnController.TrySpawnForNight(RunState.CurrentNight))
         {
-            return;
+            return false;
         }
         RebuildBellWorldObjectRegistry();
+        return true;
+    }
+    private void TryQueueBellUnlockAnnouncementForCurrentNight(bool didSpawnUnlockedBell)
+    {
+        if (!didSpawnUnlockedBell || RunState == null)
+        {
+            return;
+        }
+        var currentNight = RunState.CurrentNight;
+        if (currentNight != 2 && currentNight != 4)
+        {
+            return;
+        }
+        if (RunState.ShownBellUnlockTutorialNights != null &&
+            RunState.ShownBellUnlockTutorialNights.Contains(currentNight))
+        {
+            return;
+        }
+        var unlockedBellId = ResolveNewlyUnlockedBellIdForNight(currentNight);
+        if (string.IsNullOrWhiteSpace(unlockedBellId))
+        {
+            return;
+        }
+        RunState.PendingBellUnlockAnnouncement = BuildBellUnlockAnnouncement(unlockedBellId, currentNight);
+        RunState.ShownBellUnlockTutorialNights?.Add(currentNight);
+        if (firstRunTutorialController != null &&
+            firstRunTutorialController.ShouldRunFirstRunTutorial &&
+            currentNight == 1)
+        {
+            return;
+        }
+        TryPlayPendingBellUnlockAnnouncement();
+    }
+    private string ResolveNewlyUnlockedBellIdForNight(int nightIndex)
+    {
+        var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
+        if (bellNightSpawnController == null)
+        {
+            return null;
+        }
+        if (nightIndex == 2 && bellNightSpawnController.TryGetUnlockNightIndex("bell_zombie", out var zombieNight) &&
+            zombieNight == nightIndex)
+        {
+            return "bell_zombie";
+        }
+        if (nightIndex == 4 && bellNightSpawnController.TryGetUnlockNightIndex("bell_vampire", out var vampireNight) &&
+            vampireNight == nightIndex)
+        {
+            return "bell_vampire";
+        }
+        return null;
+    }
+    private BellUnlockAnnouncementData BuildBellUnlockAnnouncement(string bellId, int nightIndex)
+    {
+        if (nightIndex == 2)
+        {
+            return new BellUnlockAnnouncementData
+            {
+                BellId = bellId,
+                Title = "NEW BELL",
+                Message = "New bell has awakened. Ring it to summon zombie.",
+                MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+            };
+        }
+        if (nightIndex == 4)
+        {
+            return new BellUnlockAnnouncementData
+            {
+                BellId = bellId,
+                Title = "NEW BELL",
+                Message = "Another bell has awakened. Vamp has joined you",
+                MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+            };
+        }
+        return new BellUnlockAnnouncementData
+        {
+            BellId = bellId,
+            Title = "NEW BELL",
+            Message = "A new bell is now available.",
+            MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+        };
+    }
+    private void TryPlayPendingBellUnlockAnnouncement()
+    {
+        if (RunState == null || bellUnlockAnnouncementController == null)
+        {
+            return;
+        }
+        var pendingAnnouncement = RunState.PendingBellUnlockAnnouncement;
+        if (pendingAnnouncement == null)
+        {
+            return;
+        }
+        bellUnlockAnnouncementController.TryPlay(pendingAnnouncement);
+        RunState.PendingBellUnlockAnnouncement = null;
     }
     private BellWorldObject ResolveBellWorldObject(string bellId)
     {
@@ -11715,6 +11893,7 @@ public class Main : MonoBehaviour
             return;
         }
         StartCoroutine(PlayStartupSequence(canShowTitleScreen, shouldRunFirstRunTutorial));
+        TryPlayPendingBellUnlockAnnouncement();
     }
     private IEnumerator PlayStartupSequence(bool useTitleScreen, bool runFirstRunTutorial)
     {

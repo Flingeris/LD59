@@ -508,7 +508,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &59187074
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -529,7 +529,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Faith: '
+  m_text: 'Night: 1/6'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 5b8f11a53988bb4478657f72b3d7baa1, type: 2}
   m_sharedMaterial: {fileID: 7015806976965768015, guid: 5b8f11a53988bb4478657f72b3d7baa1, type: 2}
@@ -556,8 +556,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 6
-  m_fontSizeBase: 6
+  m_fontSize: 7
+  m_fontSizeBase: 7
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 3
@@ -623,11 +623,11 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 733214426}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -83.88, y: 78.67}
-  m_SizeDelta: {x: 130.635, y: 8.333}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 9.9, y: -41.899994}
+  m_SizeDelta: {x: 130.635, y: 8.333008}
+  m_Pivot: {x: 0, y: 1}
 --- !u!1 &84408380
 GameObject:
   m_ObjectHideFlags: 0
@@ -3970,7 +3970,7 @@ Camera:
     x: 0
     y: 0
     width: 1
-    height: 1
+    height: 0.99964744
   near clip plane: 0.3
   far clip plane: 1000
   field of view: 34
@@ -5189,7 +5189,7 @@ MonoBehaviour:
   goldText: {fileID: 2045659879}
   goldPickupTarget: {fileID: 2500010001}
   cemeteryStateText: {fileID: 0}
-  phaseText: {fileID: 0}
+  phaseText: {fileID: 59187074}
   waveProgressView: {fileID: 1800010042}
   dayScreenView: {fileID: 2100010004}
   defeatScreenView: {fileID: 2200010004}
@@ -12888,7 +12888,7 @@ Camera:
     x: 0
     y: 0
     width: 1
-    height: 1
+    height: 0.99964744
   near clip plane: 0.3
   far clip plane: 1000
   field of view: 34

@@ -109,7 +109,9 @@ public class HUD : MonoBehaviour
 
         if (phaseText != null)
         {
-            phaseText.text = $"Phase: {runState.CurrentPhase}";
+            var targetNights = Mathf.Max(1, BellgraveBalance.Run.TargetSurvivedDays);
+            var currentNight = Mathf.Clamp(runState.CurrentNight, 0, targetNights);
+            phaseText.text = $"Night {currentNight}/{targetNights}";
         }
 
         waveProgressView?.RefreshView();

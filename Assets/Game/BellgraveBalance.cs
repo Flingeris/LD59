@@ -124,8 +124,8 @@ public static class BellgraveBalance
             var def = ScriptableObject.CreateInstance<UnitDef>();
             def.InitializeRuntime(
                 "vampire",
-                100,
-                9999,
+                20,
+                999,
                 0.55f,
                 1.9f,
                 2.5f,
@@ -180,7 +180,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_morning_prayers",
                 "Morning Prayers",
-                12,
+                18,
                 UpgradeEffectType.StartingNightFaithBonus,
                 3);
         }
@@ -190,7 +190,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_sacred_repairs",
                 "Sacred Repairs",
-                16,
+                22,
                 UpgradeEffectType.CemeteryRepair,
                 5);
         }
@@ -200,7 +200,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_stone_boundary",
                 "Stone Boundary",
-                24,
+                30,
                 UpgradeEffectType.CemeteryMaxStateBonus,
                 10);
         }
@@ -210,7 +210,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_vigil_hymn",
                 "Vigil Hymn",
-                22,
+                24,
                 UpgradeEffectType.BellFaithCostModifier,
                 -1);
         }
@@ -220,7 +220,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_grave_offerings",
                 "Grave Offerings",
-                16,
+                18,
                 UpgradeEffectType.FaithIncomeBonus,
                 1);
         }
@@ -240,7 +240,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_longer_service",
                 "Longer Service",
-                20,
+                24,
                 UpgradeEffectType.UnitLifetimeModifier,
                 3f,
                 "skel1");
@@ -251,7 +251,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_sharpened_bones",
                 "Sharpened Bones",
-                22,
+                24,
                 UpgradeEffectType.UnitDamageModifier,
                 1f,
                 "skel1");
@@ -262,7 +262,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_vampiric_vigil",
                 "Vampiric Vigil",
-                26,
+                32,
                 UpgradeEffectType.UnitLifetimeModifier,
                 0.5f,
                 "vampire");
@@ -273,7 +273,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_zombie_fortitude",
                 "Zombie Fortitude",
-                22,
+                24,
                 UpgradeEffectType.UnitHpModifier,
                 6f,
                 "zombie");
@@ -294,7 +294,7 @@ public static class BellgraveBalance
             return CreateUpgrade(
                 "upgrade_night_repair_rite",
                 "Night Repair Rite",
-                24,
+                30,
                 UpgradeEffectType.NightInstantRepairCharge,
                 6f);
         }

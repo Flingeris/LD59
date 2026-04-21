@@ -43,6 +43,7 @@ public class Main : MonoBehaviour
     private bool keeperSceneBindingInitialized;
     private bool startupSequenceInProgress;
     private FirstRunTutorialController firstRunTutorialController;
+    private BellUnlockAnnouncementController bellUnlockAnnouncementController;
     private string pendingBellInteractionId = string.Empty;
     private readonly List<string> readyWaveSpawnEnemyIds = new();
 
@@ -86,6 +87,7 @@ public class Main : MonoBehaviour
         nightDefinitions = BuildNightDefinitions();
         firstRunTutorialController =
             new FirstRunTutorialController(this, firstRunTutorialBellId, firstRunTutorialEnemyId);
+        bellUnlockAnnouncementController = new BellUnlockAnnouncementController(this);
 
         if (laneEncounterCoordinator != null)
         {
@@ -179,9 +181,11 @@ public class Main : MonoBehaviour
         cemeteryStateSystem.ResetNightRepairProgress(RunState);
         RunState.RemainingInstantNightRepairCharges = Mathf.Max(0, RunState.InstantNightRepairChargesPerNight);
         PrepareKeeperForNight();
-        TrySpawnNightUnlockedBells();
+        var spawnedNightUnlockBell = TrySpawnNightUnlockedBells();
+        TryQueueBellUnlockAnnouncementForCurrentNight(spawnedNightUnlockBell);
         StartNightWave();
         RefreshPresentation();
+        TryPlayPendingBellUnlockAnnouncement();
         PlayPhaseTransitionCue(GamePhase.Night);
         return true;
     }
@@ -1030,20 +1034,132 @@ public class Main : MonoBehaviour
         }
     }
 
-    private void TrySpawnNightUnlockedBells()
+    private bool TrySpawnNightUnlockedBells()
     {
         var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
         if (bellNightSpawnController == null)
         {
-            return;
+            return false;
         }
 
         if (!bellNightSpawnController.TrySpawnForNight(RunState.CurrentNight))
         {
-            return;
+            return false;
         }
 
         RebuildBellWorldObjectRegistry();
+        return true;
+    }
+
+    private void TryQueueBellUnlockAnnouncementForCurrentNight(bool didSpawnUnlockedBell)
+    {
+        if (!didSpawnUnlockedBell || RunState == null)
+        {
+            return;
+        }
+
+        var currentNight = RunState.CurrentNight;
+        if (currentNight != 2 && currentNight != 4)
+        {
+            return;
+        }
+
+        if (RunState.ShownBellUnlockTutorialNights != null &&
+            RunState.ShownBellUnlockTutorialNights.Contains(currentNight))
+        {
+            return;
+        }
+
+        var unlockedBellId = ResolveNewlyUnlockedBellIdForNight(currentNight);
+        if (string.IsNullOrWhiteSpace(unlockedBellId))
+        {
+            return;
+        }
+
+        RunState.PendingBellUnlockAnnouncement = BuildBellUnlockAnnouncement(unlockedBellId, currentNight);
+        RunState.ShownBellUnlockTutorialNights?.Add(currentNight);
+
+        if (firstRunTutorialController != null &&
+            firstRunTutorialController.ShouldRunFirstRunTutorial &&
+            currentNight == 1)
+        {
+            return;
+        }
+
+        TryPlayPendingBellUnlockAnnouncement();
+    }
+
+    private string ResolveNewlyUnlockedBellIdForNight(int nightIndex)
+    {
+        var bellNightSpawnController = FindAnyObjectByType<BellNightSpawnController>();
+        if (bellNightSpawnController == null)
+        {
+            return null;
+        }
+
+        if (nightIndex == 2 && bellNightSpawnController.TryGetUnlockNightIndex("bell_zombie", out var zombieNight) &&
+            zombieNight == nightIndex)
+        {
+            return "bell_zombie";
+        }
+
+        if (nightIndex == 4 && bellNightSpawnController.TryGetUnlockNightIndex("bell_vampire", out var vampireNight) &&
+            vampireNight == nightIndex)
+        {
+            return "bell_vampire";
+        }
+
+        return null;
+    }
+
+    private BellUnlockAnnouncementData BuildBellUnlockAnnouncement(string bellId, int nightIndex)
+    {
+        if (nightIndex == 2)
+        {
+            return new BellUnlockAnnouncementData
+            {
+                BellId = bellId,
+                Title = "NEW BELL",
+                Message = "New bell has awakened. Ring it to summon zombie.",
+                MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+            };
+        }
+
+        if (nightIndex == 4)
+        {
+            return new BellUnlockAnnouncementData
+            {
+                BellId = bellId,
+                Title = "NEW BELL",
+                Message = "Another bell has awakened. Vamp has joined you",
+                MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+            };
+        }
+
+        return new BellUnlockAnnouncementData
+        {
+            BellId = bellId,
+            Title = "NEW BELL",
+            Message = "A new bell is now available.",
+            MarkerColor = new Color(1f, 0.86f, 0.36f, 1f)
+        };
+    }
+
+    private void TryPlayPendingBellUnlockAnnouncement()
+    {
+        if (RunState == null || bellUnlockAnnouncementController == null)
+        {
+            return;
+        }
+
+        var pendingAnnouncement = RunState.PendingBellUnlockAnnouncement;
+        if (pendingAnnouncement == null)
+        {
+            return;
+        }
+
+        bellUnlockAnnouncementController.TryPlay(pendingAnnouncement);
+        RunState.PendingBellUnlockAnnouncement = null;
     }
 
     private BellWorldObject ResolveBellWorldObject(string bellId)
@@ -1102,6 +1218,7 @@ public class Main : MonoBehaviour
         }
 
         StartCoroutine(PlayStartupSequence(canShowTitleScreen, shouldRunFirstRunTutorial));
+        TryPlayPendingBellUnlockAnnouncement();
     }
 
     private IEnumerator PlayStartupSequence(bool useTitleScreen, bool runFirstRunTutorial)
@@ -1638,7 +1755,7 @@ public class Main : MonoBehaviour
         {
             UpgradeEffectType.FaithIncomeBonus => $"+{effectValueText} Faith per payout",
             UpgradeEffectType.CemeteryRepair => $"+{effectValueText} cemetery repair",
-            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValueText} cemetery max",
+            UpgradeEffectType.CemeteryMaxStateBonus => $"+{effectValueText} cemetery max HP",
             UpgradeEffectType.BellFaithCostModifier => $"-{effectValueText} bells Faith cost",
             UpgradeEffectType.StartingNightFaithBonus => $"+{effectValueText} Faith at night start",
             UpgradeEffectType.KeeperMoveSpeedBonus => $"+{effectValueText} keeper speed",

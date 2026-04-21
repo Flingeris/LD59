@@ -8,6 +8,7 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
 
     [SerializeField] private string bellId;
     [SerializeField] private WorldBarFillShrink cooldownBar;
+    [SerializeField] private Transform tutorialMarkerTarget;
     [Min(0f)] [SerializeField] private float popupVerticalPadding = 0.28f;
 
     private float cooldownRemainingSeconds;
@@ -18,6 +19,12 @@ public class BellWorldObject : MonoBehaviour, IPointerClickHandler
     public string BellId => bellId;
     public float CooldownRemainingSeconds => Mathf.Max(0f, cooldownRemainingSeconds);
     public bool IsOnCooldown => CooldownRemainingSeconds > 0f;
+    public Transform TutorialMarkerTarget => tutorialMarkerTarget != null ? tutorialMarkerTarget : transform;
+
+    public Transform GetTutorialMarkerTarget()
+    {
+        return TutorialMarkerTarget;
+    }
 
     private void Awake()
     {

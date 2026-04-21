@@ -230,7 +230,7 @@ public class LaneEnemy : MonoBehaviour
         hasPlayedDeathSfx = true;
         if (G.audioSystem != null)
         {
-            G.audioSystem.Play(SoundId.SFX_EnDying);
+            G.audioSystem.PlayPitched(SoundId.SFX_EnDying);
         }
     }
 }

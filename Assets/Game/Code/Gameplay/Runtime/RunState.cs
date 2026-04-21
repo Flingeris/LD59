@@ -28,6 +28,8 @@ public class RunState
     public int RemainingInstantNightRepairCharges;
     public int InstantNightRepairAmount;
     public KeeperState Keeper;
+    public HashSet<int> ShownBellUnlockTutorialNights;
+    public BellUnlockAnnouncementData PendingBellUnlockAnnouncement;
 
     public static RunState CreateInitial(
         int initialCemeteryState,
@@ -71,7 +73,9 @@ public class RunState
             InstantNightRepairChargesPerNight = 0,
             RemainingInstantNightRepairCharges = 0,
             InstantNightRepairAmount = 0,
-            Keeper = KeeperState.CreateInitial(initialKeeperMoveSpeed)
+            Keeper = KeeperState.CreateInitial(initialKeeperMoveSpeed),
+            ShownBellUnlockTutorialNights = new HashSet<int>(),
+            PendingBellUnlockAnnouncement = null
         };
     }
 

@@ -452,7 +452,7 @@ public class LaneUnit : MonoBehaviour
         hasPlayedDeathSfx = true;
         if (G.audioSystem != null)
         {
-            G.audioSystem.Play(SoundId.SFX_SkelDying);
+            G.audioSystem.PlayPitched(SoundId.SFX_SkelDying);
         }
     }
 }

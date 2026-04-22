@@ -511,7 +511,7 @@ public class PauseManager : MonoBehaviour
         targetCamera = Camera.main;
         if (targetCamera == null)
         {
-            targetCamera = FindFirstObjectByType<Camera>();
+            targetCamera = FindAnyObjectByType<Camera>();
         }
 
         return targetCamera;

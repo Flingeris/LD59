@@ -575,7 +575,7 @@ public class TutorialOverlayView : MonoBehaviour
         text.color = color;
         text.richText = true;
         text.raycastTarget = false;
-        text.enableWordWrapping = true;
+        text.textWrappingMode = TextWrappingModes.Normal;
         text.overflowMode = TextOverflowModes.Overflow;
         text.text = string.Empty;
         return text;

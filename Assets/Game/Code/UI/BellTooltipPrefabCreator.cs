@@ -87,7 +87,7 @@ public static class BellTooltipPrefabCreator
         text.fontStyle = fontStyle;
         text.color = color;
         text.alignment = TextAlignmentOptions.TopLeft;
-        text.enableWordWrapping = true;
+        text.textWrappingMode = TextWrappingModes.Normal;
         text.raycastTarget = false;
         text.lineSpacing = 0f;
         text.text = sampleText;

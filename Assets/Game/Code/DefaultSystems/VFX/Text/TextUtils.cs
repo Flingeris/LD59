@@ -28,7 +28,6 @@ public class TextUtils
         StringBuilder output = new StringBuilder();
         int visibleLength = 0; // Only counts visible characters
         Stack<string> openTags = new Stack<string>();
-        bool inTag = false;
 
         int i = 0;
         while (i < input.Length && visibleLength < maxLength)

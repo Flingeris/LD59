@@ -24,7 +24,7 @@ public class UI : MonoBehaviour
 
     public static UI EnsureInstance()
     {
-        var existingUi = FindFirstObjectByType<UI>(FindObjectsInactive.Include);
+        var existingUi = FindAnyObjectByType<UI>(FindObjectsInactive.Include);
         if (existingUi != null)
         {
             existingUi.ResolveReferences();

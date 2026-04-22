@@ -43,6 +43,8 @@ public class WinScreenView : MonoBehaviour
 
     public void Refresh(RunState runState)
     {
+        EnsureSummaryWaveAnimation();
+
         if (summaryText != null)
         {
             summaryText.text = BuildSummary(runState);
@@ -56,6 +58,8 @@ public class WinScreenView : MonoBehaviour
 
     private void EnsureInitialized()
     {
+        EnsureSummaryWaveAnimation();
+
         if (isInitialized || restartButton == null)
         {
             return;
@@ -63,6 +67,24 @@ public class WinScreenView : MonoBehaviour
 
         restartButton.onClick.AddListener(HandleRestartPressed);
         isInitialized = true;
+    }
+
+    private void EnsureSummaryWaveAnimation()
+    {
+        if (summaryText == null)
+        {
+            return;
+        }
+
+        var waveAnimation = summaryText.GetComponent<SineWaveTextAnimation>();
+        if (waveAnimation == null)
+        {
+            waveAnimation = summaryText.gameObject.AddComponent<SineWaveTextAnimation>();
+        }
+
+        waveAnimation.textMesh = summaryText;
+        waveAnimation.frequency = 3.5f;
+        waveAnimation.amplitude = 1.4f;
     }
 
     private void HandleRestartPressed()
@@ -74,28 +96,13 @@ public class WinScreenView : MonoBehaviour
     {
         if (runState == null)
         {
-            return "Victory\nYou survived the graveyard watch.";
+            return "Victory\nYou survived the graveyard watch.\n\n<link=\"wave\">THANKS FOR PLAYING!</link>";
         }
-
-        var reachedDayCount = GetReachedDayCount(runState);
 
         return
             "Victory\n" +
             "The cemetery endured the night watch.\n" +
-            $"Day reached: {reachedDayCount}\n" +
-            $"Nights survived: {runState.CurrentNight}\n" +
-            $"Days survived: {reachedDayCount}";
-    }
-
-    private static int GetReachedDayCount(RunState runState)
-    {
-        if (runState == null)
-        {
-            return 0;
-        }
-
-        return runState.CurrentNight > runState.CurrentDay
-            ? runState.CurrentDay + 1
-            : runState.CurrentDay;
+            $"Nights survived: {runState.CurrentNight}\n\n" +
+            "<link=\"wave\">THANKS FOR PLAYING!</link>";
     }
 }

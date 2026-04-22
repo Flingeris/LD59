@@ -16,6 +16,8 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
     private readonly List<LaneEnemy> enemies = new();
     private readonly Dictionary<LaneUnit, int> assignedHomeSlots = new();
     private readonly Dictionary<LaneUnit, Vector3> assignedHomePositions = new();
+    private readonly Dictionary<LaneUnit, int> assignedSpreadSeeds = new();
+    private int nextSpreadSeed = 1;
 
     private void Update()
     {
@@ -68,6 +70,8 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
 
         assignedHomeSlots.Clear();
         assignedHomePositions.Clear();
+        assignedSpreadSeeds.Clear();
+        nextSpreadSeed = 1;
     }
 
     private void CleanupDestroyed()
@@ -328,12 +332,28 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             assignedHomeSlots.Remove(releasedUnits[i]);
             assignedHomePositions.Remove(releasedUnits[i]);
         }
+
+        releasedUnits.Clear();
+
+        foreach (var pair in assignedSpreadSeeds)
+        {
+            if (pair.Key == null)
+            {
+                releasedUnits.Add(pair.Key);
+            }
+        }
+
+        for (var i = 0; i < releasedUnits.Count; i++)
+        {
+            assignedSpreadSeeds.Remove(releasedUnits[i]);
+        }
     }
 
     private void ReleaseAssignedSlot(LaneUnit laneUnit)
     {
         assignedHomeSlots.Remove(laneUnit);
         assignedHomePositions.Remove(laneUnit);
+        assignedSpreadSeeds.Remove(laneUnit);
     }
 
     private List<LaneEnemy> GetAggroEnemies(float aggroX)
@@ -583,13 +603,29 @@ public class SingleLaneEncounterCoordinator : MonoBehaviour
             return basePosition;
         }
 
-        var stableSeed = Mathf.Abs(laneUnit.GetInstanceID() * 31 + 97);
+        var stableSeed = GetStableSpreadSeed(laneUnit);
         var angle = stableSeed % 360;
         var radiusFactor = 0.3f + ((stableSeed / 360) % 100) / 100f * 0.5f;
         var radius = laneHost.AlliedHomeSpreadRadius * radiusFactor;
         var radians = angle * Mathf.Deg2Rad;
         var offset = new Vector3(Mathf.Cos(radians) * radius, Mathf.Sin(radians) * radius, 0f);
         return basePosition + offset;
+    }
+
+    private int GetStableSpreadSeed(LaneUnit laneUnit)
+    {
+        if (laneUnit == null)
+        {
+            return 97;
+        }
+
+        if (!assignedSpreadSeeds.TryGetValue(laneUnit, out var seed))
+        {
+            seed = nextSpreadSeed++;
+            assignedSpreadSeeds[laneUnit] = seed;
+        }
+
+        return Mathf.Abs(seed * 31 + 97);
     }
 
     private float GetIdleMicroRadius()

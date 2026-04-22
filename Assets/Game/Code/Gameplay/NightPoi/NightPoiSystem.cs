@@ -58,7 +58,7 @@ public class NightPoiSystem
             if (!poisByType.ContainsKey(poi.Type))
             {
                 poisByType.Add(poi.Type, poi);
-            }
+            }   
         }
 
         for (var i = 0; i < RequiredPoiTypes.Length; i++)

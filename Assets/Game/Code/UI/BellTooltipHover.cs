@@ -18,7 +18,7 @@ public sealed class BellTooltipHover : MonoBehaviour, IPointerEnterHandler, IPoi
     {
         if (tooltipView == null)
         {
-            tooltipView = FindFirstObjectByType<BellTooltipView>(FindObjectsInactive.Include);
+            tooltipView = FindAnyObjectByType<BellTooltipView>(FindObjectsInactive.Include);
         }
     }
 

@@ -1106,8 +1106,9 @@ public class Main : MonoBehaviour
         RunState.PendingBellUnlockAnnouncement = BuildBellUnlockAnnouncement(unlockedBellId, currentNight);
         RunState.ShownBellUnlockTutorialNights?.Add(currentNight);
 
-        if (firstRunTutorialController != null &&
-            firstRunTutorialController.ShouldRunFirstRunTutorial &&
+        if (showFirstRunTutorial &&
+            firstRunTutorialController != null &&
+            firstRunTutorialController.ShouldRunStartupIntroTutorial &&
             currentNight == 1)
         {
             return;
@@ -1239,23 +1240,32 @@ public class Main : MonoBehaviour
     {
         startupSequenceInProgress = true;
         UI.EnsureInstance();
-        var shouldRunFirstRunTutorial = showFirstRunTutorial &&
-                                        firstRunTutorialController != null &&
-                                        firstRunTutorialController.ShouldRunFirstRunTutorial;
+        var shouldRunStartupIntroTutorial = showFirstRunTutorial &&
+                                            firstRunTutorialController != null &&
+                                            firstRunTutorialController.ShouldRunStartupIntroTutorial;
+        var shouldRunNightTutorial = showFirstRunTutorial &&
+                                     firstRunTutorialController != null &&
+                                     firstRunTutorialController.ShouldRunNightTutorial;
         var canShowTitleScreen = showIntroScreenOnStartup && G.ui != null && G.ui.TitleScreenImage != null;
 
-        if (!canShowTitleScreen && !shouldRunFirstRunTutorial)
+        if (!canShowTitleScreen && !shouldRunStartupIntroTutorial && !shouldRunNightTutorial)
         {
             G.ui?.ToggleTitle(false);
             CompleteStartupSequence();
             return;
         }
 
-        StartCoroutine(PlayStartupSequence(canShowTitleScreen, shouldRunFirstRunTutorial));
+        StartCoroutine(PlayStartupSequence(
+            canShowTitleScreen,
+            shouldRunStartupIntroTutorial,
+            shouldRunNightTutorial));
         TryPlayPendingBellUnlockAnnouncement();
     }
 
-    private IEnumerator PlayStartupSequence(bool useTitleScreen, bool runFirstRunTutorial)
+    private IEnumerator PlayStartupSequence(
+        bool useTitleScreen,
+        bool runStartupIntroTutorial,
+        bool runNightTutorial)
     {
         if (useTitleScreen)
         {
@@ -1291,19 +1301,30 @@ public class Main : MonoBehaviour
             G.ui?.ToggleTitle(false);
         }
 
-        if (!runFirstRunTutorial || firstRunTutorialController == null)
+        if (firstRunTutorialController == null)
         {
             CompleteStartupSequence();
             yield break;
         }
 
-        yield return firstRunTutorialController.PlayStartupIntroSequence();
-        G.ui?.ToggleTitle(false);
-        EnterNight();
-        ValidateLanePrototypeSetup();
-        yield return firstRunTutorialController.FadeIntoGameplaySequence();
-        startupSequenceInProgress = false;
-        StartCoroutine(firstRunTutorialController.RunNightTutorialSequence());
+        if (runStartupIntroTutorial)
+        {
+            yield return firstRunTutorialController.PlayStartupIntroSequence();
+            G.ui?.ToggleTitle(false);
+            EnterNight();
+            ValidateLanePrototypeSetup();
+            yield return firstRunTutorialController.FadeIntoGameplaySequence();
+            startupSequenceInProgress = false;
+        }
+        else
+        {
+            CompleteStartupSequence();
+        }
+
+        if (runNightTutorial)
+        {
+            StartCoroutine(firstRunTutorialController.RunNightTutorialSequence());
+        }
     }
 
     private void CompleteStartupSequence()

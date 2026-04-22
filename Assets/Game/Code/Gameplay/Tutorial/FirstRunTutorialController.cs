@@ -4,7 +4,9 @@ using UnityEngine;
 
 public sealed class FirstRunTutorialController : IDisposable
 {
-    private const string TutorialCompletedKey = "bellgrave_tutorial_v1_completed";
+    private const string LegacyTutorialCompletedKey = "bellgrave_tutorial_v1_completed";
+    private const string IntroTutorialCompletedKey = "bellgrave_tutorial_v2_intro_completed";
+    private const string RepairTutorialCompletedKey = "bellgrave_tutorial_v2_repair_completed";
     private const float IntroFadeDuration = 0.45f;
     private const float TutorialEnemySpawnOffsetX = -1.75f;
     private const string GraveyJonesMarkup = "<link=\"wave\"><color=#D95C5C>Gravey Jones</color></link>";
@@ -45,7 +47,10 @@ public sealed class FirstRunTutorialController : IDisposable
         }
     }
 
-    public bool ShouldRunFirstRunTutorial => PlayerPrefs.GetInt(TutorialCompletedKey, 0) == 0;
+    public bool IsIntroTutorialCompleted => IsLegacyTutorialCompleted || IsFlagSet(IntroTutorialCompletedKey);
+    public bool IsRepairTutorialCompleted => IsLegacyTutorialCompleted || IsFlagSet(RepairTutorialCompletedKey);
+    public bool ShouldRunStartupIntroTutorial => !IsIntroTutorialCompleted;
+    public bool ShouldRunNightTutorial => !IsIntroTutorialCompleted || !IsRepairTutorialCompleted;
     public bool BlocksWaveProgress { get; private set; }
     public bool BlocksNightCompletion { get; private set; }
 
@@ -77,7 +82,7 @@ public sealed class FirstRunTutorialController : IDisposable
 
     public IEnumerator RunNightTutorialSequence()
     {
-        if (!ShouldRunFirstRunTutorial)
+        if (!ShouldRunNightTutorial)
         {
             yield break;
         }
@@ -89,8 +94,6 @@ public sealed class FirstRunTutorialController : IDisposable
         }
 
         isRunning = true;
-        BlocksWaveProgress = true;
-        BlocksNightCompletion = true;
         bellSummoned = false;
         tutorialEnemyKilled = false;
         faithCollected = false;
@@ -98,84 +101,97 @@ public sealed class FirstRunTutorialController : IDisposable
         cemeteryRepaired = false;
         tutorialEnemy = null;
 
-        yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
+        if (!IsIntroTutorialCompleted)
+        {
+            BlocksWaveProgress = true;
+            BlocksNightCompletion = true;
 
-        var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
-        if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
+            yield return overlay.PlayTypedMessage("Each night, the living come to rob the dead.", false);
+
+            var enemySpawnResult = main.TrySpawnScriptedEnemy(tutorialEnemyId);
+            if (!enemySpawnResult.IsSuccess || enemySpawnResult.SpawnedEnemy == null)
+            {
+                ReleaseTutorialLocks();
+                yield break;
+            }
+
+            tutorialEnemy = enemySpawnResult.SpawnedEnemy;
+            tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
+            yield return new WaitForSeconds(1f);
+            SetTutorialEnemyPaused(true);
+
+            yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
+
+            if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
+            {
+                ReleaseTutorialLocks();
+                yield break;
+            }
+
+            overlay.ShowWorldMarker(
+                bellWorldObject.transform,
+                "RING BELL",
+                new Color(1f, 0.86f, 0.36f, 1f),
+                TutorialWorldMarkerAnchor.BellPosition);
+            yield return overlay.PlayTypedMessage(
+                $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
+                false);
+            while (!bellSummoned)
+            {
+                yield return null;
+            }
+
+            overlay.HideWorldMarker();
+            SetTutorialEnemyPaused(false);
+
+            yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
+            yield return overlay.PlayTypedMessage(
+                $"Each defender has {LimitedTimeMarkup} to serve this holy ground.",
+                false);
+
+            while (!tutorialEnemyKilled)
+            {
+                yield return null;
+            }
+
+            yield return overlay.PlayTypedMessage(
+                $"Raising undead defenders costs {FaithMarkup}.",
+                false);
+            yield return overlay.PlayTypedMessage(
+                $"To get it you must pray at {SacredPlacesMarkup}, but it can take time.",
+                false);
+
+            if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
+            {
+                ReleaseTutorialLocks();
+                yield break;
+            }
+
+            overlay.ShowWorldMarker(
+                faithPointPoi.transform,
+                "COLLECT FAITH",
+                new Color(0.56f, 0.9f, 1f, 1f),
+                TutorialWorldMarkerAnchor.FaithPosition);
+            while (!faithCollected)
+            {
+                yield return null;
+            }
+
+            overlay.HideWorldMarker();
+            yield return overlay.PlayTypedMessage(
+                $"Survive until the final night, and take {GraveyJonesPossessiveMarkup} place.",
+                false);
+            CompleteIntroTutorial();
+
+            BlocksWaveProgress = false;
+            BlocksNightCompletion = false;
+        }
+
+        if (IsRepairTutorialCompleted)
         {
             ReleaseTutorialLocks();
             yield break;
         }
-
-        tutorialEnemy = enemySpawnResult.SpawnedEnemy;
-        tutorialEnemy.transform.position += new Vector3(TutorialEnemySpawnOffsetX, 0f, 0f);
-        yield return new WaitForSeconds(1f);
-        SetTutorialEnemyPaused(true);
-
-        yield return overlay.PlayTypedMessage("Now you are the new keeper.", false);
-
-        if (!main.TryGetBellWorldObject(tutorialBellId, out var bellWorldObject))
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-
-        overlay.ShowWorldMarker(
-            bellWorldObject.transform,
-            "RING BELL",
-            new Color(1f, 0.86f, 0.36f, 1f),
-            TutorialWorldMarkerAnchor.BellPosition);
-        yield return overlay.PlayTypedMessage(
-            $"Ring the {BellsMarkup} to signal the graveyard's defenders.",
-            false);
-        while (!bellSummoned)
-        {
-            yield return null;
-        }
-
-        overlay.HideWorldMarker();
-        SetTutorialEnemyPaused(false);
-
-        yield return overlay.PlayTypedMessage("The dead cannot linger here for long.", false);
-        yield return overlay.PlayTypedMessage(
-            $"Each defender has {LimitedTimeMarkup} to serve this holy ground.",
-            false);
-
-        while (!tutorialEnemyKilled)
-        {
-            yield return null;
-        }
-
-        yield return overlay.PlayTypedMessage(
-            $"Raising undead defenders costs {FaithMarkup}.",
-            false);
-        yield return overlay.PlayTypedMessage(
-            $"To get it you must pray at {SacredPlacesMarkup}, but it can take time.",
-            false);
-
-        if (!main.TryGetNightPoiByType(NightPoiType.FaithPoint, out var faithPointPoi))
-        {
-            ReleaseTutorialLocks();
-            yield break;
-        }
-
-        overlay.ShowWorldMarker(
-            faithPointPoi.transform,
-            "COLLECT FAITH",
-            new Color(0.56f, 0.9f, 1f, 1f),
-            TutorialWorldMarkerAnchor.FaithPosition);
-        while (!faithCollected)
-        {
-            yield return null;
-        }
-
-        overlay.HideWorldMarker();
-        yield return overlay.PlayTypedMessage(
-            $"Survive until the final night, and take {GraveyJonesPossessiveMarkup} place.",
-            false);
-
-        BlocksWaveProgress = false;
-        BlocksNightCompletion = false;
 
         while (!cemeteryDamaged)
         {
@@ -184,7 +200,7 @@ public sealed class FirstRunTutorialController : IDisposable
 
         if (!main.TryGetNightPoiByType(NightPoiType.RepairPoint, out var repairPointPoi))
         {
-            CompleteTutorial();
+            CompleteRepairTutorial();
             yield break;
         }
 
@@ -202,7 +218,7 @@ public sealed class FirstRunTutorialController : IDisposable
             yield return null;
         }
 
-        CompleteTutorial();
+        CompleteRepairTutorial();
     }
 
     public void Dispose()
@@ -246,9 +262,29 @@ public sealed class FirstRunTutorialController : IDisposable
         isRunning = false;
     }
 
-    private void CompleteTutorial()
+    private static bool IsFlagSet(string key)
     {
-        PlayerPrefs.SetInt(TutorialCompletedKey, 1);
+        return PlayerPrefs.GetInt(key, 0) != 0;
+    }
+
+    private static void SetFlag(string key)
+    {
+        PlayerPrefs.SetInt(key, 1);
+    }
+
+    private bool IsLegacyTutorialCompleted => IsFlagSet(LegacyTutorialCompletedKey);
+
+    private void CompleteIntroTutorial()
+    {
+        SetFlag(IntroTutorialCompletedKey);
+        PlayerPrefs.Save();
+    }
+
+    private void CompleteRepairTutorial()
+    {
+        SetFlag(IntroTutorialCompletedKey);
+        SetFlag(RepairTutorialCompletedKey);
+        SetFlag(LegacyTutorialCompletedKey);
         PlayerPrefs.Save();
         ReleaseTutorialLocks();
     }

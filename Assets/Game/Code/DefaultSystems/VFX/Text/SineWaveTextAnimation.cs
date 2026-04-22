@@ -24,6 +24,7 @@ public class SineWaveTextAnimation : MonoBehaviour
         textMesh.ForceMeshUpdate();
         textInfo = textMesh.textInfo;
         int characterCount = textInfo.characterCount;
+        float animationTime = Time.unscaledTime;
 
         // Initialize or update our flags array
         if (animateCharFlags == null || animateCharFlags.Length < characterCount)
@@ -51,7 +52,7 @@ public class SineWaveTextAnimation : MonoBehaviour
             int vertexIndex = charInfo.vertexIndex;
             Vector3[] vertices = textInfo.meshInfo[materialIndex].vertices;
 
-            float wave = Mathf.Sin(i + Time.time * frequency) * amplitude;
+            float wave = Mathf.Sin(i + animationTime * frequency) * amplitude;
 
             for (int j = 0; j < 4; j++)
             {
